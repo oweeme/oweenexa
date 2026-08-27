@@ -1,16 +1,20 @@
 # Nexa
 
 Framework frontend HTML-first, SEO-first y backend-agnóstico. Compilador en
-Rust, aplicación en TypeScript/JSX. Ver `docs/Arquitectura SEO Completo
-Framework.md` para la especificación completa y `docs/FASES-DE-CONSTRUCCION.md`
-para el roadmap de construcción por fases.
+Rust, aplicación en TypeScript/JSX.
+
+**📖 [Guía de instalación y uso](docs/GUIA-DE-INICIO.md)** — empezá acá si
+es la primera vez que ves Nexa: instalación, tu primer proyecto,
+sintaxis de una página, módulos oficiales, islas interactivas,
+empaquetado para escritorio/móvil. Ver también `docs/Arquitectura SEO
+Completo Framework.md` para la especificación completa y
+`docs/FASES-DE-CONSTRUCCION.md` para el roadmap de construcción por fases.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
 están completas**, más una Fase 16 añadida después, a partir de uso real
-del framework en un proyecto propio. Ver `docs/GUIA-DE-INICIO.md` para
-una introducción completa sin necesitar el contexto de cómo se construyó
-esto; el resto de esta sección es un resumen de lo que ya existe, fase
-por fase.
+del framework en un proyecto propio. El resto de esta sección es un
+resumen de lo que ya existe, fase por fase — para aprender a usarlo, la
+guía de arriba es el punto de partida.
 
 **Lo más reciente (Fase 16 — Islas interactivas):** el hueco real que
 dejaba la Fase 15 — un proyecto con partes públicas/SEO y partes
