@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/telemetry",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 14: Core Web Vitals (LCP/CLS/INP aproximado) + errores sin capturar, enviados solo si el proyecto declara [telemetry] endpoint en nexa.toml \u2014 nunca por defecto.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

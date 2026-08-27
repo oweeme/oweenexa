@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/ui",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 9: sistema de dise\u00f1o de Nexa \u2014 design tokens + componentes base (Button, Input, Card, Dialog) en CSS, con el comportamiento accesible (focus trap, ARIA) en TypeScript. El CSS se sirve por separado, con tree-shaking por componente usado (ver crates/nexa-ui).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

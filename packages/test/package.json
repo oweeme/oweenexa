@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/test",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 14: utilidades para probar un proyecto Nexa \u2014 mountChunk() para probar un handler interactivo en aislamiento, y helpers para comprobar la forma de nexa-manifest.json.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

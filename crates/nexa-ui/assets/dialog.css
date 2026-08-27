@@ -1,0 +1,21 @@
+.nx-dialog-backdrop {
+    position: fixed;
+    inset: 0;
+    background-color: rgba(0, 0, 0, 0.5);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.nx-dialog {
+    background-color: var(--nx-color-surface);
+    border-radius: var(--nx-radius-md);
+    box-shadow: var(--nx-shadow-md);
+    padding: var(--nx-space-4);
+    max-width: 32rem;
+    width: 100%;
+}
+
+.nx-dialog[hidden] {
+    display: none;
+}

@@ -1,0 +1,10 @@
+[package]
+name = "nexa-renderer"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nexa-ast = { path = "../nexa-ast" }
+nexa-ir = { path = "../nexa-ir" }
+serde_json = "1"

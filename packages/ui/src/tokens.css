@@ -1,0 +1,26 @@
+/**
+ * Design tokens de @nexa/ui. Siempre se incluyen si se usa cualquier
+ * componente — cualquier CSS externo puede seguir funcionando junto a
+ * estos, son variables normales, no un framework que tome el control.
+ */
+:root {
+    --nx-color-primary: #2563eb;
+    --nx-color-primary-hover: #1d4ed8;
+    --nx-color-on-primary: #ffffff;
+    --nx-color-surface: #ffffff;
+    --nx-color-text: #111827;
+    --nx-color-border: #d1d5db;
+    --nx-color-danger: #dc2626;
+
+    --nx-space-1: 0.25rem;
+    --nx-space-2: 0.5rem;
+    --nx-space-3: 0.75rem;
+    --nx-space-4: 1rem;
+
+    --nx-radius-sm: 0.25rem;
+    --nx-radius-md: 0.5rem;
+
+    --nx-font-body: system-ui, -apple-system, "Segoe UI", sans-serif;
+
+    --nx-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.15);
+}

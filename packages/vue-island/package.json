@@ -1,0 +1,22 @@
+{
+  "name": "@nexa/vue-island",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 16: adaptador delgado entre un componente Vue 3 real y el contrato de montaje de islas (mount(el, props)) \u2014 mismo patr\u00f3n que @nexa/stripe con @stripe/stripe-js: c\u00f3digo de un tercero real, no escrito ni mantenido por el core de Nexa, que prueba que el mecanismo de islands funciona con un framework de verdad.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "vue": "^3.5.42"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

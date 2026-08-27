@@ -1,0 +1,21 @@
+{
+  "name": "@nexa/http",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 7 (Data Layer): cliente HTTP propio (sin Axios) + query()/mutation() reactivos, con pol\u00edticas de cache (cache-first/network-first/stale-while-revalidate).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexa/reactivity": "*"
+  },
+  "devDependencies": {
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

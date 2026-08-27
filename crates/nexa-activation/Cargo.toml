@@ -1,0 +1,16 @@
+[package]
+name = "nexa-activation"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nexa-ast = { path = "../nexa-ast" }
+nexa-ir = { path = "../nexa-ir" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+nexa-analyzer = { path = "../nexa-analyzer" }
+nexa-parser = { path = "../nexa-parser" }
+nexa-renderer = { path = "../nexa-renderer" }

@@ -1,0 +1,21 @@
+{
+    "home": {
+        "title": "Bienvenido a Oweeme",
+        "subtitle": "Tu tienda de confianza",
+        "featured": "Producto destacado",
+        "cta": "Ver el iPhone 17",
+        "share": "Compartir tienda",
+        "contact": "Contacto",
+        "catalog": "Catálogo"
+    },
+    "product": {
+        "buy": "Comprar",
+        "share": "Compartir"
+    },
+    "contact": {
+        "title": "Contáctanos",
+        "email": "Correo",
+        "message": "Mensaje",
+        "send": "Enviar"
+    }
+}

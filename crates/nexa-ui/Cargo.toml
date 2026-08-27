@@ -1,0 +1,13 @@
+[package]
+name = "nexa-ui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nexa-ast = { path = "../nexa-ast" }
+nexa-ir = { path = "../nexa-ir" }
+
+[dev-dependencies]
+nexa-analyzer = { path = "../nexa-analyzer" }
+nexa-parser = { path = "../nexa-parser" }

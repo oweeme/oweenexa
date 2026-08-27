@@ -1,0 +1,22 @@
+{
+  "name": "@nexa/stripe",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 15: paquete de comunidad de referencia \u2014 un envoltorio real y delgado sobre @stripe/stripe-js, para probar que el mecanismo de imports de terceros (nexa.toml [imports] + import map real) funciona con c\u00f3digo que Nexa no escribi\u00f3.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@stripe/stripe-js": "^9.14.0"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

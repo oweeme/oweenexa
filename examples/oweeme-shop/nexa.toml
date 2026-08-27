@@ -1,0 +1,26 @@
+[project]
+name = "oweeme-shop"
+version = "0.1.0"
+
+[dependencies]
+ui = "0.1.0"
+forms = "0.1.0"
+platform = "0.1.0"
+
+[performance]
+maxInitialJS = 20000
+maxCSS = 20000
+maxImage = 500000
+
+[imports]
+# Paquete de comunidad de referencia (Fase 15): un envoltorio real sobre
+# @stripe/stripe-js, empaquetado en packages/stripe y copiado aquí como
+# public/vendor/nexa-stripe.js (ver README de este ejemplo). Ni Nexa Core
+# ni nexa-cli saben nada sobre Stripe — esto prueba que el mecanismo de
+# imports funciona con cualquier especificador que el proyecto elija.
+stripe = "/vendor/nexa-stripe.js"
+# Islas interactivas (Fase 16): mismo mecanismo de [imports] que
+# `stripe`, ahora usado para specifiers de `data-nexa-island` en vez de
+# identificadores dentro de un handler.
+productFilter = "/vendor/product-filter-island.js"
+dashboardIsland = "/vendor/dashboard-island.js"

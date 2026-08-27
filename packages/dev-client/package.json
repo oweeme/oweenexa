@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/dev-client",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 11: cliente de auto-reload de `nexa dev` \u2014 sondea /__nexa_dev__/version y reemplaza el <body> cuando algo bajo src/ cambi\u00f3, sin recarga completa del navegador.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

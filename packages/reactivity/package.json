@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/reactivity",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 4: reactividad fine-grained de Nexa (signals, effects, scheduler). Sin Virtual DOM.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

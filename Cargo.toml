@@ -1,0 +1,21 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/nexa-ast",
+    "crates/nexa-ir",
+    "crates/nexa-parser",
+    "crates/nexa-analyzer",
+    "crates/nexa-renderer",
+    "crates/nexa-activation",
+    "crates/nexa-router",
+    "crates/nexa-loader",
+    "crates/nexa-seo",
+    "crates/nexa-ui",
+    "crates/nexa-i18n",
+    "crates/nexa-cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT"

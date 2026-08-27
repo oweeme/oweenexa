@@ -1,0 +1,25 @@
+.nx-input {
+    display: block;
+    width: 100%;
+    padding: var(--nx-space-2) var(--nx-space-3);
+    border: 1px solid var(--nx-color-border);
+    border-radius: var(--nx-radius-sm);
+    font-family: var(--nx-font-body);
+    font-size: 1rem;
+    color: var(--nx-color-text);
+    background-color: var(--nx-color-surface);
+}
+
+.nx-input:focus-visible {
+    outline: 2px solid var(--nx-color-primary);
+    outline-offset: 1px;
+}
+
+.nx-input[aria-invalid="true"] {
+    border-color: var(--nx-color-danger);
+}
+
+.nx-input:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}

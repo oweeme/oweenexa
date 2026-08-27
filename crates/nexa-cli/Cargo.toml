@@ -1,0 +1,28 @@
+[package]
+name = "nexa-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nexa"
+path = "src/main.rs"
+
+[dependencies]
+nexa-activation = { path = "../nexa-activation" }
+nexa-analyzer = { path = "../nexa-analyzer" }
+nexa-ast = { path = "../nexa-ast" }
+nexa-i18n = { path = "../nexa-i18n" }
+nexa-ir = { path = "../nexa-ir" }
+nexa-loader = { path = "../nexa-loader" }
+nexa-parser = { path = "../nexa-parser" }
+nexa-renderer = { path = "../nexa-renderer" }
+nexa-router = { path = "../nexa-router" }
+nexa-seo = { path = "../nexa-seo" }
+nexa-ui = { path = "../nexa-ui" }
+clap = { version = "4", features = ["derive"] }
+anyhow = "1"
+tiny_http = { version = "0.12", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"

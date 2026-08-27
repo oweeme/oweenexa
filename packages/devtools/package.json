@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/devtools",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 14: panel de diagn\u00f3stico de `nexa dev` \u2014 clasificaci\u00f3n de nodos, qu\u00e9 se activ\u00f3 y con qu\u00e9 estrategia, avisos SEO/paquetes en vivo.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

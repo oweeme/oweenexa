@@ -1,0 +1,14 @@
+.nx-card {
+    background-color: var(--nx-color-surface);
+    border: 1px solid var(--nx-color-border);
+    border-radius: var(--nx-radius-md);
+    padding: var(--nx-space-4);
+}
+
+.nx-card-title {
+    font-family: var(--nx-font-body);
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: var(--nx-color-text);
+    margin: 0 0 var(--nx-space-2) 0;
+}

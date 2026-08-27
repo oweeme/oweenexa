@@ -1,0 +1,15 @@
+[package]
+name = "nexa-seo"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+nexa-ast = { path = "../nexa-ast" }
+nexa-i18n = { path = "../nexa-i18n" }
+nexa-ir = { path = "../nexa-ir" }
+serde_json = "1"
+
+[dev-dependencies]
+nexa-analyzer = { path = "../nexa-analyzer" }
+nexa-parser = { path = "../nexa-parser" }

@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/forms",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 10: mejora progresiva de formularios \u2014 se apoya en la validaci\u00f3n nativa del navegador (funciona sin JS) y a\u00f1ade mensajes propios, estado touched/dirty/invalid, sin bloquear el env\u00edo nativo del <form>.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

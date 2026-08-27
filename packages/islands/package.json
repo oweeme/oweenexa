@@ -1,0 +1,22 @@
+{
+  "name": "@nexa/islands",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 16: runtime cliente de islas interactivas \u2014 lee [data-nexa-island] del DOM y monta el m\u00f3dulo que su specifier resuelve, reutilizando las mismas estrategias de activaci\u00f3n de @nexa/runtime (Fase 5).",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexa/runtime": "*"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

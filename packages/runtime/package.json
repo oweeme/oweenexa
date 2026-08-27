@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/runtime",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 5: Progressive Activation en el navegador \u2014 lee el manifiesto de nexa-activation y activa cada nodo interactivo seg\u00fan su estrategia.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

@@ -1,0 +1,42 @@
+.nx-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: var(--nx-space-2);
+    padding: var(--nx-space-2) var(--nx-space-4);
+    border-radius: var(--nx-radius-md);
+    border: 1px solid transparent;
+    font-family: var(--nx-font-body);
+    font-size: 1rem;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.nx-btn:focus-visible {
+    outline: 2px solid var(--nx-color-primary);
+    outline-offset: 2px;
+}
+
+.nx-btn:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.nx-btn-primary {
+    background-color: var(--nx-color-primary);
+    color: var(--nx-color-on-primary);
+}
+
+.nx-btn-primary:hover {
+    background-color: var(--nx-color-primary-hover);
+}
+
+.nx-btn-outline {
+    background-color: transparent;
+    border-color: var(--nx-color-border);
+    color: var(--nx-color-text);
+}
+
+.nx-btn-outline:hover {
+    background-color: var(--nx-color-border);
+}

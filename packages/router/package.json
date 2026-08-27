@@ -1,0 +1,19 @@
+{
+  "name": "@nexa/router",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 6: navegaci\u00f3n tipo SPA en el navegador \u2014 intercepta clics internos, hace fetch + swap del documento y actualiza la URL con history.pushState, con prefetch b\u00e1sico en hover/touch.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

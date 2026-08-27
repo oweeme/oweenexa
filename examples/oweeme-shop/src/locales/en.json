@@ -1,0 +1,21 @@
+{
+    "home": {
+        "title": "Welcome to Oweeme",
+        "subtitle": "Your trusted store",
+        "featured": "Featured product",
+        "cta": "See the iPhone 17",
+        "share": "Share store",
+        "contact": "Contact",
+        "catalog": "Catalog"
+    },
+    "product": {
+        "buy": "Buy",
+        "share": "Share"
+    },
+    "contact": {
+        "title": "Contact us",
+        "email": "Email",
+        "message": "Message",
+        "send": "Send"
+    }
+}
