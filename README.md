@@ -6,9 +6,9 @@ Rust, aplicación en TypeScript/JSX.
 **📖 [Guía de instalación y uso](docs/GUIA-DE-INICIO.md)** — empezá acá si
 es la primera vez que ves Nexa: instalación, tu primer proyecto,
 sintaxis de una página, módulos oficiales, islas interactivas,
-empaquetado para escritorio/móvil. Ver también `docs/Arquitectura SEO
-Completo Framework.md` para la especificación completa y
-`docs/FASES-DE-CONSTRUCCION.md` para el roadmap de construcción por fases.
+empaquetado para escritorio/móvil. Ver también
+`docs/FASES-DE-CONSTRUCCION.md` para el roadmap de construcción por fases,
+con lo que se verificó de cada una.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
 están completas**, más una Fase 16 añadida después, a partir de uso real
@@ -155,16 +155,9 @@ partirlo ahí solo generaría imports circulares sin ganar claridad.
 
 ## Uso
 
-Instala el binario en tu PATH (una vez, y de nuevo cada vez que cambie el
-código):
-
-```bash
-cargo install --path crates/nexa-cli --root ~/.local --debug
-```
-
-(`~/.local/bin` debe estar en tu `PATH` — en este sistema ya lo está).
-Alternativa sin instalar nada: usa la ruta completa al binario de
-`cargo build`, `./target/debug/nexa`.
+Instalación completa (clonar, compilar, agregar al `PATH`) en
+**[docs/GUIA-DE-INICIO.md](docs/GUIA-DE-INICIO.md)**. Con `nexa` ya
+instalado:
 
 ```bash
 nexa create hello

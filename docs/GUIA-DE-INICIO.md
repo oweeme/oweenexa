@@ -35,14 +35,43 @@ filtro en el cliente, un dashboard completo) existen las **islas**
 ## Instalación
 
 No hay (todavía) un binario publicado — se compila desde el código
-fuente (necesitas Rust, `cargo`):
+fuente (necesitas [Rust](https://rustup.rs/) instalado, con `cargo` en
+tu `PATH`).
 
 ```bash
-git clone <este-repositorio>
-cd oweenexa
-cargo install --path crates/nexa-cli --root ~/.local --debug
-# ~/.local/bin debe estar en tu PATH
+git clone https://github.com/oweeme/oweenexa.git
+cd oweenexa      # importante: los comandos de abajo asumen que estás DENTRO de esta carpeta
+cargo install --path crates/nexa-cli --root ~/.local
 ```
+
+Esto compila en modo release (tarda uno o dos minutos la primera vez) e
+instala el binario en `~/.local/bin/nexa`. Agregá esa carpeta a tu
+`PATH` si todavía no lo está:
+
+```bash
+export PATH="$HOME/.local/bin:$PATH"
+# agregá la línea de arriba a tu ~/.bashrc o ~/.zshrc para que quede permanente
+```
+
+Verificá que funcionó:
+
+```bash
+nexa info
+# Nexa CLI
+# Version: 0.1.0
+# Fase actual: 16 — Islas interactivas
+```
+
+Si en vez de eso ves algo como `error: ... is not a directory`, casi
+siempre es que el comando `cargo install` se corrió desde afuera de la
+carpeta `oweenexa/` (el `--path crates/nexa-cli` es relativo a donde
+estés parado) — confirmá con `ls` que ves `crates/`, `packages/`,
+`README.md` en el directorio actual antes de instalar.
+
+> Si vas a modificar el propio framework (no solo usarlo), agregá
+> `--debug` al final de `cargo install` para compilar más rápido — el
+> binario resultante es más lento en tiempo de ejecución, así que no es
+> lo recomendado para uso normal.
 
 ## Tu primer proyecto
 

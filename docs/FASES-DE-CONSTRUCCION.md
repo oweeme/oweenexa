@@ -1,11 +1,13 @@
 # Nexa — Fases de construcción
 
-> Derivado de `Arquitectura SEO Completo Framework.md`. Ese documento es la
-> especificación conceptual (100% diseño, 0% código a fecha de 2026-08-26).
-> Este documento reorganiza esa especificación en fases ejecutables, cada
-> una con un criterio de salida verificable ("algo que corre"), siguiendo
-> la propia regla que el documento original se impone al final: no diseñar
-> más antes de tener el vertical slice funcionando.
+> Derivado del intercambio de diseño original (una exploración conceptual,
+> 100% diseño, 0% código a fecha de 2026-08-26 — no incluida en este
+> repositorio por ser una transcripción informal, ya superada en la
+> práctica por este mismo documento). Este documento reorganiza esa
+> exploración en fases ejecutables, cada una con un criterio de salida
+> verificable ("algo que corre"), siguiendo la propia regla que esa
+> exploración original se impone al final: no diseñar más antes de tener
+> el vertical slice funcionando.
 
 ## Cómo leer esto
 
