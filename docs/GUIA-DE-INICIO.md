@@ -154,6 +154,109 @@ Ninguno de estos requiere `package.json` ni npm — se registran en
 funcionando (cero configuración); `nexa build` solo avisa
 (`NEXA-PKG-*`), nunca bloquea.
 
+### `@nexa/ui` en detalle
+
+No hay componentes JSX (`<Button>`) — son clases CSS reales, con
+tree-shaking: `nexa build` solo manda el CSS de lo que tu sitio usa de
+verdad, junto (una sola vez) los tokens de diseño.
+
+```tsx
+<button class="nx-btn nx-btn-primary">Comprar</button>
+<button class="nx-btn nx-btn-outline">Cancelar</button>
+<button class="nx-btn" disabled>Deshabilitado</button>
+
+<input class="nx-input" type="email" name="email" />
+
+<div class="nx-card">
+    <h2 class="nx-card-title">Producto</h2>
+    <p>...</p>
+</div>
+```
+
+**Dialog** es el único que trae comportamiento real en JS (foco atrapado
+dentro del diálogo, `Escape` para cerrar, devuelve el foco al cerrar) —
+se activa llamando a `ui.openDialog(el)`/`ui.closeDialog(el)` desde un
+handler, igual que cualquier otro paquete con import (`platform.share`,
+`stripe.load`):
+
+```tsx
+function open() {
+    ui.openDialog(document.querySelector(".nx-dialog"));
+}
+function close() {
+    ui.closeDialog(document.querySelector(".nx-dialog"));
+}
+
+export default function Home() {
+    return (
+        <main>
+            <button class="nx-btn nx-btn-primary" onClick={open}>Abrir</button>
+
+            <div class="nx-dialog" hidden>
+                <p>Contenido del diálogo</p>
+                <button class="nx-btn" onClick={close}>Cerrar</button>
+            </div>
+        </main>
+    );
+}
+```
+
+El `<div class="nx-dialog" hidden>` lo escribís vos (Nexa nunca genera
+markup que no esté en tu `.tsx`) — `ui.openDialog` le quita el `hidden`
+y le pone `role="dialog"`/`aria-modal="true"`, `ui.closeDialog` se lo
+devuelve. `ui` no hace falta declararlo en `[imports]` ni en `nexa add`:
+está disponible siempre, igual que `platform`.
+
+Todas las variables de diseño (`--nx-color-primary`, `--nx-space-4`,
+`--nx-radius-md`, etc., ver `packages/ui/src/tokens.css`) son custom
+properties normales de CSS — sobreescribilas en tu propio `:root` si
+querés otra paleta, sin tocar `@nexa/ui`.
+
+### `@nexa/forms` en detalle
+
+Progressive enhancement sobre la validación nativa del navegador — el
+HTML solo, sin JS, ya valida (`required`, `type="email"`, `minlength`,
+`pattern`...). `@nexa/forms` añade: mensajes de error visibles donde vos
+digas, y clases CSS de estado.
+
+```tsx
+<form data-nexa-form action="/api/contact" method="post">
+    <label for="email">Email</label>
+    <input class="nx-input" id="email" name="email" type="email" required />
+    <p data-nexa-error-for="email"></p>
+
+    <label for="message">Mensaje</label>
+    <input class="nx-input" id="message" name="message" type="text" required minlength="10"
+           data-nexa-message="Contanos un poco más (mínimo 10 caracteres)." />
+    <p data-nexa-error-for="message"></p>
+
+    <button class="nx-btn nx-btn-primary" type="submit">Enviar</button>
+</form>
+```
+
+- `data-nexa-form` en el `<form>` activa todo lo demás — sin esto, el
+  formulario es HTML normal (sigue validando de forma nativa, pero sin
+  los mensajes/clases de abajo).
+- Cada campo necesita `name` — es la clave que conecta el campo con su
+  `<p data-nexa-error-for="ese-name">` (puede estar en cualquier parte
+  dentro del `<form>`, no tiene que ir justo al lado).
+- `data-nexa-message="..."` (opcional, por campo) reemplaza el mensaje
+  nativo del navegador ("Rellena este campo") por el tuyo. Sin esto, se
+  usa el mensaje nativo tal cual.
+- Se valida al perder el foco (`blur`) la primera vez, y en cada
+  cambio (`input`) después de eso — no espera al `submit` para avisar,
+  pero tampoco molesta antes de que el usuario haya tocado el campo.
+- Al enviar: si algo es inválido, bloquea el envío, marca todos los
+  campos como "tocados" y pone el foco en el primer campo inválido.
+- Clases automáticas por campo: `nx-touched` (ya perdió el foco una
+  vez), `nx-dirty` (el valor cambió), `nx-invalid` (inválido ahora
+  mismo) — y el atributo `aria-invalid="true"/"false"`, que si además
+  usás `class="nx-input"` te da el borde rojo automático de
+  `.nx-input[aria-invalid="true"]` sin escribir CSS propio.
+- Ningún backend está atado a esto: el `action`/`method` del `<form>`
+  son tuyos — `@nexa/forms` solo mejora la experiencia antes de que el
+  navegador haga su POST normal.
+
 ### Paquetes de un tercero (`[imports]`)
 
 Cualquier paquete JS/npm real (no solo los oficiales) puede engancharse
