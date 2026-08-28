@@ -258,6 +258,7 @@ fn write_framework_assets() -> Result<()> {
         format!("dist/assets/{}", crate::assets::NEXA_ISLANDS_FILENAME),
         crate::assets::NEXA_ISLANDS_JS,
     )?;
+    fs::write(format!("dist/assets/{}", crate::assets::NEXA_UI_FILENAME), crate::assets::NEXA_UI_JS)?;
     Ok(())
 }
 

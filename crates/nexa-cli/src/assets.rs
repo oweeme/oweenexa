@@ -28,6 +28,10 @@ pub const NEXA_TELEMETRY_JS: &str = include_str!("../assets/nexa-telemetry.js");
 /// solo lo importa si la página tiene al menos un `data-nexa-island` —
 /// ver `bootstrap::inject`.
 pub const NEXA_ISLANDS_JS: &str = include_str!("../assets/nexa-islands.js");
+/// `@nexa/ui` (comportamiento de Dialog — `ui.openDialog`/`ui.closeDialog`):
+/// builtin igual que `platform`, corregido tras descubrir que nunca
+/// había estado conectado a un import real utilizable desde una página.
+pub const NEXA_UI_JS: &str = include_str!("../assets/nexa-ui.js");
 /// `@nexa/dev-client` (Fase 11): solo lo sirve `nexa dev`, nunca `nexa
 /// build`/`nexa preview` — ver `commands::dev`.
 pub const NEXA_DEV_CLIENT_JS: &str = include_str!("../assets/nexa-dev-client.js");
@@ -41,6 +45,7 @@ pub const NEXA_FORMS_FILENAME: &str = "nexa-forms.js";
 pub const NEXA_PLATFORM_FILENAME: &str = "nexa-platform.js";
 pub const NEXA_TELEMETRY_FILENAME: &str = "nexa-telemetry.js";
 pub const NEXA_ISLANDS_FILENAME: &str = "nexa-islands.js";
+pub const NEXA_UI_FILENAME: &str = "nexa-ui.js";
 pub const NEXA_DEV_CLIENT_FILENAME: &str = "nexa-dev-client.js";
 pub const NEXA_DEVTOOLS_FILENAME: &str = "nexa-devtools.js";
 
@@ -57,6 +62,7 @@ pub fn framework_asset(path: &str) -> Option<&'static str> {
         p if p == format!("assets/{NEXA_PLATFORM_FILENAME}") => Some(NEXA_PLATFORM_JS),
         p if p == format!("assets/{NEXA_TELEMETRY_FILENAME}") => Some(NEXA_TELEMETRY_JS),
         p if p == format!("assets/{NEXA_ISLANDS_FILENAME}") => Some(NEXA_ISLANDS_JS),
+        p if p == format!("assets/{NEXA_UI_FILENAME}") => Some(NEXA_UI_JS),
         _ => None,
     }
 }

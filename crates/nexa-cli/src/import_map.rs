@@ -10,10 +10,15 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::manifest::Manifest;
 
-/// `platform` (Fase 13) siempre está disponible, resuelto contra el
-/// archivo que el propio `nexa-cli` embebe y sirve — no hace falta que
-/// el proyecto lo declare en `nexa.toml`.
-const BUILTIN_IMPORTS: &[(&str, &str)] = &[("platform", "/assets/nexa-platform.js")];
+/// `platform` (Fase 13) y `ui` (comportamiento de `@nexa/ui` — Dialog,
+/// Fase 9; corregido para ser realmente invocable como `ui.openDialog(...)`
+/// después de la Fase 16) siempre están disponibles, resueltos contra
+/// archivos que el propio `nexa-cli` embebe y sirve — no hace falta que
+/// el proyecto los declare en `nexa.toml`.
+const BUILTIN_IMPORTS: &[(&str, &str)] = &[
+    ("platform", "/assets/nexa-platform.js"),
+    ("ui", "/assets/nexa-ui.js"),
+];
 
 /// Los builtin de Nexa + lo que el proyecto haya declarado en
 /// `[imports]` — si un proyecto reutiliza el nombre `platform`, gana su
@@ -70,6 +75,16 @@ mod tests {
     fn resolved_always_includes_the_builtin_platform_entry() {
         let map = resolved(&Manifest::default());
         assert_eq!(map.get("platform").map(String::as_str), Some("/assets/nexa-platform.js"));
+    }
+
+    #[test]
+    fn resolved_always_includes_the_builtin_ui_entry() {
+        // Bug real: `openDialog`/`closeDialog` de @nexa/ui existían en
+        // packages/ui pero nunca estuvieron en el import map — una
+        // página que los llamaba producía un ReferenceError real en el
+        // navegador. `ui` ahora es builtin, igual que `platform`.
+        let map = resolved(&Manifest::default());
+        assert_eq!(map.get("ui").map(String::as_str), Some("/assets/nexa-ui.js"));
     }
 
     #[test]
