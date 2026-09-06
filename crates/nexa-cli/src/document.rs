@@ -27,6 +27,11 @@ pub fn assemble(
     }
     head_lines.push("<meta charset=\"UTF-8\">".to_string());
     head_lines.push("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">".to_string());
+    // Mismo mecanismo que WordPress/Hugo/Astro (`<meta name="generator">`):
+    // es lo que herramientas de detección tipo Wappalyzer usan para
+    // identificar con qué se construyó un sitio — sin esto, un sitio hecho
+    // con Nexa no es distinguible de HTML escrito a mano.
+    head_lines.push(format!("<meta name=\"generator\" content=\"Nexa v{}\">", env!("CARGO_PKG_VERSION")));
 
     if !seo_head.contains("<title>") {
         head_lines.push("<title>Nexa</title>".to_string());
@@ -50,6 +55,14 @@ pub fn assemble(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn always_includes_a_generator_meta_tag() {
+        // Sin esto, herramientas de detección tipo Wappalyzer no tienen
+        // forma de identificar un sitio construido con Nexa.
+        let html = assemble("<p>hola</p>", "", None, None, None);
+        assert!(html.contains("<meta name=\"generator\" content=\"Nexa v"));
+    }
 
     #[test]
     fn falls_back_to_a_default_title_when_seo_has_none() {
