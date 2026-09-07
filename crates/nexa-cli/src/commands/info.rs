@@ -4,7 +4,7 @@ pub fn run() -> Result<()> {
     println!("Nexa CLI");
     println!("Version: {}", env!("CARGO_PKG_VERSION"));
     println!();
-    println!("Fase actual: 18 — PWA declarativo (nexa add pwa)");
+    println!("Fase actual: 19 — Pipeline de imágenes (AVIF + <picture> real)");
     println!("Ver docs/FASES-DE-CONSTRUCCION.md para el roadmap completo.");
     Ok(())
 }

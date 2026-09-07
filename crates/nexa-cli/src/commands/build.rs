@@ -9,6 +9,7 @@ use nexa_ir::IrComponent;
 use nexa_router::{scan_pages, Route, Segment};
 use nexa_seo::Warning;
 
+use crate::image_pipeline;
 use crate::image_scan;
 use crate::performance_budget::{self, PageUsage};
 use crate::pipeline::{compile_page, find_paths_declaration, CompiledPage, PageError};
@@ -47,6 +48,9 @@ pub fn run() -> Result<()> {
     let mut built_patterns = Vec::new();
     let mut ui_classes = BTreeSet::new();
     let mut pending_usage = Vec::new();
+    let mut image_cache = image_pipeline::VariantCache::default();
+    let public_dir = Path::new("public");
+    let dist_root = Path::new("dist");
 
     for route in &routes {
         if route.is_dynamic() {
@@ -62,7 +66,7 @@ pub fn run() -> Result<()> {
             prerendered_routes += 1;
 
             for params in &param_sets {
-                let page = compile_page(&route.file, &route.pattern, params, &api_base).map_err(|err| match err {
+                let mut page = compile_page(&route.file, &route.pattern, params, &api_base).map_err(|err| match err {
                     PageError::NotFound => anyhow::anyhow!(
                         "{} con {params:?}: su `load()` respondió 404 para un set de parámetros \
                          que `paths` declaró — revisa que `paths` y `load` estén de acuerdo",
@@ -70,6 +74,12 @@ pub fn run() -> Result<()> {
                     ),
                     PageError::Other(e) => e,
                 })?;
+                page.html = image_pipeline::rewrite_images(&page.html, |src| {
+                    image_cache.get_or_generate(src, public_dir, dist_root, |err| {
+                        eprintln!("Aviso: no se pudo optimizar la imagen {src}: {err:#}");
+                    })
+                })
+                .context("optimizando imágenes")?;
 
                 let dir = output_dir_for_params(route, params);
                 write_page_at(&dir, &page)?;
@@ -100,7 +110,7 @@ pub fn run() -> Result<()> {
             continue;
         }
 
-        let page = compile_page(&route.file, &route.pattern, &no_params, &api_base).map_err(|err| match err {
+        let mut page = compile_page(&route.file, &route.pattern, &no_params, &api_base).map_err(|err| match err {
             PageError::NotFound => anyhow::anyhow!(
                 "{}: su `load()` respondió 404 — no se puede generar un HTML estático para un \
                  dato que no existe",
@@ -108,6 +118,12 @@ pub fn run() -> Result<()> {
             ),
             PageError::Other(e) => e,
         })?;
+        page.html = image_pipeline::rewrite_images(&page.html, |src| {
+            image_cache.get_or_generate(src, public_dir, dist_root, |err| {
+                eprintln!("Aviso: no se pudo optimizar la imagen {src}: {err:#}");
+            })
+        })
+        .context("optimizando imágenes")?;
 
         write_page(route, &page)?;
 
@@ -143,6 +159,13 @@ pub fn run() -> Result<()> {
         println!(
             "{prerendered_routes} ruta(s) dinámica(s) pre-renderizada(s) de verdad vía `paths` \
              (Fase 17) — quedaron como HTML estático real en dist/, no dependen de un proceso vivo."
+        );
+    }
+    if image_cache.optimized_count() > 0 {
+        println!(
+            "{} imagen(es) optimizada(s): variantes AVIF en varios anchos, HTML reescrito a \
+             <picture> (Fase 19).",
+            image_cache.optimized_count()
         );
     }
     if skipped_dynamic > 0 {

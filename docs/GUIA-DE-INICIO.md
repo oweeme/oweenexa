@@ -370,6 +370,43 @@ regla en `[pwa.cache]` (o sin `[pwa.cache]` en absoluto) cae a
 con la red completamente cortada después de una segunda visita, la
 página sigue cargando con contenido real desde el cache.
 
+## Imágenes optimizadas automáticamente
+
+No hay que hacer nada — `nexa build` ya optimiza cualquier `<img
+src="/algo.jpg">` (o `.jpeg`/`.png`) con un `src` estático de más de
+480px de ancho:
+
+```tsx
+<img src="/img/hero.jpg" alt="Portada" />
+```
+
+se convierte, en `dist/`, en:
+
+```html
+<picture>
+  <source type="image/avif" srcset="/img/hero-480.avif 480w, /img/hero-768.avif 768w, /img/hero-1280.avif 1280w, /img/hero-1920.avif 1920w" sizes="100vw">
+  <img src="/img/hero.jpg" alt="Portada"
+       srcset="/img/hero-480.jpg 480w, /img/hero-768.jpg 768w, /img/hero-1280.jpg 1280w, /img/hero.jpg 1920w"
+       sizes="100vw" width="1920" height="1080" loading="lazy">
+</picture>
+```
+
+- El navegador usa el AVIF si lo soporta (todos los navegadores
+  modernos) — en una foto real de 1920x1080 probada de verdad, 51 KB en
+  vez de 158 KB (68% más chico), y hasta 90% en los anchos menores.
+  Verificado en Chromium real: con esto, el navegador descarga
+  *únicamente* el AVIF del ancho que necesita — nunca el JPEG de
+  respaldo, salvo en un navegador sin soporte AVIF.
+- `width`/`height` se completan solos si no los pusiste — ayuda a
+  Core Web Vitals (evita layout shift), y `loading="lazy"` también se
+  agrega si no lo declaraste.
+- Una imagen de 480px de ancho o menos no vale la pena tocarla — se deja
+  tal cual. Un `src={expr}` dinámico tampoco se toca (no hay forma de
+  saber en tiempo de build qué archivo es).
+- Esto tiene un costo real de tiempo de build (codificar AVIF no es
+  gratis) — una foto de 1920x1080 tarda unos segundos. Si tu proyecto
+  tiene muchas fotos, esperá que `nexa build` tarde más que antes.
+
 ## Presupuestos de rendimiento
 
 ```toml

@@ -11,12 +11,23 @@ empaquetado para escritorio/móvil. Ver también
 con lo que se verificó de cada una.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
-están completas**, más tres fases añadidas después, a partir de uso real
-del framework en proyectos propios. El resto de esta sección es un
+están completas**, más cuatro fases añadidas después, a partir de uso
+real del framework en proyectos propios. El resto de esta sección es un
 resumen de lo que ya existe, fase por fase — para aprender a usarlo, la
 guía de arriba es el punto de partida.
 
-**Lo más reciente (Fase 18 — PWA declarativo):** `nexa add pwa` agrega
+**Lo más reciente (Fase 19 — Pipeline de imágenes):** `nexa build` ahora
+optimiza cualquier `<img src="/foto.jpg">` estático solo — sin que el
+desarrollador toque nada. Genera variantes AVIF reales en varios anchos
+y reescribe el HTML a un `<picture>` real. Verificado con una foto real
+de 1920x1080 en Chromium real: 51 KB de AVIF contra 158 KB del JPEG
+original (68% más chico), y el navegador solo descargó el AVIF, nunca
+el JPEG de respaldo. En el camino se encontró que el encoder de WebP de
+la crate `image` es lossless-only — para una foto, eso daba un archivo
+*más grande* que el original (764 KB), así que se sacó WebP del todo y
+se quedó solo con AVIF.
+
+**Antes (Fase 18 — PWA declarativo):** `nexa add pwa` agrega
 un `[pwa]` real a `nexa.toml` (nombre, ícono, colores, y `[pwa.cache]`
 con reglas `cache-first`/`network-first`/`stale-while-revalidate` por
 prefijo de ruta); `nexa build` genera `dist/manifest.webmanifest` y

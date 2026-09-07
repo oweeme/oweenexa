@@ -1234,6 +1234,77 @@ cachea de verdad, y sigue funcionando con la red completamente cortada.
 
 ---
 
+## Fase 19 — Pipeline de imágenes (AVIF + `<picture>` real) (Hito 15) — ✅ completada (con un ajuste de alcance)
+
+**Objetivo:** que `<img src="/foto.jpg">` no viaje al navegador tal cual
+si `nexa build` puede mandar bytes más chicos sin que el desarrollador
+haga nada — mismo espíritu que el tree-shaking de `@nexa/ui` (Fase 9):
+el compilador hace el trabajo para que el navegador descargue menos.
+
+**Entregables:**
+- `nexa build` decodifica cada `<img src="...">` estático que
+  `image_scan` (Fase 14) ya sabía encontrar, genera variantes en varios
+  anchos (480/768/1280 + el ancho original, los que sean menores que el
+  original) y reescribe el HTML final a un `<picture>` real —
+  post-procesando el HTML ya renderizado con `lol_html` (el mismo motor
+  de reescritura de Cloudflare), sin tocar `nexa-renderer` para nada: el
+  renderer sigue emitiendo el `<img>` tal cual el desarrollador lo
+  escribió.
+- `width`/`height`/`loading="lazy"` se completan automáticamente si no
+  estaban (ayuda real a Core Web Vitals — evita layout shift).
+- `VariantCache`: la misma imagen usada en varias páginas se decodifica
+  y codifica una sola vez por `nexa build`.
+- Un error generando una imagen en particular (archivo corrupto, etc.)
+  se reporta como aviso y esa imagen queda sin optimizar — nunca rompe
+  el build entero.
+
+> **Ajuste de alcance real, encontrado construyendo esto, no antes:**
+> el plan original incluía WebP además de AVIF. Verificando con una foto
+> real de 1920x1080 se encontró que el encoder de WebP de la crate
+> `image` **solo soporta el modo lossless** — para una foto, eso produjo
+> un archivo de 764 KB, más grande que el JPEG original de 158 KB. Se
+> sacó WebP del todo: solo queda AVIF (que sí soporta lossy de verdad) +
+> el propio formato original en los anchos más chicos, para el `<img>`
+> de respaldo.
+>
+> **Segundo hallazgo real, sobre la velocidad de AVIF:** a la
+> configuración por defecto de `ravif` (velocidad 4, pensada para
+> comprimir una sola foto), una sola imagen de 1920x1080 (cuatro anchos)
+> tardó más de un minuto **en un binario release** — impracticable para
+> un `nexa build` con varias fotos. Se subió a velocidad máxima (10):
+> la misma foto tardó 3.8 segundos en total, y los AVIF resultantes
+> siguieron siendo 68-90% más chicos que el JPEG original según el
+> ancho. También se encontró que los tests de este módulo, corriendo en
+> modo debug (`cargo test` normal), literalmente no terminaban con
+> imágenes de prueba de tamaño realista — se redujeron a imágenes de 1
+> a 4px de alto (el ancho, que es lo que la lógica de breakpoints
+> necesita probar, se mantuvo realista) para que la suite completa
+> siguiera corriendo en segundos.
+
+**Criterio de salida:** una foto real, en una página real, sirve un
+AVIF real y más chico en un navegador real — no que los archivos
+`.avif` existan con el tamaño correcto, sino que el navegador de verdad
+los prefiere y los usa.
+
+> **Verificado en Chromium real (Playwright):** una página con
+> `<img src="/img/hero.jpg">` (foto real de 1920x1080) compilada con el
+> binario **release** de `nexa` — `nexa build` generó
+> `dist/img/hero-{480,768,1280,1920}.avif` (51 KB el de ancho completo,
+> contra 158 KB del JPEG original) y reescribió el HTML a `<picture>`.
+> Sirviendo ese `dist/` y cargando la página en Chromium con un
+> viewport de 1000px: `img.currentSrc` fue el AVIF de 1280px, y la
+> *única* request de imagen que el navegador hizo en toda la carga fue
+> ese AVIF — nunca tocó el JPEG de respaldo.
+>
+> 226 tests en Rust (workspace completo, +8 sobre la Fase 18) — toda la
+> lógica pura (`is_supported`, filtrado de breakpoints, reescritura de
+> HTML, cache de variantes, manejo de errores) vive en
+> `image_pipeline.rs` con tests reales (deciden y verifican contra
+> archivos reales en disco, no mocks); la integración con `nexa build`
+> se verificó con el build real de arriba.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

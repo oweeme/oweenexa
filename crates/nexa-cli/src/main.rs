@@ -6,6 +6,7 @@ mod copy_dir;
 mod devtools;
 mod dev_watch;
 mod document;
+mod image_pipeline;
 mod image_scan;
 mod import_map;
 mod lockfile;
