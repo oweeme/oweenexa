@@ -528,6 +528,42 @@ createUser.data / .loading / .error   // mismos Signal que query()
 `query`/`mutation` devuelven `Signal`s de `@nexa/reactivity` — se leen
 igual (`.value`) dentro de un `effect`/`computed`/una isla.
 
+### Tiempo real: SSE y WebSocket
+
+Mismo espíritu que `query`/`mutation` — un envoltorio delgado sobre las
+APIs nativas del navegador (`EventSource`/`WebSocket`), sin protocolo
+propio, que expone `Signal`s en vez de que cada proyecto reinvente su
+propio wrapper:
+
+```ts
+import { connectSSE, connectSocket } from "@nexa/http";
+
+const notifications = connectSSE<{ mensaje: string }>({ url: "/events" });
+notifications.data   // Signal<T | undefined> — el último mensaje, parseado como JSON si se puede
+notifications.error  // Signal<unknown>
+notifications.close();
+
+const chat = connectSocket<{ from: string; text: string }>({ url: "wss://miapp.com/chat" });
+chat.status  // Signal<"connecting" | "open" | "closed">
+chat.data    // Signal<T | undefined> — el último mensaje recibido
+chat.send({ text: "hola" });   // objetos se serializan como JSON; un string se manda tal cual
+chat.close();
+```
+
+Como cualquier código de `@nexa/http`, esto corre 100% en el cliente —
+dentro de una isla, o de un handler de evento normal (via `[imports]`,
+igual que `platform`/`stripe`). Nexa Core (Rust) no sabe nada de
+WebSocket/SSE ni de ningún protocolo — no hay nada que compilar ni
+analizar del lado del servidor para esto, es una librería de cliente
+como cualquier otra.
+
+**Fuera de alcance de esta fase:** sin reconexión automática si la
+conexión se cae (`status` pasa a `"closed"` y se queda ahí — reconectar
+es responsabilidad del proyecto, llamando `connectSSE`/`connectSocket`
+de nuevo), sin backoff, sin un canal del lado del servidor en Rust (el
+backend real del proyecto es quien implementa el endpoint SSE/WS —
+Nexa no trae uno).
+
 ## `@nexa/test`
 
 Para probar un chunk de activación aislado, fuera del navegador real:

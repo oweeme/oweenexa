@@ -1672,6 +1672,57 @@ explica por qué.
 
 ---
 
+## Fase 26 — Tiempo real: `connectSSE`/`connectSocket` en `@nexa/http` (Hito 22) — ✅ completada
+
+**Objetivo:** cerrar el último pendiente de la lista — sin ningún
+mecanismo de primera clase para notificaciones/chat/dashboards en vivo,
+un proyecto tenía que escribir su propio wrapper de `EventSource`/
+`WebSocket` desde cero cada vez. Relevante en particular para los otros
+proyectos reales del usuario (logística tipo Uber, notificaciones).
+
+**Entregables:**
+- `connectSSE<T>({ url })`: envuelve `EventSource`, expone
+  `data: Signal<T | undefined>` (el último mensaje, parseado como JSON
+  si se puede, texto crudo si no) y `error: Signal<unknown>`, más
+  `close()`.
+- `connectSocket<T>({ url })`: envuelve `WebSocket`, expone `data`,
+  `status: Signal<"connecting"|"open"|"closed">`, `error`, `send(msg)`
+  (serializa objetos como JSON, manda un string tal cual) y `close()`.
+- Ambas son 100% cliente, cero cambios en Rust/Nexa Core — ni protocolo
+  propio, ni un endpoint que Nexa genere: el backend real del proyecto
+  implementa el SSE/WS, igual que ya hace con `load()`. `eventSourceImpl`/
+  `webSocketImpl` inyectables (mismo patrón que `fetchImpl` en
+  `createApi`) para poder testear sin abrir una conexión real.
+- Fuera de alcance a propósito: sin reconexión automática ni backoff —
+  `status` pasa a `"closed"` y se queda ahí; reconectar es
+  responsabilidad del proyecto.
+
+**Criterio de salida:** un mensaje real empujado por un servidor SSE
+real llega a `data.value`; un mensaje enviado por `send()` a un
+WebSocket real y devuelto (echo) llega igual a `data.value`; `status`
+refleja el ciclo de vida real de la conexión.
+
+> **Verificado con servidores reales, no solo con fakes en
+> `vitest`:** además de los tests unitarios (con `EventSourceImpl`/
+> `webSocketImpl` inyectados, fakes controlados a mano), se levantó un
+> servidor Node real (`http` + `ws`) sirviendo un endpoint SSE real
+> (tres eventos reales, con un `setInterval` real) y un echo de
+> WebSocket real, y una página real cargada en Chromium (vía
+> Playwright) que importa el bundle real de `@nexa/http` (compilado con
+> `esbuild`, sin mocks). El navegador recibió los tres eventos SSE
+> reales en orden, abrió el WebSocket real (`status` pasó de
+> `"connecting"` a `"open"` de verdad), mandó un mensaje real y recibió
+> su eco real de vuelta — sin ningún doble, sin usar la API nativa
+> directamente en el test, solo a través de `connectSSE`/`connectSocket`.
+>
+> 250 tests en Rust (sin cambios — esta fase es 100% TypeScript) + 23
+> tests en `@nexa/http` (+13 sobre lo que ya existía: parseo de JSON y
+> fallback a texto crudo en SSE, error real expuesto, `close()` real;
+> ciclo de vida completo de `connectSocket` incluyendo `send()` con
+> objeto vs. string).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

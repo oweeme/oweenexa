@@ -89,6 +89,10 @@ falta, en el mismo proyecto.
   Analyzer o los avisos de paquetes encontraron algo (`nexa build` nunca
   falla por esto a propósito); `nexa test` compila el proyecto y corre
   el test runner de JS del proyecto contra ese build fresco.
+- **Tiempo real de primera clase.** `connectSSE`/`connectSocket` en
+  `@nexa/http` envuelven `EventSource`/`WebSocket` nativos en `Signal`s
+  reactivos — notificaciones, chat, dashboards en vivo, sin que cada
+  proyecto reinvente su propio wrapper.
 
 ## Instalación rápida
 
@@ -365,6 +369,30 @@ escrita a mano con `@nexa/reactivity`, y un dashboard con un componente
 proyecto Vue existente puede convivir con las páginas públicas de Nexa
 sin reescribirse.
 
+### Tiempo real: SSE y WebSocket con `@nexa/http`
+
+```ts
+import { connectSSE, connectSocket } from "@nexa/http";
+
+const notifications = connectSSE<{ mensaje: string }>({ url: "/events" });
+notifications.data   // Signal<T | undefined> — último mensaje, JSON parseado si se puede
+notifications.error  // Signal<unknown>
+
+const chat = connectSocket<{ from: string; text: string }>({ url: "wss://miapp.com/chat" });
+chat.status // Signal<"connecting" | "open" | "closed">
+chat.data   // Signal<T | undefined>
+chat.send({ text: "hola" });
+```
+
+Mismo espíritu que `query()`/`mutation()`: un envoltorio delgado sobre
+`EventSource`/`WebSocket` nativos, sin protocolo propio, que expone
+`Signal`s de `@nexa/reactivity` en vez de que cada proyecto reinvente su
+propio wrapper de eventos del navegador. Corre 100% en el cliente —
+dentro de una isla, o de un handler normal (vía `[imports]`, igual que
+`platform`/`stripe`); Nexa Core no sabe nada de WebSocket/SSE. Sin
+reconexión automática todavía: si la conexión se cae, `status` pasa a
+`"closed"` y se queda ahí — reconectar es responsabilidad del proyecto.
+
 ### Formulario con validación nativa + i18n con `hreflang`
 
 ```tsx
@@ -529,7 +557,8 @@ packages/               (TypeScript — lo que corre en el navegador; workspace 
 ├── runtime/        initActivation() — lee el manifiesto y activa cada nodo
 │                    según su estrategia (interaction/visible/idle/load/manual)
 ├── router/         initRouter()/initPrefetch() — navegación SPA + prefetch
-├── http/           createApi(), query()/mutation() (sobre @nexa/reactivity)
+├── http/           createApi(), query()/mutation(), connectSSE()/connectSocket()
+│                    (todo sobre @nexa/reactivity)
 ├── ui/              CSS fuente (tokens + Button/Input/Card/Dialog) +
 │                    comportamiento accesible del Dialog
 ├── forms/          initForms() — validación nativa (Constraint Validation
@@ -576,6 +605,11 @@ imports circulares sin ganar claridad.
   diferencia de frameworks con rutas basadas en archivos que sí los
   tienen) y no puede tener eventos interactivos ni islas propias — un
   nav con estado real se maqueta en cada página, no en el layout.
+- `connectSSE`/`connectSocket` no reconectan solos si la conexión se
+  cae — `status` pasa a `"closed"` y se queda ahí; reconectar es
+  responsabilidad del proyecto. Tampoco traen un backoff, ni un canal
+  del lado del servidor: el backend real es quien implementa el
+  endpoint SSE/WS, Nexa no trae uno.
 - `load`/`seo`/`schema` son objetos literales estáticos, no funciones —
   sin headers, sin autenticación, sin mutaciones en el servidor.
   Deliberado: Nexa Core no ejecuta JavaScript del desarrollador, solo lo

@@ -4,3 +4,5 @@ export { query } from "./query";
 export type { CachePolicy, QueryOptions, QueryResult } from "./query";
 export { mutation } from "./mutation";
 export type { MutationOptions, MutationResult } from "./mutation";
+export { connectSSE, connectSocket } from "./realtime";
+export type { SSEOptions, SSEConnection, SocketOptions, SocketConnection, SocketStatus } from "./realtime";
