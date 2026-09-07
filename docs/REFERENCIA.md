@@ -128,6 +128,28 @@ mismos `params`/traducciones que la página a la que envuelve). Sus
 clases `nx-*` de `@nexa/ui`, si las usa, se suman a las de cada página
 para decidir qué entra en `nexa-ui.css`.
 
+### `export const head` — lo único que SÍ llega a `<head>` de verdad
+
+Todo lo demás que devuelve el componente del layout termina dentro de
+`<body>` (vía el splice del slot) — un `<link rel="icon">` puesto ahí
+queda atrapado en `<body>`, donde no todos los navegadores lo detectan
+de forma confiable. Para favicon y hojas de estilo compartidas, declará
+`head` en el layout:
+
+```tsx
+export const head = {
+    icon: "/static/logo.svg",            // <link rel="icon"> — el type se infiere de la extensión
+    appleTouchIcon: "/static/icon-180.png", // <link rel="apple-touch-icon">
+    stylesheets: ["/static/site.css"]     // un <link rel="stylesheet"> por entrada
+};
+
+export default function Layout() { /* ... */ }
+```
+
+Mismo patrón que `seo`/`schema`: un objeto literal, nunca código
+ejecutado — `nexa-cli` lo resuelve y lo mezcla en el `<head>` real del
+documento, antes de `</head>`. Los tres campos son opcionales.
+
 **No soportado esta fase:** un evento interactivo (`onClick`, etc.) o
 una isla dentro de `src/layout.tsx` — el build falla explícitamente. La
 razón es técnica, no arbitraria: los ids de nodo de un `IrComponent` se

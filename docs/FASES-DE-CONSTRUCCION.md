@@ -1723,6 +1723,53 @@ refleja el ciclo de vida real de la conexión.
 
 ---
 
+## Fase 27 — `export const head` en `src/layout.tsx` (Hito 23) — ✅ completada
+
+**Objetivo:** cerrar un hueco real de la Fase 25 — un layout solo puede
+aportar HTML de `<body>` (todo lo que devuelve su componente se
+inserta, vía splice, dentro de `data-nexa-slot`). Un `<link rel="icon">`
+o un `<link rel="stylesheet">` puesto ahí queda atrapado en `<body>`,
+donde no todos los navegadores lo detectan — descubierto usando
+`tutorial-nexa.pages.dev` real: el favicon nunca se aplicaba pese a
+estar presente en el HTML servido.
+
+**Entregables:**
+- `nexa-ast::Component` gana un campo `head: Option<JsonTemplate>` —
+  mismo tipo que ya usa `schema`, no una estructura nueva.
+- `nexa-parser::head::find_head` extrae `export const head = { ... }`
+  con el mismo patrón que `schema.rs`/`seo.rs`: un objeto literal, nunca
+  código ejecutado.
+- `nexa-seo::render_layout_head` resuelve `head` (reutilizando
+  `resolve_json_template`, el mismo mecanismo que ya resuelve `schema`)
+  a HTML real: `icon` → `<link rel="icon">` (con el `type` inferido de
+  la extensión), `appleTouchIcon` → `<link rel="apple-touch-icon">`,
+  `stylesheets` (array) → un `<link rel="stylesheet">` por entrada.
+- `nexa-cli::layout::render_for_page` devuelve ahora también
+  `head_html`; `pipeline::compile_page` lo mezcla en el `<head>` real
+  del documento (junto a `seo`/`hreflang`/`pwa`) — a diferencia del
+  resto de lo que devuelve un layout, esto nunca pasa por el splice del
+  slot.
+
+**Criterio de salida:** un layout que declara
+`export const head = { icon: "/static/logo.svg", stylesheets: [...] }`
+produce esos `<link>` dentro de `<head>` en el HTML final — no dentro
+de `<body>`.
+
+> **Verificado con un proyecto real, no solo con `cargo test`:**
+> `tutorial-nexa` (el sitio de presentación de Nexa) tenía exactamente
+> este problema en producción — confirmado con `view-source:` en un
+> navegador real, el `<link rel="icon">` aparecía dentro de `<body>`.
+> Se migró su `src/layout.tsx` a `export const head`, se reconstruyó
+> con el binario de esta fase, y el mismo `view-source:` confirmó los
+> tres `<link>` (icon, apple-touch-icon, stylesheet) ya dentro de
+> `<head>`, antes de `</head>`.
+>
+> 253 tests en Rust (workspace completo, +3 sobre la Fase 26: los tres
+> campos de `head` se resuelven a `<link>` reales, `head` ausente no
+> produce nada, y un valor con comillas embebidas no rompe el HTML).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

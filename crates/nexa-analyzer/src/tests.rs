@@ -18,6 +18,7 @@ fn classifies_text_as_static() {
         handlers: Default::default(),
         seo: None,
         schema: None,
+        head: None,
         root: Node::Text("Hello Nexa".into()),
     };
 
@@ -34,6 +35,7 @@ fn classifies_expression_as_dynamic_and_tracks_dependency() {
         handlers: Default::default(),
         seo: None,
         schema: None,
+        head: None,
         root: Node::Expression(product_name_expr()),
     };
 
@@ -51,6 +53,7 @@ fn classifies_element_with_event_as_interactive() {
         handlers: Default::default(),
         seo: None,
         schema: None,
+        head: None,
         root: Node::Element(Element {
             tag: "button".into(),
             attrs: vec![],
@@ -81,6 +84,7 @@ fn distinguishes_static_dynamic_and_interactive_siblings() {
         handlers: Default::default(),
         seo: None,
         schema: None,
+        head: None,
         root: Node::Element(Element {
             tag: "article".into(),
             attrs: vec![],

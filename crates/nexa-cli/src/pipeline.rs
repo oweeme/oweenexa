@@ -148,10 +148,12 @@ pub fn compile_page(
     // página ya renderizó — ver el comentario de `crate::layout` sobre
     // por qué esto no reabre la composición de componentes.
     let mut layout_ui_used_classes = std::collections::BTreeSet::new();
+    let mut layout_head_html = String::new();
     let body = match crate::layout::find() {
         Some(layout_file) => {
             let rendered = crate::layout::render_for_page(&layout_file, &body, params, translations.as_ref())?;
             layout_ui_used_classes = rendered.ui_used_classes;
+            layout_head_html = rendered.head_html;
             rendered.html
         }
         None => body,
@@ -170,6 +172,12 @@ pub fn compile_page(
     // costo cero que el resto — ausente si el proyecto no declaró `[pwa]`.
     let pwa_head = project_manifest.pwa.as_ref().map(crate::pwa::head_fragment).unwrap_or_default();
     let combined_head = join_head_fragments(&join_head_fragments(&seo_head, &hreflang_head), &pwa_head);
+    // `export const head` de src/layout.tsx (Fase 27): a diferencia del
+    // resto de lo que devuelve un layout (HTML de <body>, via el splice
+    // del slot), esto va al <head> real del documento — un
+    // <link rel="icon"> puesto en <body> no lo detectan todos los
+    // navegadores de forma confiable.
+    let combined_head = join_head_fragments(&combined_head, &layout_head_html);
 
     let mut ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
     ui_used_classes.extend(layout_ui_used_classes);

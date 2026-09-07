@@ -27,4 +27,10 @@ pub struct Component {
     /// `export const schema = { type: "Product", ... }` (JSON-LD), si la
     /// página lo declara.
     pub schema: Option<JsonTemplate>,
+    /// `export const head = { icon: "...", appleTouchIcon: "...",
+    /// stylesheets: [...] }` (Fase 27) — solo tiene efecto en
+    /// `src/layout.tsx`: lo que un layout necesita poner en el `<head>`
+    /// real del documento (un layout normal solo puede aportar HTML de
+    /// `<body>`, ver `nexa-cli::layout`).
+    pub head: Option<JsonTemplate>,
 }

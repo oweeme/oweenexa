@@ -7,6 +7,7 @@ use nexa_ast::{Component, JsonTemplate, Loader, SeoConfig};
 
 use crate::error::ParseError;
 use crate::handlers::find_handlers;
+use crate::head::find_head;
 use crate::jsx::convert_element;
 use crate::loader::{find_loader, find_paths};
 use crate::schema::find_schema;
@@ -18,11 +19,12 @@ pub(crate) fn find_component(program: &Program, source: &str) -> Result<Componen
     let handlers = find_handlers(program, source);
     let seo = find_seo(program);
     let schema = find_schema(program);
+    let head = find_head(program);
 
     for stmt in program.body.iter() {
         if let Statement::ExportDefaultDeclaration(export) = stmt {
             if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
-                return component_from_function(func, loader, paths, handlers, seo, schema);
+                return component_from_function(func, loader, paths, handlers, seo, schema, head);
             }
         }
     }
@@ -37,6 +39,7 @@ fn component_from_function(
     handlers: std::collections::BTreeMap<String, String>,
     seo: Option<SeoConfig>,
     schema: Option<JsonTemplate>,
+    head: Option<JsonTemplate>,
 ) -> Result<Component, ParseError> {
     let name = func
         .id
@@ -53,7 +56,7 @@ fn component_from_function(
             return match unwrap_parens(arg) {
                 Expression::JSXElement(jsx) => {
                     let root = convert_element(jsx)?;
-                    Ok(Component { name, root, loader, paths, handlers, seo, schema })
+                    Ok(Component { name, root, loader, paths, handlers, seo, schema, head })
                 }
                 _ => Err(ParseError::NoJsxReturned),
             };

@@ -28,6 +28,7 @@
 mod analyzer;
 mod head;
 mod hreflang;
+mod layout_head;
 mod resolve;
 mod robots;
 mod schema;
@@ -39,6 +40,7 @@ mod tests;
 pub use analyzer::{analyze, Warning};
 pub use head::render_head;
 pub use hreflang::render_hreflang_links;
+pub use layout_head::render_layout_head;
 pub use resolve::SeoContext;
 pub use robots::render_robots;
 pub use schema::render_schema_script;

@@ -38,6 +38,7 @@ mod declaration;
 mod error;
 mod expr;
 mod handlers;
+mod head;
 mod jsx;
 mod loader;
 mod object_literal;

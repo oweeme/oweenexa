@@ -42,11 +42,19 @@ pub fn find() -> Option<PathBuf> {
 pub struct RenderedLayout {
     pub html: String,
     pub ui_used_classes: std::collections::BTreeSet<String>,
+    /// HTML real de `<head>` (Fase 27): `<link rel="icon">`,
+    /// `<link rel="apple-touch-icon">`, `<link rel="stylesheet">` — lo
+    /// que `export const head` del layout haya declarado, ya resuelto.
+    /// Vacío si el layout no declara `head`. A diferencia de `html`
+    /// (que termina dentro de `<body>`, por el splice del slot), esto
+    /// el llamador lo mezcla en el `<head>` de verdad del documento.
+    pub head_html: String,
 }
 
 /// Compila `layout_file` (parse -> analyze -> render, igual que una
 /// página) y devuelve su HTML con `body` ya insertado en el
-/// `data-nexa-slot`, más las clases `nx-*` que el layout mismo usa.
+/// `data-nexa-slot`, más las clases `nx-*` que el layout mismo usa y el
+/// HTML de `<head>` que haya declarado (`export const head`).
 pub fn render_for_page(
     layout_file: &Path,
     body: &str,
@@ -66,7 +74,10 @@ pub fn render_for_page(
     let html = splice_slot(&layout_html, body)?;
     let ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
 
-    Ok(RenderedLayout { html, ui_used_classes })
+    let seo_ctx = nexa_seo::SeoContext { data: None, params, translations };
+    let head_html = nexa_seo::render_layout_head(component.head.as_ref(), &seo_ctx);
+
+    Ok(RenderedLayout { html, ui_used_classes, head_html })
 }
 
 /// Exactamente un elemento `data-nexa-slot`, vacío, y ningún nodo
