@@ -1828,6 +1828,76 @@ duplicado sin importar cuántas veces se llame.
 
 ---
 
+## Fase 29 — Locale por defecto fuera de `[locale]` (Hito 12) — ✅ completada
+
+**Objetivo:** una página que vive fuera de `[locale]` (por ejemplo
+`src/pages/index.tsx`, una gate de selección de idioma) pero comparte
+`src/layout.tsx` con el resto del sitio — y ese layout usa
+`params.locale`/`t(...)` como cualquier otra página — no debe quedar con
+`href`s sin resolver ni con placeholders `<!--nexa:t(clave)-->` visibles
+en producción solo por no tener un segmento de ruta `:locale`.
+
+**Cómo se encontró:** construyendo `tutorial-nexa` (proyecto real hecho
+con Nexa), su `src/pages/index.tsx` (gate ES/EN) comparte el
+`src/layout.tsx` del resto del sitio. El header de ese layout usa
+`params.locale` y `t("nav.home")` etc. — funciona perfecto en las 40
+páginas que viven bajo `[locale]`, pero en la página suelta de la raíz
+el nav quedaba con enlaces sin `href` (atributo omitido entero, no
+`"/undefined"`) y el texto reemplazado por comentarios HTML inertes
+(`<!--nexa:t(nav.home)-->`) — visible en producción, real, no un caso de
+laboratorio.
+
+**Entregables:**
+- `crates/nexa-cli/src/pipeline.rs`: `compile_page` ahora completa
+  `params["locale"]` con `DEFAULT_LOCALE` (`"es"`) cuando la key no
+  existe, antes de cargar traducciones y construir `RenderContext`/
+  `SeoContext` — una sola vez, al principio de la función, para que
+  todo lo que sigue (render, SEO, hreflang, `<html lang>`) vea un
+  locale real sin tener que lidiar cada uno por separado con la
+  ausencia.
+- Mismo valor (`"es"`) que ya estaba hardcodeado para `<html lang>`
+  (Fase 9) — se unifican dos lugares que antes coincidían por
+  casualidad (uno resolvía a `"es"`, el otro simplemente no existía).
+
+**Criterio de salida:** una página fuera de `[locale]` que reutiliza un
+layout con `params.locale`/`t(...)` genera HTML completo — `href`s
+reales, texto traducido real — usando el locale por defecto del
+proyecto, en vez de placeholders inertes.
+
+> **Ajuste de alcance, decidido antes de empezar:** no se agregó
+> ningún `default_locale` configurable en `nexa.toml` — no existe hoy
+> ninguna sección `[i18n]`, y agregar una para un solo valor hardcodeado
+> sería más superficie de configuración que necesidad real. Se
+> reutilizó el mismo literal `"es"` que Fase 9 ya hardcodeaba para
+> `<html lang>`, así los dos caminos quedan consistentes entre sí. Si en
+> el futuro un proyecto real necesita otro default (ej. `"en"`), es el
+> momento de agregar el campo — no antes.
+>
+> **Verificado con un proyecto real, no solo `cargo test`:** en
+> `tutorial-nexa`, antes del fix, `curl` sobre `/` mostraba
+> `<nav class="nx-nav"><a><!--nexa:t(nav.home)--></a>...` — enlaces sin
+> `href`, texto vacío. Con el binario reconstruido, la misma página
+> compila a `<a href="/es">Inicio</a><a href="/es/tutorial">Tutorial</a>
+> <a href="/es/compatibility">Compatibilidad</a>
+> <a href="..." class="nx-nav-github">GitHub</a>`, `<html lang="es">`
+> correcto, y sin ningún `hreflang` espurio (la ruta de esta página no
+> tiene `:locale`, así que `hreflang_head` sigue devolviendo vacío,
+> como corresponde). En Chromium real (Playwright): los cuatro enlaces
+> del nav de la gate son clickeables y navegan de verdad (`Tutorial` →
+> `/es/tutorial`); se re-verificaron las 40 páginas bajo `[locale]`
+> (`/es`, `/en`, click-through completo hero → tutorial → step card →
+> Siguiente/Anterior → cambio de idioma → Compatibility) sin ninguna
+> regresión, cero errores de consola, cero requests fallidos.
+>
+> Los 253 tests del workspace de Rust siguen en verde (`cargo test`,
+> todas las suites) — este fix no tiene un test unitario propio porque
+> `compile_page` se verifica en este proyecto por convención vía E2E
+> real (`nexa build`/`nexa preview` + Playwright sobre un proyecto de
+> verdad) en vez de fixtures sintéticas, el mismo patrón que el resto
+> del pipeline de `nexa-cli`.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

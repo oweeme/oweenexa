@@ -17,6 +17,15 @@ use crate::pkg_warnings::{self, PackageWarning};
 
 const LOCALES_DIR: &str = "src/locales";
 const MANIFEST_PATH: &str = "nexa.toml";
+/// Locale que se usa para `params.locale`/`t()` en páginas que NO viven
+/// bajo `[locale]` (Fase 29). Antes de esta fase, `<html lang>` ya caía a
+/// `"es"` en este mismo caso (ver `lang` más abajo) pero `params`/`t()` no
+/// tenían ningún fallback — quedaban con la key `"locale"` ausente, lo que
+/// producía `href`s sin resolver (atributo completo omitido, ver
+/// `nexa-renderer::html::render_attr`) y placeholders inertes
+/// `<!--nexa:t(clave)-->` en el cuerpo. Mismo valor que ya estaba
+/// hardcodeado para `lang`, ahora reutilizado para que ambos coincidan.
+const DEFAULT_LOCALE: &str = "es";
 
 /// El hash "pendiente" que lleva el `href` de `nexa-ui.css` hasta que se
 /// conoce el contenido final del sitio completo — ver el comentario junto
@@ -120,6 +129,22 @@ pub fn compile_page(
 
     let component_name = component.name.clone();
 
+    // Fase 29: si la página no vive bajo `[locale]`, `params` nunca tiene
+    // la key `"locale"` (no es que valga "" o "undefined" — la key no
+    // existe). Se completa acá, una sola vez, con el mismo default que
+    // `<html lang>` ya usaba — así todo lo que sigue (`t()`, `params.locale`
+    // en JSX/atributos, hreflang, SEO) ve un locale real en vez de tener
+    // que lidiar cada uno por separado con la ausencia.
+    let owned_params;
+    let params: &BTreeMap<String, String> = if params.contains_key("locale") {
+        params
+    } else {
+        let mut with_default = params.clone();
+        with_default.insert("locale".to_string(), DEFAULT_LOCALE.to_string());
+        owned_params = with_default;
+        &owned_params
+    };
+
     let data = match &component.loader {
         Some(loader) => {
             let value = nexa_loader::load(loader, params, api_base).map_err(|err| match err {
@@ -204,7 +229,10 @@ pub fn compile_page(
     let used_imports = import_map::used_by_page(&all_imports, &component.handlers, &island_specifiers);
     let import_map_script = import_map::script_tag(&used_imports);
 
-    let lang = params.get("locale").map(String::as_str).unwrap_or("es");
+    // `params` ya tiene "locale" en este punto (siempre, gracias al
+    // fallback de más arriba) — `unwrap_or` queda solo como red de
+    // seguridad, nunca debería activarse.
+    let lang = params.get("locale").map(String::as_str).unwrap_or(DEFAULT_LOCALE);
     let html = document::assemble(
         &body,
         lang,

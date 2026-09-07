@@ -304,6 +304,13 @@ estáticas compiladas.
   vive bajo `[locale]`).
 - `<link rel="alternate" hreflang="...">` se genera solo si la ruta
   vive bajo `[locale]` y hay más de un `src/locales/*.json`.
+- Una página fuera de `[locale]` (Fase 29) — por ejemplo una gate de
+  selección de idioma en la raíz — también resuelve `params.locale` y
+  `t(...)` contra ese mismo `"es"` por defecto (antes, sin fase 29,
+  quedaban `href`s sin resolver y placeholders `<!--nexa:t(...)-->`
+  inertes solo por no tener segmento `:locale`). No configurable
+  todavía — si tu proyecto necesita otro default, es un buen momento
+  para pedirlo.
 
 ## El cuerpo de la página: estático, dinámico, interactivo
 
