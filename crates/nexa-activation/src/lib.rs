@@ -18,6 +18,7 @@
 
 mod build;
 mod chunk;
+mod content_hash;
 mod manifest;
 mod strategy;
 

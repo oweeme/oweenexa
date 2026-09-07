@@ -628,11 +628,15 @@ que sirve cualquier ruta estática (incluidas las pre-renderizadas por
 `paths`). Trae un bloque comentado de `proxy_pass` para rutas dinámicas
 sin `paths`, que necesitan un `nexa preview` corriendo detrás.
 
-El cacheo de `/assets/` es corto (una hora), no "para siempre": los
-nombres de archivo de Nexa no llevan hash de contenido todavía, así que
-cachear agresivo serviría JS viejo después de un redeploy. Sin CSP ni
-`Permissions-Policy` por defecto — romperían `[imports]` de terceros y
-`platform.capturePhoto()` respectivamente si se adivinaran mal.
+El cacheo de `/assets/` tiene dos reglas: los archivos que `nexa build`
+genera con hash de contenido en el nombre (`nexa-runtime.<hash>.js`,
+chunks de activación, `nexa-ui.<hash>.css`) usan `Cache-Control:
+immutable` con `max-age` de un año — seguro de verdad, porque el nombre
+cambia si el contenido cambia; cualquier otro archivo bajo `/assets/`
+(ej. algo copiado a mano desde `public/assets/`, sin hash) cae a un
+`max-age` corto. Sin CSP ni `Permissions-Policy` por defecto — romperían
+`[imports]` de terceros y `platform.capturePhoto()` respectivamente si se
+adivinaran mal.
 
 ## `nexa.toml` — referencia completa
 
@@ -695,9 +699,6 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
   y no hay fallback automático a otro locale si falta una clave.
 - `@nexa/forms` valida solo con la Constraint Validation API nativa —
   sin reglas async o entre varios campos a la vez.
-- Nombres de archivo de assets (`nexa-runtime.js`, `Home-15.js`) sin
-  hash de contenido — no cachear agresivo (`immutable`), un redeploy
-  puede cambiar el contenido sin cambiar el nombre.
 - Sin layouts compartidos, sin WebSocket/SSE de primera clase — para
   cualquiera de las dos, la isla es el mecanismo hoy (montar tu propio
   código o un framework real adentro).

@@ -18,6 +18,17 @@ use crate::pkg_warnings::{self, PackageWarning};
 const LOCALES_DIR: &str = "src/locales";
 const MANIFEST_PATH: &str = "nexa.toml";
 
+/// El hash "pendiente" que lleva el `href` de `nexa-ui.css` hasta que se
+/// conoce el contenido final del sitio completo — ver el comentario junto
+/// a `ui_stylesheet_href` en [`compile_page`]. No es un hash real (no
+/// tiene por qué parecerlo); solo necesita ser un token que no aparezca
+/// por casualidad en ningún hash de verdad (los reales son hex).
+pub const UI_CSS_HASH_PLACEHOLDER: &str = "pending";
+
+pub fn ui_stylesheet_href_with_hash(hash: &str) -> String {
+    format!("/assets/nexa-ui.{hash}.css")
+}
+
 /// El resultado de correr el pipeline completo (parse -> load -> analyze
 /// -> render -> SEO -> i18n -> activation -> bootstrap) sobre un único
 /// archivo de página.
@@ -148,11 +159,16 @@ pub fn compile_page(
     let combined_head = join_head_fragments(&join_head_fragments(&seo_head, &hreflang_head), &pwa_head);
 
     let ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
-    // El `href` es fijo (el archivo es compartido, ensamblado por
-    // `nexa-cli` con la unión de todas las páginas) — pero solo se
-    // enlaza si ESTA página usa algo: una página sin `@nexa/ui` no debe
-    // ni pedir el CSS.
-    let ui_stylesheet_href = (!ui_used_classes.is_empty()).then_some("/assets/nexa-ui.css");
+    // El nombre final de `nexa-ui.css` lleva un hash de su contenido
+    // (Fase 23) — pero ese contenido es la unión de *todo el sitio*, que
+    // recién se conoce después de compilar todas las páginas (ver
+    // `commands::build::write_ui_stylesheet`). Por eso el `href` se
+    // emite con un hash "pendiente" (`UI_CSS_HASH_PLACEHOLDER`) que quien
+    // orqueste el build reemplaza por el real una vez que lo conoce —
+    // `nexa dev`/`nexa preview` (una sola página a la vez, ver
+    // `page_resolver::resolve_page`) lo conocen de inmediato y no llegan
+    // a dejar el placeholder en el HTML que sirven.
+    let ui_stylesheet_href = (!ui_used_classes.is_empty()).then(|| ui_stylesheet_href_with_hash(UI_CSS_HASH_PLACEHOLDER));
 
     // Import map (Fase 15): `platform` (built-in) + lo que el proyecto
     // declare en `[imports]` — solo entra al `<head>` lo que esta
@@ -172,7 +188,7 @@ pub fn compile_page(
         lang,
         &combined_head,
         schema_script.as_deref(),
-        ui_stylesheet_href,
+        ui_stylesheet_href.as_deref(),
         import_map_script.as_deref(),
     );
 

@@ -9,7 +9,7 @@ use std::path::{Path, PathBuf};
 
 use nexa_router::{match_route, scan_pages};
 
-use crate::pipeline::{compile_page, CompiledPage, PageError};
+use crate::pipeline::{compile_page, ui_stylesheet_href_with_hash, CompiledPage, PageError, UI_CSS_HASH_PLACEHOLDER};
 
 pub enum ResolveError {
     NotFound,
@@ -60,7 +60,7 @@ pub fn resolve_page(
         }
     }
 
-    let page = compile_matched_page(pages_dir, path, api_base)?;
+    let mut page = compile_matched_page(pages_dir, path, api_base)?;
 
     let _ = fs::create_dir_all("dist/assets");
 
@@ -72,8 +72,15 @@ pub fn resolve_page(
     // de todo el sitio (eso solo lo sabe `nexa build`, que ve todas las
     // páginas a la vez). Suficiente para desarrollar una página a la vez;
     // `nexa build` es quien produce el bundle correcto para producción.
+    // A diferencia de `nexa build` (que compila muchas páginas antes de
+    // saber el hash final, Fase 23), acá se conoce de inmediato — nunca
+    // llega a quedar el placeholder en el HTML que se sirve.
     if let Some(css) = nexa_ui::build_stylesheet_from_classes(&page.ui_used_classes) {
-        let _ = fs::write("dist/assets/nexa-ui.css", css);
+        let filename = format!("nexa-ui.{}.css", crate::assets::content_short_hash(css.as_bytes()));
+        let _ = fs::write(format!("dist/assets/{filename}"), css);
+        page.html = page
+            .html
+            .replace(&ui_stylesheet_href_with_hash(UI_CSS_HASH_PLACEHOLDER), &format!("/assets/{filename}"));
     }
 
     Ok(page.html)

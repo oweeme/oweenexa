@@ -6,10 +6,7 @@
 
 use nexa_activation::ActivationManifest;
 
-use crate::assets::{
-    NEXA_FORMS_FILENAME, NEXA_ISLANDS_FILENAME, NEXA_ROUTER_FILENAME, NEXA_RUNTIME_FILENAME,
-    NEXA_TELEMETRY_FILENAME,
-};
+use crate::assets;
 
 /// Inserta el script de arranque justo antes de `</body>`.
 ///
@@ -62,25 +59,30 @@ pub fn inject(
 
     let mut script = String::from("<script type=\"module\">\n");
     script.push_str(&format!(
-        "import {{ initRouter, initPrefetch }} from \"/assets/{NEXA_ROUTER_FILENAME}\";\n"
+        "import {{ initRouter, initPrefetch }} from \"/assets/{}\";\n",
+        assets::nexa_router_filename()
     ));
 
     if !manifest.is_empty() {
         script.push_str(&format!(
-            "import {{ initActivation }} from \"/assets/{NEXA_RUNTIME_FILENAME}\";\n"
+            "import {{ initActivation }} from \"/assets/{}\";\n",
+            assets::nexa_runtime_filename()
         ));
     }
     if has_forms {
-        script.push_str(&format!("import {{ initForms }} from \"/assets/{NEXA_FORMS_FILENAME}\";\n"));
+        script.push_str(&format!("import {{ initForms }} from \"/assets/{}\";\n", assets::nexa_forms_filename()));
     }
     if has_islands {
-        script.push_str(&format!("import {{ initIslands }} from \"/assets/{NEXA_ISLANDS_FILENAME}\";\n"));
+        script.push_str(&format!("import {{ initIslands }} from \"/assets/{}\";\n", assets::nexa_islands_filename()));
     }
     if telemetry_endpoint.is_some() {
-        script.push_str(&format!("import {{ initTelemetry }} from \"/assets/{NEXA_TELEMETRY_FILENAME}\";\n"));
+        script.push_str(&format!(
+            "import {{ initTelemetry }} from \"/assets/{}\";\n",
+            assets::nexa_telemetry_filename()
+        ));
     }
 
-    script.push_str(REACTIVATE_FN);
+    script.push_str(&reactivate_fn());
 
     script.push_str("initRouter({ onNavigate: reactivate });\ninitPrefetch();\n");
 
@@ -122,32 +124,39 @@ pub fn inject(
 /// verdad los necesita, nunca antes. Los `import()` de una página que
 /// además los cargó estático (arriba) resuelven del propio caché de
 /// módulos del navegador — no hay descarga duplicada.
-const REACTIVATE_FN: &str = r#"
-let disposeActivation = () => {};
-let disposeForms = () => {};
-let disposeIslands = () => {};
+fn reactivate_fn() -> String {
+    format!(
+        r#"
+let disposeActivation = () => {{}};
+let disposeForms = () => {{}};
+let disposeIslands = () => {{}};
 
-async function reactivate(root) {
+async function reactivate(root) {{
     disposeActivation();
     disposeForms();
     disposeIslands();
-    disposeActivation = disposeForms = disposeIslands = () => {};
+    disposeActivation = disposeForms = disposeIslands = () => {{}};
 
     const manifestEl = root.querySelector("script[data-nexa-manifest]");
-    if (manifestEl) {
-        const { initActivation } = await import("/assets/nexa-runtime.js");
-        disposeActivation = initActivation(JSON.parse(manifestEl.textContent), { root });
-    }
-    if (root.querySelector("[data-nexa-form]")) {
-        const { initForms } = await import("/assets/nexa-forms.js");
+    if (manifestEl) {{
+        const {{ initActivation }} = await import("/assets/{runtime}");
+        disposeActivation = initActivation(JSON.parse(manifestEl.textContent), {{ root }});
+    }}
+    if (root.querySelector("[data-nexa-form]")) {{
+        const {{ initForms }} = await import("/assets/{forms}");
         disposeForms = initForms(root);
-    }
-    if (root.querySelector("[data-nexa-island]")) {
-        const { initIslands } = await import("/assets/nexa-islands.js");
-        disposeIslands = initIslands({ root });
-    }
+    }}
+    if (root.querySelector("[data-nexa-island]")) {{
+        const {{ initIslands }} = await import("/assets/{islands}");
+        disposeIslands = initIslands({{ root }});
+    }}
+}}
+"#,
+        runtime = assets::nexa_runtime_filename(),
+        forms = assets::nexa_forms_filename(),
+        islands = assets::nexa_islands_filename(),
+    )
 }
-"#;
 
 /// Inserta `fragment` justo antes de `</{tag}>` (o al final del
 /// documento si esa etiqueta no existe). La usa este módulo para
@@ -172,7 +181,7 @@ mod tests {
         let html = "<html><body><p>hola</p></body></html>";
         let out = inject(html, &ActivationManifest::new(), false, false, false, None);
 
-        assert!(out.contains("/assets/nexa-router.js"));
+        assert!(out.contains(&format!("/assets/{}", assets::nexa_router_filename())));
         // Ni `@nexa/runtime` ni `@nexa/forms` se cargan de forma
         // *estática* (import de nivel superior) para esta página — pero
         // `reactivate()` (Fase 22) sí puede pedirlos con `import()`
@@ -258,7 +267,7 @@ mod tests {
         let html = "<html><body><button data-nexa=\"3\">Comprar</button></body></html>";
         let out = inject(html, &manifest, false, false, false, None);
 
-        assert!(out.contains("/assets/nexa-runtime.js"));
+        assert!(out.contains(&format!("/assets/{}", assets::nexa_runtime_filename())));
         assert!(out.contains("initActivation("));
         assert!(out.contains("\"handler\": \"buy\""));
     }
@@ -268,7 +277,7 @@ mod tests {
         let html = "<html><body><form data-nexa-form></form></body></html>";
         let out = inject(html, &ActivationManifest::new(), true, false, false, None);
 
-        assert!(out.contains("/assets/nexa-forms.js"));
+        assert!(out.contains(&format!("/assets/{}", assets::nexa_forms_filename())));
         assert!(out.contains("initForms();"));
     }
 
@@ -277,10 +286,10 @@ mod tests {
         let html = "<html><body></body></html>";
 
         let without = inject(html, &ActivationManifest::new(), false, false, false, None);
-        assert!(!without.contains("nexa-telemetry.js"));
+        assert!(!without.contains("nexa-telemetry."));
 
         let with = inject(html, &ActivationManifest::new(), false, false, false, Some("/api/telemetry"));
-        assert!(with.contains("/assets/nexa-telemetry.js"));
+        assert!(with.contains(&format!("/assets/{}", assets::nexa_telemetry_filename())));
         assert!(with.contains("initTelemetry({ endpoint: \"/api/telemetry\" });"));
     }
 
@@ -299,7 +308,7 @@ mod tests {
         let html = "<html><body><div data-nexa-island=\"x\"></div></body></html>";
         let out = inject(html, &ActivationManifest::new(), false, true, false, None);
 
-        assert!(out.contains("/assets/nexa-islands.js"));
+        assert!(out.contains(&format!("/assets/{}", assets::nexa_islands_filename())));
         assert!(out.contains("initIslands();"));
     }
 

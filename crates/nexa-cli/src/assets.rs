@@ -39,13 +39,50 @@ pub const NEXA_DEV_CLIENT_JS: &str = include_str!("../assets/nexa-dev-client.js"
 /// `@nexa/dev-client`, solo lo sirve `nexa dev`.
 pub const NEXA_DEVTOOLS_JS: &str = include_str!("../assets/nexa-devtools.js");
 
-pub const NEXA_RUNTIME_FILENAME: &str = "nexa-runtime.js";
-pub const NEXA_ROUTER_FILENAME: &str = "nexa-router.js";
-pub const NEXA_FORMS_FILENAME: &str = "nexa-forms.js";
-pub const NEXA_PLATFORM_FILENAME: &str = "nexa-platform.js";
-pub const NEXA_TELEMETRY_FILENAME: &str = "nexa-telemetry.js";
-pub const NEXA_ISLANDS_FILENAME: &str = "nexa-islands.js";
-pub const NEXA_UI_FILENAME: &str = "nexa-ui.js";
+/// Hash corto (8 hex) de contenido — cache-busting real: el nombre de
+/// archivo cambia si (y solo si) el contenido cambió. No es una firma
+/// criptográfica; mismo algoritmo (FNV-1a) que ya usa `modules::content_hash`
+/// para `nexa.lock`, duplicado acá a propósito en vez de crear una
+/// dependencia cruzada nueva entre módulos por una decena de líneas.
+pub(crate) fn content_short_hash(bytes: &[u8]) -> String {
+    let mut hash: u64 = 0xcbf29ce484222325;
+    for &byte in bytes {
+        hash ^= byte as u64;
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("{:08x}", (hash ^ (hash >> 32)) as u32)
+}
+
+/// Estos archivos están embebidos en el binario (`include_str!` arriba):
+/// su contenido es fijo para una compilación dada de `nexa-cli`, así que
+/// su hash también lo es — no hace falta recalcularlo en cada request
+/// para que sea determinista, pero tampoco hace falta cachearlo: son unos
+/// pocos KB, hashearlos de nuevo en cada llamada es barato.
+pub fn nexa_runtime_filename() -> String {
+    format!("nexa-runtime.{}.js", content_short_hash(NEXA_RUNTIME_JS.as_bytes()))
+}
+pub fn nexa_router_filename() -> String {
+    format!("nexa-router.{}.js", content_short_hash(NEXA_ROUTER_JS.as_bytes()))
+}
+pub fn nexa_forms_filename() -> String {
+    format!("nexa-forms.{}.js", content_short_hash(NEXA_FORMS_JS.as_bytes()))
+}
+pub fn nexa_platform_filename() -> String {
+    format!("nexa-platform.{}.js", content_short_hash(NEXA_PLATFORM_JS.as_bytes()))
+}
+pub fn nexa_telemetry_filename() -> String {
+    format!("nexa-telemetry.{}.js", content_short_hash(NEXA_TELEMETRY_JS.as_bytes()))
+}
+pub fn nexa_islands_filename() -> String {
+    format!("nexa-islands.{}.js", content_short_hash(NEXA_ISLANDS_JS.as_bytes()))
+}
+pub fn nexa_ui_js_filename() -> String {
+    format!("nexa-ui.{}.js", content_short_hash(NEXA_UI_JS.as_bytes()))
+}
+
+/// Solo `nexa dev` sirve estos dos (nunca `build`/`preview`) directo desde
+/// memoria en cada request — no hace falta un nombre estable entre
+/// requests para que el navegador cachee entre visitas de desarrollo.
 pub const NEXA_DEV_CLIENT_FILENAME: &str = "nexa-dev-client.js";
 pub const NEXA_DEVTOOLS_FILENAME: &str = "nexa-devtools.js";
 
@@ -55,14 +92,27 @@ pub const NEXA_DEVTOOLS_FILENAME: &str = "nexa-devtools.js";
 /// `dist/assets/` en disco. `nexa dev` (Fase 11) añade `@nexa/dev-client`
 /// encima de esto (ver `commands::dev::serve_framework_asset`).
 pub fn framework_asset(path: &str) -> Option<&'static str> {
-    match path.trim_start_matches('/') {
-        p if p == format!("assets/{NEXA_RUNTIME_FILENAME}") => Some(NEXA_RUNTIME_JS),
-        p if p == format!("assets/{NEXA_ROUTER_FILENAME}") => Some(NEXA_ROUTER_JS),
-        p if p == format!("assets/{NEXA_FORMS_FILENAME}") => Some(NEXA_FORMS_JS),
-        p if p == format!("assets/{NEXA_PLATFORM_FILENAME}") => Some(NEXA_PLATFORM_JS),
-        p if p == format!("assets/{NEXA_TELEMETRY_FILENAME}") => Some(NEXA_TELEMETRY_JS),
-        p if p == format!("assets/{NEXA_ISLANDS_FILENAME}") => Some(NEXA_ISLANDS_JS),
-        p if p == format!("assets/{NEXA_UI_FILENAME}") => Some(NEXA_UI_JS),
-        _ => None,
+    let p = path.trim_start_matches('/');
+    if p == format!("assets/{}", nexa_runtime_filename()) {
+        return Some(NEXA_RUNTIME_JS);
     }
+    if p == format!("assets/{}", nexa_router_filename()) {
+        return Some(NEXA_ROUTER_JS);
+    }
+    if p == format!("assets/{}", nexa_forms_filename()) {
+        return Some(NEXA_FORMS_JS);
+    }
+    if p == format!("assets/{}", nexa_platform_filename()) {
+        return Some(NEXA_PLATFORM_JS);
+    }
+    if p == format!("assets/{}", nexa_telemetry_filename()) {
+        return Some(NEXA_TELEMETRY_JS);
+    }
+    if p == format!("assets/{}", nexa_islands_filename()) {
+        return Some(NEXA_ISLANDS_JS);
+    }
+    if p == format!("assets/{}", nexa_ui_js_filename()) {
+        return Some(NEXA_UI_JS);
+    }
+    None
 }

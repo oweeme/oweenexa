@@ -99,12 +99,40 @@ fn interactive_button_gets_one_manifest_entry_and_one_chunk() {
     let entry = manifest.get(3).expect("el botón (id 3) debe estar en el manifiesto");
     assert_eq!(entry.event, "click");
     assert_eq!(entry.handler, "buy");
-    assert_eq!(entry.module, "/assets/ProductPage-3.js");
     assert_eq!(entry.strategy, Strategy::Interaction);
 
-    assert_eq!(chunks[0].filename, "ProductPage-3.js");
+    // El nombre de archivo lleva un hash de contenido (cache-busting real,
+    // Fase 23) — no es un literal fijo, pero sí un patrón verificable:
+    // `<Componente>-<node_id>.<hash de 8 hex>.js`.
+    assert!(entry.module.starts_with("/assets/ProductPage-3."));
+    assert!(entry.module.ends_with(".js"));
+    assert_eq!(entry.module, format!("/assets/{}", chunks[0].filename), "manifest.module y chunk.filename deben coincidir exactamente");
+
+    assert!(chunks[0].filename.starts_with("ProductPage-3."));
     assert!(chunks[0].content.contains("addEventListener(\"click\""));
     assert!(chunks[0].content.contains("buy"));
+}
+
+#[test]
+fn chunk_filename_changes_when_the_handler_source_changes() {
+    let component = || IrComponent {
+        name: "ProductPage".into(),
+        root: button_with_click(3, "buy", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+    let handlers_with = |source: &str| {
+        let mut m = BTreeMap::new();
+        m.insert("buy".to_string(), source.to_string());
+        m
+    };
+
+    let (_, chunks_a) = build(&component(), "ProductPage", &handlers_with("function buy() { cart.add(1); }"), &no_imports());
+    let (_, chunks_b) = build(&component(), "ProductPage", &handlers_with("function buy() { cart.add(2); }"), &no_imports());
+
+    assert_ne!(
+        chunks_a[0].filename, chunks_b[0].filename,
+        "dos handlers con contenido distinto no deben compartir nombre de archivo"
+    );
 }
 
 #[test]

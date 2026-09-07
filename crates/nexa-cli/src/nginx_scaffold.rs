@@ -3,17 +3,18 @@
 //! (Fase 13): un archivo real, generado a partir de una plantilla, no
 //! texto suelto pegado a mano.
 //!
-//! **Sobre el cacheo de `/assets/`, a propósito NO agresivo:** los
-//! archivos de `nexa build` (`nexa-runtime.js`, chunks de activación
-//! como `Home-15.js`) todavía no llevan un hash de contenido en el
-//! nombre — un chunk puede cambiar de contenido en un redeploy sin que
-//! su nombre de archivo cambie. `Cache-Control: immutable` con un
-//! `max-age` de un año (la receta típica para assets con hash) serviría
-//! JS viejo indefinidamente a un visitante que vuelve después de un
-//! redeploy. Por eso este `nginx.conf` usa un `max-age` corto — es
-//! honesto con el estado actual de Nexa, no una plantilla genérica de
-//! internet copiada sin pensar. El día que los nombres de archivo
-//! lleven un hash, esta plantilla puede volverse agresiva de verdad.
+//! **Sobre el cacheo de `/assets/`:** los archivos que `nexa build` mismo
+//! genera (`nexa-runtime.<hash>.js`, chunks de activación como
+//! `Home-15.<hash>.js`, `nexa-ui.<hash>.css`) llevan un hash de su
+//! contenido en el nombre desde Fase 23 — si el contenido cambia en un
+//! redeploy, el nombre de archivo cambia con él, y el HTML que lo
+//! referencia siempre apunta al nombre correcto. Para esos, `Cache-Control:
+//! immutable` con `max-age` de un año es seguro de verdad: una URL vieja
+//! nunca vuelve a existir con contenido distinto. Por eso el `location`
+//! de abajo usa una regex que solo matchea ese patrón (`.<8 hex>.js`/
+//! `.<8 hex>.css`) — cualquier otro archivo bajo `/assets/` (por ejemplo
+//! algo copiado a mano desde `public/assets/`) NO lleva ese hash, así que
+//! cae al `location /assets/` genérico con un `max-age` corto.
 
 use std::fs;
 use std::path::Path;
@@ -54,8 +55,16 @@ server {
     add_header X-Frame-Options "SAMEORIGIN" always;
     add_header Referrer-Policy "strict-origin-when-cross-origin" always;
 
-    # Cacheo corto, no "immutable": ver el comentario del módulo que
-    # genera este archivo (nginx_scaffold.rs) sobre por qué.
+    # Los archivos con hash de contenido en el nombre (nexa-runtime.<hash>.js,
+    # chunks de activación, nexa-ui.<hash>.css — ver el comentario del módulo
+    # que genera este archivo) pueden cachearse "immutable" por un año: si el
+    # contenido cambia, el nombre cambia con él.
+    location ~* ^/assets/.+\.[0-9a-f]{8}\.(js|css)$ {
+        add_header Cache-Control "public, max-age=31536000, immutable";
+    }
+
+    # Cualquier otro archivo bajo /assets/ (ej. algo copiado a mano desde
+    # public/assets/) no lleva ese hash — cacheo corto, no "immutable".
     location /assets/ {
         add_header Cache-Control "public, max-age=3600";
     }
@@ -157,18 +166,33 @@ mod tests {
     }
 
     #[test]
-    fn render_never_recommends_a_year_long_immutable_cache_for_assets() {
-        // Los nombres de archivo de nexa build no llevan hash de
-        // contenido todavía — "immutable" serviría JS viejo para
-        // siempre después de un redeploy. Se busca la línea real de
-        // `Cache-Control` (no todo el archivo: el propio comentario que
-        // explica esta decisión menciona la palabra "immutable" a
-        // propósito, y no debería contar como una falla).
+    fn render_recommends_a_year_long_immutable_cache_only_for_hashed_assets() {
+        // Fase 23: los assets que genera `nexa build` sí llevan un hash
+        // de contenido en el nombre — "immutable" es seguro de verdad
+        // para ESOS, pero no para cualquier cosa bajo /assets/ (ej. un
+        // archivo copiado a mano en public/assets/, sin hash).
         let conf = render("app");
-        let cache_control_line =
-            conf.lines().find(|line| line.contains("Cache-Control")).expect("se espera una línea Cache-Control");
-        assert!(!cache_control_line.contains("immutable"));
-        assert!(!cache_control_line.contains("max-age=31536000"));
+
+        let hashed_location = conf
+            .lines()
+            .find(|line| line.trim_start().starts_with("location ~"))
+            .expect("se espera un location con regex para los assets con hash");
+        assert!(hashed_location.contains(r"\.[0-9a-f]{8}\."));
+
+        let hashed_cache_control = conf
+            .lines()
+            .skip_while(|l| !l.trim_start().starts_with("location ~"))
+            .find(|line| line.contains("Cache-Control"))
+            .expect("se espera un Cache-Control dentro del location con hash");
+        assert!(hashed_cache_control.contains("immutable"));
+        assert!(hashed_cache_control.contains("max-age=31536000"));
+
+        let generic_cache_control = conf
+            .lines()
+            .skip_while(|l| l.trim() != "location /assets/ {")
+            .find(|line| line.contains("Cache-Control"))
+            .expect("se espera un Cache-Control dentro del location genérico");
+        assert!(!generic_cache_control.contains("immutable"));
     }
 
     #[test]

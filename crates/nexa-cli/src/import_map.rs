@@ -14,19 +14,22 @@ use crate::manifest::Manifest;
 /// Fase 9; corregido para ser realmente invocable como `ui.openDialog(...)`
 /// después de la Fase 16) siempre están disponibles, resueltos contra
 /// archivos que el propio `nexa-cli` embebe y sirve — no hace falta que
-/// el proyecto los declare en `nexa.toml`.
-const BUILTIN_IMPORTS: &[(&str, &str)] = &[
-    ("platform", "/assets/nexa-platform.js"),
-    ("ui", "/assets/nexa-ui.js"),
-];
+/// el proyecto los declare en `nexa.toml`. Sus nombres de archivo llevan
+/// hash de contenido (Fase 23), así que se resuelven en runtime en vez de
+/// ser literales fijos.
+fn builtin_imports() -> Vec<(String, String)> {
+    vec![
+        ("platform".to_string(), format!("/assets/{}", crate::assets::nexa_platform_filename())),
+        ("ui".to_string(), format!("/assets/{}", crate::assets::nexa_ui_js_filename())),
+    ]
+}
 
 /// Los builtin de Nexa + lo que el proyecto haya declarado en
 /// `[imports]` — si un proyecto reutiliza el nombre `platform`, gana su
 /// propia declaración (poco probable, pero mejor que silenciosamente
 /// ignorarla).
 pub fn resolved(project_manifest: &Manifest) -> BTreeMap<String, String> {
-    let mut map: BTreeMap<String, String> =
-        BUILTIN_IMPORTS.iter().map(|(name, specifier)| (name.to_string(), specifier.to_string())).collect();
+    let mut map: BTreeMap<String, String> = builtin_imports().into_iter().collect();
     map.extend(project_manifest.imports.clone());
     map
 }
@@ -74,7 +77,10 @@ mod tests {
     #[test]
     fn resolved_always_includes_the_builtin_platform_entry() {
         let map = resolved(&Manifest::default());
-        assert_eq!(map.get("platform").map(String::as_str), Some("/assets/nexa-platform.js"));
+        assert_eq!(
+            map.get("platform").cloned(),
+            Some(format!("/assets/{}", crate::assets::nexa_platform_filename()))
+        );
     }
 
     #[test]
@@ -84,7 +90,7 @@ mod tests {
         // página que los llamaba producía un ReferenceError real en el
         // navegador. `ui` ahora es builtin, igual que `platform`.
         let map = resolved(&Manifest::default());
-        assert_eq!(map.get("ui").map(String::as_str), Some("/assets/nexa-ui.js"));
+        assert_eq!(map.get("ui").cloned(), Some(format!("/assets/{}", crate::assets::nexa_ui_js_filename())));
     }
 
     #[test]

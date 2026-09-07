@@ -48,17 +48,21 @@ fn collect(
         // la Fase 3): si un elemento tuviera varios, cada uno necesitaría
         // su propio nodo, no solo su propia entrada de manifiesto.
         if let Some(event) = events.first() {
-            let module = format!("/assets/{component_name}-{}.js", node.id);
-            let entry = ActivationEntry {
-                event: event.name.clone(),
-                handler: event.handler.path(),
-                module,
-                strategy: Strategy::parse(event.strategy.as_deref()),
-            };
+            let handler = event.handler.path();
+            let handler_source = handlers.get(&handler).map(String::as_str);
+            let strategy = Strategy::parse(event.strategy.as_deref());
+            // El contenido se calcula ANTES del nombre de archivo, a
+            // propósito: el hash que va en el nombre es del contenido real
+            // del chunk, no de un dato arbitrario — así el nombre cambia
+            // si (y solo si) el código que sirve cambió de verdad.
+            let draft = ActivationEntry { event: event.name.clone(), handler, module: String::new(), strategy };
+            let content = chunk::content_for(&draft, handler_source, import_names);
+            let hash = crate::content_hash::short_hash(content.as_bytes());
+            let filename = format!("{component_name}-{}.{hash}.js", node.id);
+            let module = format!("/assets/{filename}");
 
-            let handler_source = handlers.get(&entry.handler).map(String::as_str);
-            let filename = format!("{component_name}-{}.js", node.id);
-            chunks.push(chunk::generate(filename, &entry, handler_source, import_names));
+            let entry = ActivationEntry { module, ..draft };
+            chunks.push(chunk::generate(filename, content, strategy));
             manifest.insert(node.id, entry);
         }
     }

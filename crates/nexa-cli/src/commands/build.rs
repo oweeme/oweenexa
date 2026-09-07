@@ -12,7 +12,10 @@ use nexa_seo::Warning;
 use crate::image_pipeline;
 use crate::image_scan;
 use crate::performance_budget::{self, PageUsage};
-use crate::pipeline::{compile_page, find_paths_declaration, CompiledPage, PageError};
+use crate::pipeline::{
+    compile_page, find_paths_declaration, ui_stylesheet_href_with_hash, CompiledPage, PageError,
+    UI_CSS_HASH_PLACEHOLDER,
+};
 
 pub fn run() -> Result<()> {
     let pages_dir = Path::new("src/pages");
@@ -48,6 +51,13 @@ pub fn run() -> Result<()> {
     let mut built_patterns = Vec::new();
     let mut ui_classes = BTreeSet::new();
     let mut pending_usage = Vec::new();
+    // El HTML final de cada página se escribe recién al final: hasta no
+    // compilar TODAS las páginas no se conoce la unión de clases que
+    // decide el contenido (y por lo tanto el nombre con hash, Fase 23) de
+    // `nexa-ui.css` — cada página ya lleva su `<link>` con un hash
+    // "pendiente" (ver `pipeline::UI_CSS_HASH_PLACEHOLDER`) que se
+    // reemplaza acá por el real antes de escribir a disco.
+    let mut pending_html: Vec<(PathBuf, String)> = Vec::new();
     let mut image_cache = image_pipeline::VariantCache::default();
     let public_dir = Path::new("public");
     let dist_root = Path::new("dist");
@@ -82,7 +92,8 @@ pub fn run() -> Result<()> {
                 .context("optimizando imágenes")?;
 
                 let dir = output_dir_for_params(route, params);
-                write_page_at(&dir, &page)?;
+                write_page_assets_at(&dir, &page)?;
+                pending_html.push((dir.join("index.html"), page.html.clone()));
                 let resolved_pattern = resolved_pattern(route, params);
 
                 println!(
@@ -125,7 +136,8 @@ pub fn run() -> Result<()> {
         })
         .context("optimizando imágenes")?;
 
-        write_page(route, &page)?;
+        write_page_assets(route, &page)?;
+        pending_html.push((output_dir(route).join("index.html"), page.html.clone()));
 
         println!(
             "Compilado {} -> {} ({} bytes)",
@@ -151,7 +163,23 @@ pub fn run() -> Result<()> {
     }
 
     write_site_files(&built_patterns, site_url.as_deref())?;
-    let ui_css_bytes = write_ui_stylesheet(&ui_classes)?;
+    let ui_stylesheet = write_ui_stylesheet(&ui_classes)?;
+    let ui_css_bytes = ui_stylesheet.as_ref().map(|(bytes, _)| *bytes);
+
+    // Recién ahora se conoce el nombre real (con hash) de `nexa-ui.css` —
+    // se reemplaza el placeholder que cada página dejó en su `<link>` y
+    // se escribe finalmente el HTML a disco (Fase 23: cache-busting real).
+    let placeholder_href = ui_stylesheet_href_with_hash(UI_CSS_HASH_PLACEHOLDER);
+    for (path, html) in pending_html {
+        let html = match &ui_stylesheet {
+            Some((_, filename)) => html.replace(&placeholder_href, &format!("/assets/{filename}")),
+            None => html,
+        };
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(&path, html)?;
+    }
 
     println!();
     println!("{built} página(s) estática(s) compilada(s).");
@@ -341,13 +369,16 @@ fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> Result<Vec<
         .collect()
 }
 
-fn write_page(route: &Route, page: &CompiledPage) -> Result<()> {
-    write_page_at(&output_dir(route), page)
+fn write_page_assets(route: &Route, page: &CompiledPage) -> Result<()> {
+    write_page_assets_at(&output_dir(route), page)
 }
 
-fn write_page_at(dir: &Path, page: &CompiledPage) -> Result<()> {
+/// Escribe todo de una página EXCEPTO `index.html`: el manifiesto y los
+/// chunks JS no dependen del hash final de `nexa-ui.css` (Fase 23), así
+/// que no hace falta esperar a que se conozca — solo el HTML, que sí
+/// referencia ese hash en su `<link>`, se escribe después (ver `run`).
+fn write_page_assets_at(dir: &Path, page: &CompiledPage) -> Result<()> {
     fs::create_dir_all(dir)?;
-    fs::write(dir.join("index.html"), &page.html)?;
     fs::write(
         dir.join("nexa-manifest.json"),
         page.manifest
@@ -381,18 +412,22 @@ fn write_site_files(patterns: &[String], site_url: Option<&str>) -> Result<()> {
     Ok(())
 }
 
-/// `dist/assets/nexa-ui.css`: la unión de lo que usa *todo el sitio* (no
-/// solo una página) de `@nexa/ui`. Si ninguna página compilada usó nada,
-/// no se escribe ni siquiera el archivo — cero bytes, cero petición.
-/// Devuelve su tamaño en bytes (para el presupuesto `maxCSS`, Fase 14).
-fn write_ui_stylesheet(used_classes: &BTreeSet<String>) -> Result<Option<u64>> {
+/// `dist/assets/nexa-ui.<hash>.css`: la unión de lo que usa *todo el
+/// sitio* (no solo una página) de `@nexa/ui`. Si ninguna página compilada
+/// usó nada, no se escribe ni siquiera el archivo — cero bytes, cero
+/// petición. Devuelve `(bytes, nombre de archivo)` — el nombre lleva un
+/// hash de contenido (Fase 23), así que `run` lo usa para reemplazar el
+/// placeholder que cada página dejó en su `<link>`; los bytes son para el
+/// presupuesto `maxCSS` (Fase 14).
+fn write_ui_stylesheet(used_classes: &BTreeSet<String>) -> Result<Option<(u64, String)>> {
     let Some(css) = nexa_ui::build_stylesheet_from_classes(used_classes) else {
         return Ok(None);
     };
     let bytes = css.len() as u64;
-    fs::write("dist/assets/nexa-ui.css", css)?;
-    println!("Generado dist/assets/nexa-ui.css ({} clase(s) de @nexa/ui en uso).", used_classes.len());
-    Ok(Some(bytes))
+    let filename = format!("nexa-ui.{}.css", crate::assets::content_short_hash(css.as_bytes()));
+    fs::write(format!("dist/assets/{filename}"), css)?;
+    println!("Generado dist/assets/{filename} ({} clase(s) de @nexa/ui en uso).", used_classes.len());
+    Ok(Some((bytes, filename)))
 }
 
 /// Copia `@nexa/runtime`, `@nexa/router`, `@nexa/forms` y
@@ -401,31 +436,16 @@ fn write_ui_stylesheet(used_classes: &BTreeSet<String>) -> Result<Option<u64>> {
 /// que inyecta cada página (y los chunks que usan `platform.`)
 /// encuentren algo real.
 fn write_framework_assets() -> Result<()> {
+    fs::write(format!("dist/assets/{}", crate::assets::nexa_runtime_filename()), crate::assets::NEXA_RUNTIME_JS)?;
+    fs::write(format!("dist/assets/{}", crate::assets::nexa_router_filename()), crate::assets::NEXA_ROUTER_JS)?;
+    fs::write(format!("dist/assets/{}", crate::assets::nexa_forms_filename()), crate::assets::NEXA_FORMS_JS)?;
+    fs::write(format!("dist/assets/{}", crate::assets::nexa_platform_filename()), crate::assets::NEXA_PLATFORM_JS)?;
     fs::write(
-        format!("dist/assets/{}", crate::assets::NEXA_RUNTIME_FILENAME),
-        crate::assets::NEXA_RUNTIME_JS,
-    )?;
-    fs::write(
-        format!("dist/assets/{}", crate::assets::NEXA_ROUTER_FILENAME),
-        crate::assets::NEXA_ROUTER_JS,
-    )?;
-    fs::write(
-        format!("dist/assets/{}", crate::assets::NEXA_FORMS_FILENAME),
-        crate::assets::NEXA_FORMS_JS,
-    )?;
-    fs::write(
-        format!("dist/assets/{}", crate::assets::NEXA_PLATFORM_FILENAME),
-        crate::assets::NEXA_PLATFORM_JS,
-    )?;
-    fs::write(
-        format!("dist/assets/{}", crate::assets::NEXA_TELEMETRY_FILENAME),
+        format!("dist/assets/{}", crate::assets::nexa_telemetry_filename()),
         crate::assets::NEXA_TELEMETRY_JS,
     )?;
-    fs::write(
-        format!("dist/assets/{}", crate::assets::NEXA_ISLANDS_FILENAME),
-        crate::assets::NEXA_ISLANDS_JS,
-    )?;
-    fs::write(format!("dist/assets/{}", crate::assets::NEXA_UI_FILENAME), crate::assets::NEXA_UI_JS)?;
+    fs::write(format!("dist/assets/{}", crate::assets::nexa_islands_filename()), crate::assets::NEXA_ISLANDS_JS)?;
+    fs::write(format!("dist/assets/{}", crate::assets::nexa_ui_js_filename()), crate::assets::NEXA_UI_JS)?;
     Ok(())
 }
 

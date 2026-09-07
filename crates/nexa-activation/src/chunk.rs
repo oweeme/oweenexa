@@ -34,18 +34,19 @@ pub struct Chunk {
 /// (Fase 13) — generalizado aquí para que un paquete de un tercero
 /// (`stripe`, Fase 15) funcione exactamente igual, sin que este crate
 /// necesite saber que existe.
-pub(crate) fn generate(
-    filename: String,
-    entry: &ActivationEntry,
-    handler_source: Option<&str>,
-    import_names: &BTreeSet<String>,
-) -> Chunk {
-    let content = match handler_source {
+/// Separado de `generate` para que `build::collect` pueda calcular el
+/// contenido primero, y solo después decidir el nombre de archivo a
+/// partir de su hash de contenido (cache-busting real: dos handlers con
+/// contenido distinto nunca comparten nombre de archivo).
+pub(crate) fn content_for(entry: &ActivationEntry, handler_source: Option<&str>, import_names: &BTreeSet<String>) -> String {
+    match handler_source {
         Some(source) => real_chunk(entry, source, import_names),
         None => placeholder_chunk(entry),
-    };
+    }
+}
 
-    Chunk { filename, content, strategy: entry.strategy }
+pub(crate) fn generate(filename: String, content: String, strategy: Strategy) -> Chunk {
+    Chunk { filename, content, strategy }
 }
 
 fn real_chunk(entry: &ActivationEntry, handler_source: &str, import_names: &BTreeSet<String>) -> String {

@@ -1471,6 +1471,80 @@ veces al volver a visitarla.
 
 ---
 
+## Fase 23 — Content hashing (cache-busting real) (Hito 19) — ✅ completada
+
+**Objetivo:** cerrar la limitación documentada desde la Fase 20 — los
+archivos que genera `nexa build` (`nexa-runtime.js`, chunks de
+activación como `Home-15.js`, `nexa-ui.css`) no llevaban ningún hash de
+su contenido en el nombre, así que un redeploy podía cambiar el
+contenido de un archivo sin cambiar su nombre. Eso hacía insegura
+cualquier recomendación de caché agresivo (`Cache-Control: immutable`,
+`max-age` de un año) en `nexa add nginx`: un visitante que ya tenía el
+archivo viejo en caché nunca vería el nuevo.
+
+**Entregables:**
+- Hash corto (FNV-1a, 8 hex) de contenido — mismo algoritmo que ya usa
+  `nexa.lock` para su propio `content_hash`, duplicado como una función
+  de una decena de líneas en cada crate que lo necesita (`nexa-cli`,
+  `nexa-activation`) en vez de crear una dependencia cruzada nueva.
+- Los siete assets de framework embebidos en el binario
+  (`nexa-runtime`, `nexa-router`, `nexa-forms`, `nexa-platform`,
+  `nexa-telemetry`, `nexa-islands`, `nexa-ui.js`) pasan de nombre fijo
+  (`crate::assets::NEXA_RUNTIME_FILENAME` como constante) a nombre
+  calculado (`crate::assets::nexa_runtime_filename() -> String`) a
+  partir del hash de su propio contenido — determinista para una
+  compilación dada de `nexa-cli`.
+- Cada chunk de nodo interactivo (`nexa-activation::build::collect`) ya
+  no nombra su archivo con solo `{componente}-{node_id}.js`: primero
+  calcula el contenido real del chunk (que no depende del nombre —
+  `chunk::content_for`, separado de `chunk::generate` para esto), lo
+  hashea, y solo entonces arma `{componente}-{node_id}.{hash}.js`. El
+  manifiesto de activación (`entry.module`) y el nombre en disco
+  (`chunk.filename`) se construyen juntos a partir del mismo hash, así
+  que nunca pueden desincronizarse.
+- `nexa-ui.css` (la unión de clases `nx-*` de *todo el sitio*, que solo
+  se conoce después de compilar todas las páginas) usa un hash
+  "pendiente" (`pipeline::UI_CSS_HASH_PLACEHOLDER`) en el `<link>` de
+  cada página mientras se compila; `nexa build` reemplaza ese
+  placeholder por el hash real recién al final, antes de escribir cada
+  `index.html` a disco. `nexa dev`/`nexa preview` (que compilan una
+  sola página a la vez, y conocen su CSS de inmediato) nunca llegan a
+  dejar el placeholder en el HTML que sirven.
+- `nexa add nginx`: el `location /assets/` único se separa en dos —
+  uno con una regex (`^/assets/.+\.[0-9a-f]{8}\.(js|css)$`) que
+  matchea específicamente los archivos con hash y les da
+  `Cache-Control: public, max-age=31536000, immutable`; el resto de
+  `/assets/` (ej. algo copiado a mano desde `public/assets/`, sin
+  hash) sigue con el `max-age` corto de antes.
+
+**Criterio de salida:** dos handlers con código distinto nunca
+comparten nombre de archivo; el HTML de cada página referencia
+exactamente el nombre real (con hash) de cada asset que usa, sin
+placeholders filtrados; `nginx.conf` generado recomienda caché
+`immutable` solo para lo que de verdad lo soporta.
+
+> **Verificado con un proyecto real, no solo con `cargo test`:** una
+> página con un botón interactivo y clases `nx-card`/`nx-btn` de
+> `@nexa/ui`, compilada con `nexa build` real. `dist/assets/` quedó con
+> `nexa-ui.cfd9aa83.css`, `Home-6.80ad9e12.js`, y los siete assets de
+> framework, cada uno con su propio hash de 8 hex — y el `<link>`/
+> `<script>` de `dist/index.html` referencian exactamente esos mismos
+> nombres, sin ningún placeholder sin resolver. `nexa preview` sirvió
+> los cuatro (HTML, CSS, chunk, runtime) con 200 real. Un navegador real
+> (Chromium vía Playwright) confirmó `border-radius` real aplicado desde
+> el CSS con hash, el clic del botón disparando el handler real desde el
+> chunk con hash, y cero respuestas con error. Por separado, se repitió
+> el mismo build borrando `dist/` y sirviendo con `nexa dev` (que
+> compila una sola página a la vez, sin la unión de todo el sitio): el
+> `<link>` de `nexa-ui.css` ya traía el hash real, nunca el placeholder
+> `pending`.
+>
+> 244 tests en Rust (workspace completo, +4 sobre la Fase 22: el hash
+> determinista/distinto de `nexa-activation::content_hash`, y que dos
+> handlers con contenido distinto producen chunks con nombre distinto).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio
