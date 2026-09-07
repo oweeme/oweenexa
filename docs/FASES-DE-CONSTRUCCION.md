@@ -1545,6 +1545,57 @@ placeholders filtrados; `nginx.conf` generado recomienda caché
 
 ---
 
+## Fase 24 — `nexa lint` / `nexa test` (Hito 20) — ✅ completada
+
+**Objetivo:** cerrar el otro pendiente documentado desde hacía varias
+fases — `@nexa/test` (mountChunk, getEntry, expectEntry) existía como
+librería para importar desde los tests de un proyecto, pero no había
+ningún comando `nexa` que lo orquestara; y no existía ningún chequeo de
+CI-friendly que hiciera fallar el proceso por los avisos que el SEO
+Analyzer/`pkg_warnings` ya calculan (`nexa build` los imprime pero nunca
+falla por ellos, a propósito).
+
+**Entregables:**
+- `nexa lint`: recorre las mismas rutas que `nexa build` (reutiliza
+  `enumerate_paths`/`resolved_pattern` de `commands::build`, ahora
+  `pub(crate)`), compila cada página con `pipeline::compile_page` sin
+  escribir nada a `dist/`, imprime los avisos SEO/paquetes de cada una,
+  y termina con código de salida distinto de cero si encontró alguno.
+- `nexa test`: corre `nexa build` primero (asegura un `dist/` fresco,
+  con los nombres de archivo con hash de la Fase 23), y después
+  `npm test` (leyendo `package.json`) — con mensajes de error explícitos
+  si no hay `package.json`, o si no declara un script `"test"`. No
+  reemplaza a `vitest`/`node --test`/etc., los orquesta.
+- El ejemplo de `@nexa/test` en el README/`docs/REFERENCIA.md` se
+  corrigió: ya no importa un chunk por un nombre de archivo hardcodeado
+  (`ProductPage-3.js`, que dejó de ser válido con la Fase 23) — ahora
+  resuelve la ruta real leyendo `entry.module` con `getEntry(manifest,
+  id)`, que es justo para lo que existía esa función.
+
+**Criterio de salida:** `nexa lint` sobre un proyecto con `seo` completo
+termina en 0 sin escribir `dist/`; sobre uno con `seo` incompleto
+termina distinto de cero y lista los avisos reales. `nexa test` sin
+`package.json` falla con un mensaje que explica qué falta; con un script
+`"test"` real, compila y después corre ese script, propagando su código
+de salida.
+
+> **Verificado con un proyecto real, no solo con `cargo test`:** un
+> proyecto scaffolded por `nexa create` con `seo` incompleto — `nexa
+> lint` listó los tres avisos reales (`NEXA-SEO-001/002/003`) y terminó
+> con código 1, sin crear `dist/`. Completando `seo`, `nexa lint` terminó
+> en 0 con "sin avisos". Por separado, con un `package.json` real
+> (`"test": "node --test test/smoke.test.mjs"`) y un test real que lee
+> `dist/index.html`: `nexa test` compiló el proyecto, corrió `npm test`,
+> y el resultado (pass/fail) se verificó en ambos sentidos — con el test
+> fallando a propósito primero (propagó código de salida 1), y pasando
+> después (código 0).
+>
+> 246 tests en Rust (workspace completo, +2 sobre la Fase 23: `report()`
+> combina y cuenta avisos SEO + de paquetes correctamente, y no imprime
+> nada cuando no hay ninguno).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

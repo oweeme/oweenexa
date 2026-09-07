@@ -45,6 +45,8 @@ nexa build             Compila src/pages/**/*.tsx -> dist/.
 nexa preview [--port]  Sirve dist/; lo que falte se renderiza al vuelo. Puerto: 4321.
 nexa dev [--port]      Recompila cada página en cada request + auto-reload. Puerto: 4321.
 nexa add <módulo>      Declara un módulo oficial en nexa.toml/nexa.lock.
+nexa lint              Compila sin escribir dist/; falla si hay avisos SEO/paquetes.
+nexa test              Compila (dist/ fresco) y corre el script "test" de package.json.
 ```
 
 Variables de entorno que el CLI lee:
@@ -485,15 +487,29 @@ Para probar un chunk de activación aislado, fuera del navegador real:
 
 ```ts
 import { mountChunk, getEntry, expectEntry } from "@nexa/test";
-import activate from "../dist/assets/ProductPage-3.js";
+
+const manifest = JSON.parse(fs.readFileSync("dist/products/x/nexa-manifest.json"));
+expectEntry(manifest, 3, { event: "click", strategy: "interaction" });
+
+// El nombre de archivo del chunk lleva un hash de su contenido (Fase 23,
+// cache-busting) — nunca lo hardcodees en el import: resuélvelo leyendo
+// `module` de la entrada real del manifiesto.
+const entry = getEntry(manifest, 3);
+const activate = (await import(`../dist${entry.module}`)).default;
 
 const { el, destroy } = mountChunk(activate, `<button>Comprar</button>`);
 el.click();
 destroy();
-
-const manifest = JSON.parse(fs.readFileSync("dist/products/x/nexa-manifest.json"));
-expectEntry(manifest, 3, { event: "click", strategy: "interaction" });
 ```
+
+`nexa test` (Fase 23) orquesta esto: compila el proyecto (`dist/`
+fresco, con los nombres de archivo reales) y después corre el script
+`"test"` de `package.json` (`npm test`) — no reemplaza a
+`vitest`/`node --test`/etc., solo se asegura de que corran contra un
+build consistente. `nexa lint` (Fase 23) compila cada página sin
+escribir `dist/` y falla (código de salida distinto de cero) si el SEO
+Analyzer o los avisos de paquetes encontraron algo — a diferencia de
+`nexa build`, que nunca falla por esto.
 
 ## Paquetes de terceros (`[imports]`)
 

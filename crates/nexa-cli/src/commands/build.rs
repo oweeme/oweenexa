@@ -304,7 +304,7 @@ fn output_dir_for_params(route: &Route, params: &BTreeMap<String, String>) -> Pa
 /// La forma legible (`/products/iphone-17`, no `/products/:slug`) de un
 /// set de parámetros ya resuelto — para los mensajes de `nexa build`, el
 /// sitemap y el presupuesto de rendimiento.
-fn resolved_pattern(route: &Route, params: &BTreeMap<String, String>) -> String {
+pub(crate) fn resolved_pattern(route: &Route, params: &BTreeMap<String, String>) -> String {
     if route.segments.is_empty() {
         return "/".to_string();
     }
@@ -329,7 +329,7 @@ fn resolved_pattern(route: &Route, params: &BTreeMap<String, String>) -> String 
 /// entrada). Un `paths` mal formado o inalcanzable rompe el build
 /// entero — es una declaración, no algo que se pueda ignorar en
 /// silencio sin dejar la ruta a medio pre-renderizar.
-fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> Result<Vec<BTreeMap<String, String>>> {
+pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> Result<Vec<BTreeMap<String, String>>> {
     let no_params = BTreeMap::new();
     let value = nexa_loader::load(paths, &no_params, api_base)
         .map_err(|err| anyhow::anyhow!("{}: `paths` falló pidiendo la lista de parámetros: {err}", route.pattern))?;

@@ -57,6 +57,15 @@ enum Command {
     Add {
         module: String,
     },
+    /// Compila cada página sin escribir `dist/` y falla si el SEO
+    /// Analyzer o los avisos de paquetes encontraron algo — a diferencia
+    /// de `nexa build`, que nunca falla por esto.
+    Lint,
+    /// Compila el proyecto (`dist/` fresco, con los nombres de archivo
+    /// con hash de la Fase 23) y corre el test runner de JS declarado en
+    /// `package.json` (`npm test`) — no reemplaza a `vitest`/etc., solo
+    /// se asegura de que corra contra un build consistente.
+    Test,
 }
 
 fn main() -> Result<()> {
@@ -69,5 +78,7 @@ fn main() -> Result<()> {
         Command::Preview { port } => commands::preview::run(port),
         Command::Dev { port } => commands::dev::run(port),
         Command::Add { module } => commands::add::run(&module),
+        Command::Lint => commands::lint::run(),
+        Command::Test => commands::test::run(),
     }
 }

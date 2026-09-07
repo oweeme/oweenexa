@@ -383,16 +383,53 @@ sitio, `dist/sitemap.xml`, `dist/robots.txt` y `dist/assets/nexa-ui.css`
 ### Probar un handler interactivo en aislamiento con `@nexa/test`
 
 ```ts
-import { mountChunk } from "@nexa/test";
-import activate from "../dist/assets/ProductPage-3.js";
+import { mountChunk, getEntry } from "@nexa/test";
+import manifest from "../dist/products/iphone-17/nexa-manifest.json" with { type: "json" };
 
-test("el botón agrega el producto al carrito", () => {
+test("el botón agrega el producto al carrito", async () => {
+    // El nombre del chunk lleva un hash de su contenido (cache-busting,
+    // ver "Cache-busting real" en Ventajas) — nunca lo hardcodees:
+    // `getEntry` lo resuelve leyendo el manifiesto real de este build.
+    const entry = getEntry(manifest, 3);
+    const activate = (await import(`../dist${entry.module}`)).default;
+
     const { el, destroy } = mountChunk(activate, `<button>Comprar</button>`);
     el.click();
     // ...aserciones sobre el efecto del handler...
     destroy();
 });
 ```
+
+### `nexa lint` y `nexa test`: orquestación real para CI
+
+```bash
+nexa lint
+# [NEXA-SEO-001] falta `title` en `seo` — Google suele ignorar páginas sin título propio
+# 1 página(s) revisada(s), 1 aviso(s) encontrado(s).
+# Error: `nexa lint` encontró avisos — corrígelos o revisa si son esperados antes de mergear.
+```
+
+`nexa build` nunca falla por un aviso del SEO Analyzer o de paquetes —
+a propósito, un build no debería romperse porque falta un `alt`. `nexa
+lint` es lo contrario: compila cada página sin escribir nada a `dist/`,
+junta esos mismos avisos, y termina con código de salida distinto de
+cero si encontró alguno — pensado para un paso de CI que sí quiera
+bloquear un merge por esto.
+
+```bash
+nexa test
+# Compilando el proyecto antes de correr los tests (dist/ fresco)...
+# Compilado / -> dist/index.html (...)
+#
+# Corriendo `npm test`...
+```
+
+`nexa test` no reemplaza a `vitest`/`node --test`/etc. — los corre
+(`npm test`, leído de `package.json`), pero primero compila el proyecto
+de verdad. Importa porque los nombres de archivo con hash (Fase 23)
+solo son correctos contra un `dist/` compilado con el código fuente
+actual: sin esto, un test que corre contra un `dist/` viejo podría
+apuntar a un chunk que ya no existe.
 
 ### Desarrollo de los paquetes de TypeScript
 
