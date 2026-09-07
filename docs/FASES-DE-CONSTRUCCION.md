@@ -1770,6 +1770,64 @@ de `<body>`.
 
 ---
 
+## Fase 28 — Toast/snackbar (`ui.notify`) en `@nexa/ui` (Hito 24) — ✅ completada
+
+**Objetivo:** una notificación efímera *dentro* de la página (tipo
+`$q.notify()` de Quasar) para dashboards y SPAs — distinta de
+`platform.notify()` (Fase 13), que es una notificación real del sistema
+operativo. `@nexa/ui` tenía 4 componentes (Button/Input/Card/Dialog);
+este es el primero cuyo HTML no lo escribe el desarrollador, lo crea la
+llamada misma.
+
+**Entregables:**
+- `ui.notify({ message, variant?, duration? })` en `packages/ui` —
+  crea el toast, lo apila en un contenedor fijo (`bottom-right`), lo
+  auto-cierra a los 4s por defecto (`duration: 0` lo desactiva), y
+  devuelve `{ close() }` para cerrarlo a mano. Accesible: `role="status"`
+  + `aria-live="polite"`, más un botón de cierre real.
+- Mismo mecanismo de siempre para que `nexa-activation` lo detecte
+  cero-config: `ui.notify(...)` en un handler dispara
+  `import { ui } from "ui";` automático (`ui` ya es builtin desde antes
+  de esto, junto con `openDialog`/`closeDialog`) — sin declarar nada en
+  `nexa.toml`.
+- CSS auto-inyectado en runtime (un único `<style data-nexa-ui-toast>`,
+  chequeado por presencia real en el DOM, no por un booleano en
+  memoria) — a propósito, porque el tree-shaking a nivel de sitio de
+  `nexa-ui.css` solo detecta `class="..."` estático en el JSX de cada
+  página, y el HTML de un toast no existe hasta que `notify()` corre.
+
+**Criterio de salida:** un handler que llama `ui.notify(...)` no
+necesita declarar nada; el toast aparece, es accesible, se apila con
+otros, se autocierra o se cierra a mano, y no deja el `<style>`
+duplicado sin importar cuántas veces se llame.
+
+> **Bug real encontrado por el propio test, no por revisión de
+> código:** la primera versión usaba un booleano en memoria
+> (`stylesInjected`) para no reinyectar el `<style>` dos veces. El test
+> "solo inyecta el `<style>` una vez" fallaba porque el `beforeEach` de
+> otro test había *limpiado el DOM* sin que nadie avisara al booleano
+> — quedaba `true` para siempre aunque el `<style>` real ya no
+> estuviera. Corregido chequeando la presencia real en el DOM
+> (`document.head.querySelector(...)`) en vez de un flag separado — más
+> simple y se autorepara si algo externo llega a borrar el `<style>`.
+>
+> **Verificado con un proyecto real y un navegador real, no solo con
+> `vitest`:** un dashboard de prueba con dos botones (`Guardar` /
+> `Forzar error`), compilado con `nexa build` real — el chunk generado
+> confirmó `import { ui } from "ui";` automático, sin declarar nada. En
+> Chromium real (Playwright): los dos toasts se apilaron sin
+> reemplazarse, el de `duration` default desapareció solo a los ~4.2s
+> mientras el de `duration: 0` seguía ahí, y el botón de cerrar lo sacó
+> del DOM al instante — cero errores de consola, cero requests
+> fallidos.
+>
+> 14 tests en `@nexa/ui` (+8 sobre los 6 que ya existían de Dialog):
+> creación real en el DOM, accesibilidad, apilado, auto-cierre por
+> `duration`, `duration: 0` lo desactiva, cierre manual por botón y por
+> `close()` del handle, y el `<style>` nunca se duplica.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

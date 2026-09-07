@@ -415,6 +415,32 @@ con `Escape`, y devuelve el foco al elemento anterior al cerrar.
 `ui` está disponible siempre (no hace falta declararlo en
 `[imports]`), igual que `platform`.
 
+**Toast / snackbar** (Fase 28) — no confundir con `platform.notify()`
+(notificación real del sistema operativo): `ui.notify()` es una
+notificación efímera *dentro* de la página, para dashboards y SPAs.
+
+```tsx
+function saveOk() {
+    ui.notify({ message: "Guardado con éxito", variant: "success" });
+}
+```
+
+```ts
+ui.notify(options: {
+    message: string;
+    variant?: "info" | "success" | "warning" | "danger"; // default: "info"
+    duration?: number; // ms antes de auto-cerrarse; 0 lo desactiva. Default: 4000
+}): { close(): void }
+```
+
+Varios `ui.notify(...)` se apilan (no se reemplazan entre sí), cada uno
+con `role="status"`/`aria-live="polite"`, y un botón para cerrarlo antes
+de tiempo. A diferencia de Button/Input/Card/Dialog, el HTML de un
+toast no lo escribe el desarrollador — lo crea `notify()` en el
+momento, así que su CSS no pasa por el tree-shaking a nivel de sitio:
+se inyecta una sola vez, en runtime, la primera vez que se llama
+`notify()` — cero costo si nunca se usa.
+
 Design tokens (`--nx-color-primary`, `--nx-space-4`, `--nx-radius-md`,
 ...) son custom properties de CSS normales — sobreescribilas en tu
 propio `:root` para otra paleta.

@@ -1,6 +1,9 @@
 import { closeDialog, openDialog } from "./dialog";
+import { notify } from "./toast";
 
 export { closeDialog, openDialog } from "./dialog";
+export { notify } from "./toast";
+export type { ToastHandle, ToastOptions, ToastVariant } from "./toast";
 
 /**
  * Forma agrupada (Fase 16-adjacent fix), igual que `platform`/`stripe`:
@@ -9,4 +12,4 @@ export { closeDialog, openDialog } from "./dialog";
  * bare (`openDialog(...)`) — así que la única forma realmente utilizable
  * desde una página es a través de este objeto.
  */
-export const ui = { openDialog, closeDialog };
+export const ui = { openDialog, closeDialog, notify };
