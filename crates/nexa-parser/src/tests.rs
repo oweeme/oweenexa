@@ -196,6 +196,38 @@ export default function Home() {
 }
 
 #[test]
+fn parses_paths_declaration() {
+    let source = r#"
+export const paths = { url: "/api/products" };
+export const load = { url: "/api/products/:slug" };
+
+export default function ProductPage() {
+    return (
+        <article>
+            <h1>{data.name}</h1>
+        </article>
+    );
+}
+"#;
+    let component = parse_component("product.tsx", source).expect("should parse");
+    let paths = component.paths.expect("expected a paths declaration");
+    assert_eq!(paths.url_template, "/api/products");
+}
+
+#[test]
+fn page_without_paths_export_has_no_paths() {
+    let source = r#"
+export const load = { url: "/api/products/:slug" };
+
+export default function ProductPage() {
+    return <article>{data.name}</article>;
+}
+"#;
+    let component = parse_component("product.tsx", source).expect("should parse");
+    assert!(component.paths.is_none());
+}
+
+#[test]
 fn extracts_the_source_of_a_top_level_function_handler() {
     let source = r#"
 function buy() {

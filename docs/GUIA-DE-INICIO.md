@@ -93,7 +93,32 @@ nexa preview         # sirve dist/ tal cual (para probar el build de producción
 `dist/` es 100% archivos estáticos: cualquier servidor (Node, Nginx,
 Cloudflare Pages, lo que sea) lo sirve sin ningún adaptador especial —
 las únicas rutas que necesitan algo más que archivos estáticos son las
-dinámicas (`[slug]`), que `nexa preview`/`nexa dev` renderizan al vuelo.
+dinámicas (`[slug]`) que **no** declaran `paths` (ver abajo); esas sí
+necesitan `nexa preview`/`nexa dev` renderizándolas al vuelo.
+
+### Pre-renderizar rutas dinámicas (`paths`)
+
+Si conocés de antemano los valores posibles de un segmento dinámico
+(qué `slug` existen), declará `paths` junto a `load` — mismo mecanismo
+exacto (una URL, un GET real), pero el backend responde con la lista
+completa en vez de un solo objeto:
+
+```tsx
+// src/pages/products/[slug].tsx
+export const paths = { url: "/products" };          // GET real, responde:
+// [{"slug": "iphone-17"}, {"slug": "pixel-10"}, ...]
+
+export const load = { url: "/products/:slug" };      // igual que siempre
+```
+
+Con esto, `nexa build` genera un `index.html` real para cada entrada
+(`dist/products/iphone-17/index.html`, `dist/products/pixel-10/index.html`,
+...) — HTML puro, sin depender de que tu backend siga corriendo. Una
+ruta con varios segmentos dinámicos (`[locale]/products/[slug].tsx`)
+necesita que cada objeto de `paths` traiga **todas** las claves
+(`{"locale":"es","slug":"iphone-17"}`). Sin `paths`, la ruta sigue
+funcionando exactamente igual que antes — solo que `nexa build` la deja
+para `nexa preview`/`nexa dev` en vez de pre-renderizarla.
 
 ## Convenciones de una página (`src/pages/**/*.tsx`)
 
@@ -341,8 +366,9 @@ uno, vive en `README.md`)
 
 - Un componente por página: sin `<Otro/>`, sin props, sin composición.
 - `load`/`seo`/`schema` son literales estáticos, nunca funciones.
-- Sin `getStaticPaths`: una ruta dinámica no se pre-renderiza con `nexa
-  build` — se sirve al vuelo con `nexa preview`/`nexa dev`.
+- Una ruta dinámica se pre-renderiza con `nexa build` solo si declara
+  `paths` (Fase 17) — sin eso, sigue sirviéndose al vuelo con `nexa
+  preview`/`nexa dev`.
 - `nexa dev` recarga reemplazando `<body>` completo — no hay estado de
   componente en memoria que preservar (Nexa no tiene ese modelo), así
   que un valor de `<input>` sin guardar no sobrevive a un auto-reload.

@@ -12,7 +12,20 @@ use nexa_ast::Loader;
 use crate::declaration::{find_named_export, unwrap_object_literal};
 
 pub(crate) fn find_loader(program: &Program) -> Option<Loader> {
-    let init = find_named_export(program, "load")?;
+    find_url_export(program, "load")
+}
+
+/// `export const paths = { url: "..." };` (Fase 17) — misma forma
+/// sintáctica exacta que `load`, así que reutiliza el mismo parseo; lo
+/// único que cambia es qué hace `nexa-cli` con la URL una vez resuelta
+/// (pedir un array de sets de parámetros para enumerar, no un único
+/// objeto de datos).
+pub(crate) fn find_paths(program: &Program) -> Option<Loader> {
+    find_url_export(program, "paths")
+}
+
+fn find_url_export(program: &Program, name: &str) -> Option<Loader> {
+    let init = find_named_export(program, name)?;
     let obj = unwrap_object_literal(init)?;
     let url_template = url_property(obj)?;
     Some(Loader { url_template })

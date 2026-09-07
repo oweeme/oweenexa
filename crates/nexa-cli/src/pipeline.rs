@@ -82,6 +82,19 @@ impl std::fmt::Display for PageError {
 /// componente muestre `{params.slug}`, y para cargar
 /// `src/locales/<params.locale>.json` si la página vive bajo `[locale]`.
 /// `api_base` es la URL base del backend (`NEXA_API_URL`).
+/// `export const paths = { url: "..." }` (Fase 17), si esta página lo
+/// declara — lo que `nexa build` necesita saber ANTES de decidir si una
+/// ruta dinámica se puede enumerar y pre-renderizar, o si sigue
+/// quedando solo para `nexa preview`. Un parseo aparte y barato (no hay
+/// forma de pedir "solo el `paths`" sin parsear el archivo primero).
+pub fn find_paths_declaration(file: &Path) -> Result<Option<nexa_ast::Loader>> {
+    let source = fs::read_to_string(file).with_context(|| format!("leyendo {}", file.display()))?;
+    let component = nexa_parser::parse_component(file.to_str().unwrap_or("page.tsx"), &source)
+        .map_err(|e| anyhow::anyhow!("{e}"))
+        .with_context(|| format!("compilando {}", file.display()))?;
+    Ok(component.paths)
+}
+
 pub fn compile_page(
     file: &Path,
     route_pattern: &str,

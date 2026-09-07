@@ -8,12 +8,13 @@ use nexa_ast::{Component, JsonTemplate, Loader, SeoConfig};
 use crate::error::ParseError;
 use crate::handlers::find_handlers;
 use crate::jsx::convert_element;
-use crate::loader::find_loader;
+use crate::loader::{find_loader, find_paths};
 use crate::schema::find_schema;
 use crate::seo::find_seo;
 
 pub(crate) fn find_component(program: &Program, source: &str) -> Result<Component, ParseError> {
     let loader = find_loader(program);
+    let paths = find_paths(program);
     let handlers = find_handlers(program, source);
     let seo = find_seo(program);
     let schema = find_schema(program);
@@ -21,7 +22,7 @@ pub(crate) fn find_component(program: &Program, source: &str) -> Result<Componen
     for stmt in program.body.iter() {
         if let Statement::ExportDefaultDeclaration(export) = stmt {
             if let ExportDefaultDeclarationKind::FunctionDeclaration(func) = &export.declaration {
-                return component_from_function(func, loader, handlers, seo, schema);
+                return component_from_function(func, loader, paths, handlers, seo, schema);
             }
         }
     }
@@ -32,6 +33,7 @@ pub(crate) fn find_component(program: &Program, source: &str) -> Result<Componen
 fn component_from_function(
     func: &Function,
     loader: Option<Loader>,
+    paths: Option<Loader>,
     handlers: std::collections::BTreeMap<String, String>,
     seo: Option<SeoConfig>,
     schema: Option<JsonTemplate>,
@@ -51,7 +53,7 @@ fn component_from_function(
             return match unwrap_parens(arg) {
                 Expression::JSXElement(jsx) => {
                     let root = convert_element(jsx)?;
-                    Ok(Component { name, root, loader, handlers, seo, schema })
+                    Ok(Component { name, root, loader, paths, handlers, seo, schema })
                 }
                 _ => Err(ParseError::NoJsxReturned),
             };

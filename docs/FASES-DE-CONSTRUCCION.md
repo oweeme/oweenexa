@@ -1121,6 +1121,64 @@ otro lado. Todo lo interactivo vive y se ejecuta 100% en el cliente.
 
 ---
 
+## Fase 17 — Pre-render de rutas dinámicas (`paths`) (Hito 13) — ✅ completada
+
+**Objetivo:** cerrar la brecha más señalada desde que Nexa empezó a
+usarse en proyectos reales — una ruta dinámica (`[slug].tsx`) solo se
+servía al vuelo con `nexa preview`/`nexa dev`, nunca como HTML estático
+real generado por `nexa build`. Para un catálogo (ecommerce, blog,
+directorio) cuyos slugs se conocen de antemano, eso significa que
+`dist/` nunca es "de verdad" 100% estático, y hace falta un proceso Rust
+corriendo en producción aunque el contenido no cambie a cada request.
+
+**Entregables:**
+- `export const paths = { url: "..." }`: misma forma sintáctica exacta
+  que `load` (un objeto literal, nunca una función) — el backend
+  responde con un array JSON de sets de parámetros
+  (`[{"slug":"iphone-17"}, ...]`) en vez de un único objeto de datos.
+  Reutiliza `nexa_loader::load` sin ningún cambio (la función ya
+  devolvía JSON genérico; lo único nuevo es qué hace `nexa build` con
+  el resultado).
+- `nexa-ast::Component.paths: Option<Loader>` (mismo tipo `Loader` que
+  `load`) y `nexa-parser::loader::find_paths` (mismo parseo que `load`,
+  otro nombre de export) — cero AST/IR nuevo, cero riesgo de tocar la
+  regla de "sin composición" (Fase 2): `paths` no cambia nada de cómo
+  se interpreta el `.tsx`, solo qué hace `nexa build` antes de compilar.
+- `nexa build`: para cada ruta dinámica que declara `paths`, pide la
+  lista, valida que cada entrada tenga un campo string por cada
+  segmento dinámico de la ruta (`[locale]/products/[slug].tsx` necesita
+  `locale` y `slug` en cada entrada), y genera un `index.html` real por
+  combinación — mismo pipeline de compilación que cualquier página
+  estática, solo que llamado N veces con N sets de parámetros distintos.
+  Una ruta dinámica sin `paths` sigue exactamente igual que antes
+  (servida al vuelo).
+
+**Criterio de salida:** un proyecto con una ruta `[slug].tsx` que
+declara `paths` contra un backend real produce, con `nexa build`,
+HTML real por cada slug — y ese HTML sigue sirviendo contenido correcto
+con el backend completamente apagado.
+
+> **Verificado end-to-end con un backend real (no mocks) apagado a
+> propósito:** un proyecto con `src/pages/products/[slug].tsx`
+> declarando `paths = { url: "/products" }` + `load = { url:
+> "/products/:slug" }` contra un backend HTTP real (dos productos)
+> generó `dist/products/iphone-17/index.html` y
+> `dist/products/pixel-10/index.html` con datos reales, título/canonical
+> resueltos, y ambas URLs en `dist/sitemap.xml`. Se sirvió ese `dist/`
+> con un servidor estático puro (`python -m http.server`, sin ningún
+> proceso de Nexa/Rust) y **con el backend ya apagado** — la página
+> siguió respondiendo 200 con el contenido real. Eso es exactamente lo
+> que el criterio de salida pedía: HTML verdaderamente estático, no una
+> promesa.
+>
+> 206 tests en Rust (workspace completo, +2 sobre la Fase 16: parseo de
+> `paths` presente/ausente en `nexa-parser`). El resto de la lógica
+> (`nexa build`, orquestación de E/S) se verificó con el build real de
+> arriba, no con tests unitarios — mismo criterio que el resto de
+> `nexa-cli`, que se apoya en verificación end-to-end para sus comandos.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

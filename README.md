@@ -11,12 +11,23 @@ empaquetado para escritorio/móvil. Ver también
 con lo que se verificó de cada una.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
-están completas**, más una Fase 16 añadida después, a partir de uso real
-del framework en un proyecto propio. El resto de esta sección es un
+están completas**, más dos fases añadidas después, a partir de uso real
+del framework en proyectos propios. El resto de esta sección es un
 resumen de lo que ya existe, fase por fase — para aprender a usarlo, la
 guía de arriba es el punto de partida.
 
-**Lo más reciente (Fase 16 — Islas interactivas):** el hueco real que
+**Lo más reciente (Fase 17 — Pre-render de rutas dinámicas):** hasta
+ahora, una ruta `[slug].tsx` nunca se pre-renderizaba a HTML — `nexa
+build` la saltaba siempre, y solo `nexa preview`/`nexa dev` (un proceso
+vivo) podía servirla. Ahora, si la página declara `export const paths =
+{ url: "..." }` (misma forma exacta que `load` — un objeto literal, el
+backend responde con la lista de parámetros a enumerar), `nexa build`
+genera un `index.html` real por cada uno. Verificado apagando el
+backend por completo después del build: la página pre-renderizada
+siguió sirviendo 200 con el contenido correcto desde un servidor
+estático puro, sin Nexa ni el backend corriendo.
+
+**Antes (Fase 16 — Islas interactivas):** el hueco real que
 dejaba la Fase 15 — un proyecto con partes públicas/SEO y partes
 genuinamente interactivas (un dashboard, un tablero tipo Trello) tenía
 que repartirse entre Nexa y otro framework, sin ningún mecanismo para
@@ -505,9 +516,12 @@ test("el botón agrega el producto al carrito", () => {
 - `load`/`seo`/`schema` son objetos literales estáticos, no funciones — sin
   headers, sin autenticación, sin mutaciones en el servidor. Es deliberado:
   Nexa Core no ejecuta JavaScript del desarrollador, solo lo analiza.
-- No hay forma de enumerar qué `slug` existen (`getStaticPaths`): las
-  rutas dinámicas con `load()` solo se sirven al vuelo vía `nexa preview`,
-  nunca como HTML estático pre-generado por `nexa build`.
+- Una ruta dinámica (`[slug].tsx`) que declara `paths` (Fase 17) sí se
+  pre-renderiza a HTML estático real con `nexa build` — pero si NO
+  declara `paths`, sigue sirviéndose solo al vuelo vía `nexa preview`,
+  nunca como HTML estático. `paths` enumera valores conocidos de
+  antemano (vía el backend); no hay forma de pre-renderizar rutas cuyos
+  parámetros no se puedan listar así.
 - Un chunk de evento solo tiene código real si el handler es `function
   nombre() {}` o `const nombre = () => {}` en el mismo archivo; si viene de
   un import o de un patrón más complejo, cae a un placeholder explícito.

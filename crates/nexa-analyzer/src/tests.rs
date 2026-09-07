@@ -14,6 +14,7 @@ fn classifies_text_as_static() {
     let component = Component {
         name: "Home".into(),
         loader: None,
+        paths: None,
         handlers: Default::default(),
         seo: None,
         schema: None,
@@ -29,6 +30,7 @@ fn classifies_expression_as_dynamic_and_tracks_dependency() {
     let component = Component {
         name: "Home".into(),
         loader: None,
+        paths: None,
         handlers: Default::default(),
         seo: None,
         schema: None,
@@ -45,6 +47,7 @@ fn classifies_element_with_event_as_interactive() {
     let component = Component {
         name: "Home".into(),
         loader: None,
+        paths: None,
         handlers: Default::default(),
         seo: None,
         schema: None,
@@ -74,6 +77,7 @@ fn distinguishes_static_dynamic_and_interactive_siblings() {
     let component = Component {
         name: "ProductPage".into(),
         loader: None,
+        paths: None,
         handlers: Default::default(),
         seo: None,
         schema: None,

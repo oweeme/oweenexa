@@ -4,13 +4,14 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 use nexa_activation::ActivationManifest;
+use nexa_ast::Loader;
 use nexa_ir::IrComponent;
-use nexa_router::{scan_pages, Route};
+use nexa_router::{scan_pages, Route, Segment};
 use nexa_seo::Warning;
 
 use crate::image_scan;
 use crate::performance_budget::{self, PageUsage};
-use crate::pipeline::{compile_page, CompiledPage, PageError};
+use crate::pipeline::{compile_page, find_paths_declaration, CompiledPage, PageError};
 
 pub fn run() -> Result<()> {
     let pages_dir = Path::new("src/pages");
@@ -36,6 +37,7 @@ pub fn run() -> Result<()> {
         .context("copiando public/ a dist/")?;
 
     let mut built = 0;
+    let mut prerendered_routes = 0;
     let mut skipped_dynamic = 0;
     let mut built_patterns = Vec::new();
     let mut ui_classes = BTreeSet::new();
@@ -43,7 +45,53 @@ pub fn run() -> Result<()> {
 
     for route in &routes {
         if route.is_dynamic() {
-            skipped_dynamic += 1;
+            let declared_paths = find_paths_declaration(&route.file)
+                .with_context(|| format!("leyendo `paths` de {}", route.pattern))?;
+
+            let Some(paths) = declared_paths else {
+                skipped_dynamic += 1;
+                continue;
+            };
+
+            let param_sets = enumerate_paths(&paths, route, &api_base)?;
+            prerendered_routes += 1;
+
+            for params in &param_sets {
+                let page = compile_page(&route.file, &route.pattern, params, &api_base).map_err(|err| match err {
+                    PageError::NotFound => anyhow::anyhow!(
+                        "{} con {params:?}: su `load()` respondió 404 para un set de parámetros \
+                         que `paths` declaró — revisa que `paths` y `load` estén de acuerdo",
+                        route.pattern
+                    ),
+                    PageError::Other(e) => e,
+                })?;
+
+                let dir = output_dir_for_params(route, params);
+                write_page_at(&dir, &page)?;
+                let resolved_pattern = resolved_pattern(route, params);
+
+                println!(
+                    "Compilado {} -> {} ({} bytes)",
+                    resolved_pattern,
+                    dir.join("index.html").display(),
+                    page.html.len()
+                );
+                print_classification_summary(&page.ir);
+                print_activation_summary(&page.manifest, page.chunks.len());
+                print_seo_warnings(&page.seo_warnings);
+                print_pkg_warnings(&page.pkg_warnings);
+
+                pending_usage.push(PendingPageUsage {
+                    pattern: resolved_pattern.clone(),
+                    initial_js_bytes: page.initial_js_bytes,
+                    links_ui_css: !page.ui_used_classes.is_empty(),
+                    largest_image: largest_static_image(&page),
+                });
+
+                built_patterns.push(resolved_pattern);
+                ui_classes.extend(page.ui_used_classes);
+                built += 1;
+            }
             continue;
         }
 
@@ -86,11 +134,16 @@ pub fn run() -> Result<()> {
 
     println!();
     println!("{built} página(s) estática(s) compilada(s).");
+    if prerendered_routes > 0 {
+        println!(
+            "{prerendered_routes} ruta(s) dinámica(s) pre-renderizada(s) de verdad vía `paths` \
+             (Fase 17) — quedaron como HTML estático real en dist/, no dependen de un proceso vivo."
+        );
+    }
     if skipped_dynamic > 0 {
         println!(
-            "{skipped_dynamic} ruta(s) dinámica(s) no se pre-renderizaron (todavía no hay forma \
-             de enumerar sus parámetros, ej. qué `slug` existen) — `nexa preview` las renderiza \
-             al vuelo bajo demanda."
+            "{skipped_dynamic} ruta(s) dinámica(s) no se pre-renderizaron (no declaran `paths`) \
+             — `nexa preview` las renderiza al vuelo bajo demanda."
         );
     }
     if site_url.is_none() {
@@ -177,9 +230,95 @@ fn output_dir(route: &Route) -> PathBuf {
     }
 }
 
+/// Igual que `output_dir`, pero para una ruta dinámica ya resuelta con
+/// un set de parámetros concreto (Fase 17: `paths`) — cada segmento
+/// `[dinámico]` se sustituye por su valor real en vez de dejarse como
+/// `:nombre` literal (que sería un nombre de carpeta sin sentido).
+fn output_dir_for_params(route: &Route, params: &BTreeMap<String, String>) -> PathBuf {
+    let mut dir = Path::new("dist").to_path_buf();
+    for segment in &route.segments {
+        match segment {
+            Segment::Static(name) => dir.push(name),
+            Segment::Dynamic(name) => dir.push(params.get(name).map(String::as_str).unwrap_or_default()),
+        }
+    }
+    dir
+}
+
+/// La forma legible (`/products/iphone-17`, no `/products/:slug`) de un
+/// set de parámetros ya resuelto — para los mensajes de `nexa build`, el
+/// sitemap y el presupuesto de rendimiento.
+fn resolved_pattern(route: &Route, params: &BTreeMap<String, String>) -> String {
+    if route.segments.is_empty() {
+        return "/".to_string();
+    }
+    let joined = route
+        .segments
+        .iter()
+        .map(|s| match s {
+            Segment::Static(name) => name.clone(),
+            Segment::Dynamic(name) => params.get(name).cloned().unwrap_or_default(),
+        })
+        .collect::<Vec<_>>()
+        .join("/");
+    format!("/{joined}")
+}
+
+/// `export const paths = { url: "..." }` (Fase 17): pide esa URL contra
+/// el backend y espera un array JSON de objetos, uno por cada
+/// combinación de parámetros a pre-renderizar — ej.
+/// `[{"slug":"iphone-17"}, {"slug":"pixel-10"}]`. Cada objeto debe traer
+/// un campo string por cada segmento dinámico que la ruta declara
+/// (`[locale]/products/[slug].tsx` necesita `locale` y `slug` en cada
+/// entrada). Un `paths` mal formado o inalcanzable rompe el build
+/// entero — es una declaración, no algo que se pueda ignorar en
+/// silencio sin dejar la ruta a medio pre-renderizar.
+fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> Result<Vec<BTreeMap<String, String>>> {
+    let no_params = BTreeMap::new();
+    let value = nexa_loader::load(paths, &no_params, api_base)
+        .map_err(|err| anyhow::anyhow!("{}: `paths` falló pidiendo la lista de parámetros: {err}", route.pattern))?;
+
+    let entries = value.as_array().ok_or_else(|| {
+        anyhow::anyhow!("{}: `paths` debe responder un array JSON, la respuesta fue: {value}", route.pattern)
+    })?;
+
+    let dynamic_names: Vec<&str> = route
+        .segments
+        .iter()
+        .filter_map(|s| match s {
+            Segment::Dynamic(name) => Some(name.as_str()),
+            Segment::Static(_) => None,
+        })
+        .collect();
+
+    entries
+        .iter()
+        .map(|entry| {
+            let obj = entry
+                .as_object()
+                .ok_or_else(|| anyhow::anyhow!("{}: cada entrada de `paths` debe ser un objeto, encontré: {entry}", route.pattern))?;
+
+            let mut params = BTreeMap::new();
+            for name in &dynamic_names {
+                let value = obj.get(*name).and_then(|v| v.as_str()).ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "{}: una entrada de `paths` no tiene el campo string `{name}` que la ruta necesita: {entry}",
+                        route.pattern
+                    )
+                })?;
+                params.insert((*name).to_string(), value.to_string());
+            }
+            Ok(params)
+        })
+        .collect()
+}
+
 fn write_page(route: &Route, page: &CompiledPage) -> Result<()> {
-    let dir = output_dir(route);
-    fs::create_dir_all(&dir)?;
+    write_page_at(&output_dir(route), page)
+}
+
+fn write_page_at(dir: &Path, page: &CompiledPage) -> Result<()> {
+    fs::create_dir_all(dir)?;
     fs::write(dir.join("index.html"), &page.html)?;
     fs::write(
         dir.join("nexa-manifest.json"),
