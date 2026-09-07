@@ -45,6 +45,17 @@ pub fn run(name: &str) -> Result<()> {
         crate::capacitor_scaffold::scaffold(Path::new("."), &project.project.name)?;
         println!("Generado capacitor.config.json.");
     }
+    // `pwa` (Fase 18) no genera archivos aparte — deja un `[pwa]` real,
+    // ya pre-llenado con el nombre del proyecto, directo en nexa.toml
+    // (vía el propio `Manifest`, no texto suelto) para que el usuario
+    // solo tenga que completar el ícono y, si quiere, `[pwa.cache]`.
+    if name == "pwa" && project.pwa.is_none() {
+        project.pwa = Some(manifest::PwaSection {
+            name: project.project.name.clone(),
+            display: Some("standalone".to_string()),
+            ..Default::default()
+        });
+    }
 
     project.dependencies.insert(name.to_string(), module.version.to_string());
     manifest::write(manifest_path, &project)?;
@@ -89,6 +100,16 @@ pub fn run(name: &str) -> Result<()> {
         println!("  nexa build");
         println!("  npx @capacitor/cli add android   # o: add ios (requiere Xcode, solo en macOS)");
         println!("  npx @capacitor/cli sync");
+    }
+
+    if name == "pwa" {
+        println!();
+        println!("Se agregó [pwa] a nexa.toml con el nombre del proyecto — completá lo que falte:");
+        println!("  icon = \"/icon-512.png\"   # un PNG cuadrado real en public/, idealmente 512x512");
+        println!("  themeColor, backgroundColor, shortName (opcionales)");
+        println!("  [pwa.cache]                # opcional — sin esto, todo cae a network-first");
+        println!("  \"/assets\" = \"cache-first\"");
+        println!("`nexa build` genera dist/manifest.webmanifest y dist/sw.js automáticamente.");
     }
 
     Ok(())

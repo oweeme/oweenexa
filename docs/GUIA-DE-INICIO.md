@@ -170,6 +170,7 @@ nexa add ui        # design tokens + Button/Input/Card/Dialog (class="nx-btn", s
 nexa add forms     # validación nativa progresiva (data-nexa-form, data-nexa-error-for)
 nexa add platform  # platform.isTauri/isCapacitor/isWeb + notify/storage/share/capturePhoto
 nexa add telemetry # Web Vitals + errores — necesita además [telemetry] endpoint en nexa.toml
+nexa add pwa       # manifest.webmanifest + service worker real, a partir de [pwa] en nexa.toml
 nexa add tauri      # genera src-tauri/ (empaqueta dist/ como app de escritorio)
 nexa add capacitor  # genera capacitor.config.json (empaqueta dist/ como app móvil)
 ```
@@ -339,6 +340,35 @@ export default function mount(el: Element, props: Record<string, unknown>): void
   **Vue 3 real** montado vía `@nexa/vue-island` — la prueba de que un
   panel tipo Trello/SDLC que ya tengas en Vue puede vivir en el mismo
   proyecto Nexa, sin reescribirlo.
+
+## PWA (`nexa add pwa`)
+
+```bash
+nexa add pwa
+```
+
+Esto agrega un `[pwa]` real a `nexa.toml`, con el nombre del proyecto ya
+puesto. Completalo:
+
+```toml
+[pwa]
+name = "Mi App"
+themeColor = "#2563eb"
+icon = "/icon-512.png"      # PNG cuadrado real en public/, idealmente 512x512
+
+[pwa.cache]
+"/assets" = "cache-first"              # JS/CSS con nombre de archivo estable
+"/api" = "network-first"               # datos: intenta la red, cae al cache si no hay
+"/" = "stale-while-revalidate"         # páginas: sirve cache al toque, actualiza atrás
+```
+
+`nexa build` genera `dist/manifest.webmanifest` y `dist/sw.js` de verdad
+— no hay nada que escribir a mano. Cada página lleva automáticamente
+`<link rel="manifest">` y el registro del service worker. Un prefijo sin
+regla en `[pwa.cache]` (o sin `[pwa.cache]` en absoluto) cae a
+`network-first`, el default más seguro. Verificado en Chromium real:
+con la red completamente cortada después de una segunda visita, la
+página sigue cargando con contenido real desde el cache.
 
 ## Presupuestos de rendimiento
 

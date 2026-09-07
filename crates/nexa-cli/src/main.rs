@@ -15,6 +15,7 @@ mod page_resolver;
 mod performance_budget;
 mod pipeline;
 mod pkg_warnings;
+mod pwa;
 mod serve;
 mod tauri_scaffold;
 

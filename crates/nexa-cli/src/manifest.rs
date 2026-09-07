@@ -40,6 +40,12 @@ pub struct Manifest {
     /// resolver ese nombre pelado a la URL de verdad.
     #[serde(default)]
     pub imports: BTreeMap<String, String>,
+    /// `[pwa]` (Fase 18) — ausente por defecto: sin esta sección, `nexa
+    /// build` no genera `manifest.webmanifest` ni `sw.js`, y ninguna
+    /// página lleva `<link rel="manifest">` ni el script de registro —
+    /// mismo costo cero que `[telemetry]`.
+    #[serde(default)]
+    pub pwa: Option<PwaSection>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]
@@ -68,6 +74,33 @@ pub struct PerformanceSection {
 pub struct TelemetrySection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub endpoint: Option<String>,
+}
+
+/// `[pwa]` en `nexa.toml` (Fase 18). `icon` es una ruta bajo `public/`
+/// (ya se copia a `dist/` tal cual, como cualquier otro estático) — se
+/// referencia dos veces en el manifest (192x192 y 512x512) porque los
+/// navegadores confían en el campo `sizes` declarado, no verifican el
+/// PNG real: usá un ícono cuadrado de verdad 512x512 para que se vea
+/// bien en los dos tamaños.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct PwaSection {
+    pub name: String,
+    #[serde(rename = "shortName", skip_serializing_if = "Option::is_none")]
+    pub short_name: Option<String>,
+    #[serde(rename = "themeColor", skip_serializing_if = "Option::is_none")]
+    pub theme_color: Option<String>,
+    #[serde(rename = "backgroundColor", skip_serializing_if = "Option::is_none")]
+    pub background_color: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub icon: Option<String>,
+    /// `[pwa.cache]`: prefijo de ruta -> estrategia
+    /// (`cache-first`/`network-first`/`stale-while-revalidate`). Un
+    /// prefijo que no matchea ninguna entrada usa `network-first` por
+    /// defecto (falla a la red primero, cae al cache si no hay conexión).
+    #[serde(default)]
+    pub cache: BTreeMap<String, String>,
 }
 
 impl Manifest {
@@ -187,6 +220,28 @@ mod tests {
 
         let imports = load_lenient(&path).imports;
         assert_eq!(imports.get("stripe").map(String::as_str), Some("https://cdn.example.com/stripe.js"));
+    }
+
+    #[test]
+    fn absent_pwa_section_parses_as_none() {
+        let path = scratch_path(Some("[project]\nname = \"x\"\nversion = \"0.1.0\"\n"));
+        assert!(load_lenient(&path).pwa.is_none());
+    }
+
+    #[test]
+    fn reads_a_declared_pwa_section_with_cache_rules() {
+        let path = scratch_path(Some(
+            "[project]\nname = \"x\"\nversion = \"0.1.0\"\n\n\
+             [pwa]\nname = \"Mi App\"\nthemeColor = \"#2563eb\"\nicon = \"/icon-512.png\"\n\n\
+             [pwa.cache]\n\"/assets\" = \"cache-first\"\n\"/api\" = \"network-first\"\n",
+        ));
+
+        let pwa = load_lenient(&path).pwa.expect("expected a pwa section");
+        assert_eq!(pwa.name, "Mi App");
+        assert_eq!(pwa.theme_color.as_deref(), Some("#2563eb"));
+        assert_eq!(pwa.icon.as_deref(), Some("/icon-512.png"));
+        assert_eq!(pwa.cache.get("/assets").map(String::as_str), Some("cache-first"));
+        assert_eq!(pwa.cache.get("/api").map(String::as_str), Some("network-first"));
     }
 
     #[test]

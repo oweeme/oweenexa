@@ -23,12 +23,15 @@ use crate::assets::{
 /// `nexa.toml` declara `[telemetry] endpoint = "..."`: sin endpoint no
 /// hay a dónde enviar nada, así que ni se carga el módulo. `@nexa/islands`
 /// (Fase 16) solo si `has_islands` es `true` — misma disciplina de costo
-/// cero que `has_forms`.
+/// cero que `has_forms`. `has_pwa` (Fase 18) registra `/sw.js` — no hace
+/// falta un paquete/import propio, es una sola llamada nativa del
+/// navegador.
 pub fn inject(
     html: &str,
     manifest: &ActivationManifest,
     has_forms: bool,
     has_islands: bool,
+    has_pwa: bool,
     telemetry_endpoint: Option<&str>,
 ) -> String {
     let mut script = String::from("<script type=\"module\">\n");
@@ -70,6 +73,9 @@ pub fn inject(
         let endpoint_literal = serde_json::to_string(endpoint).unwrap_or_else(|_| "\"\"".to_string());
         script.push_str(&format!("initTelemetry({{ endpoint: {endpoint_literal} }});\n"));
     }
+    if has_pwa {
+        script.push_str("if (\"serviceWorker\" in navigator) navigator.serviceWorker.register(\"/sw.js\");\n");
+    }
 
     script.push_str("</script>\n");
 
@@ -97,7 +103,7 @@ mod tests {
     #[test]
     fn always_loads_the_router_even_without_interactive_nodes() {
         let html = "<html><body><p>hola</p></body></html>";
-        let out = inject(html, &ActivationManifest::new(), false, false, None);
+        let out = inject(html, &ActivationManifest::new(), false, false, false, None);
 
         assert!(out.contains("/assets/nexa-router.js"));
         assert!(!out.contains("/assets/nexa-runtime.js"));
@@ -119,7 +125,7 @@ mod tests {
         );
 
         let html = "<html><body><button data-nexa=\"3\">Comprar</button></body></html>";
-        let out = inject(html, &manifest, false, false, None);
+        let out = inject(html, &manifest, false, false, false, None);
 
         assert!(out.contains("/assets/nexa-runtime.js"));
         assert!(out.contains("initActivation("));
@@ -129,7 +135,7 @@ mod tests {
     #[test]
     fn loads_forms_only_when_the_page_has_one() {
         let html = "<html><body><form data-nexa-form></form></body></html>";
-        let out = inject(html, &ActivationManifest::new(), true, false, None);
+        let out = inject(html, &ActivationManifest::new(), true, false, false, None);
 
         assert!(out.contains("/assets/nexa-forms.js"));
         assert!(out.contains("initForms();"));
@@ -139,10 +145,10 @@ mod tests {
     fn loads_telemetry_only_when_an_endpoint_is_given() {
         let html = "<html><body></body></html>";
 
-        let without = inject(html, &ActivationManifest::new(), false, false, None);
+        let without = inject(html, &ActivationManifest::new(), false, false, false, None);
         assert!(!without.contains("nexa-telemetry.js"));
 
-        let with = inject(html, &ActivationManifest::new(), false, false, Some("/api/telemetry"));
+        let with = inject(html, &ActivationManifest::new(), false, false, false, Some("/api/telemetry"));
         assert!(with.contains("/assets/nexa-telemetry.js"));
         assert!(with.contains("initTelemetry({ endpoint: \"/api/telemetry\" });"));
     }
@@ -150,7 +156,7 @@ mod tests {
     #[test]
     fn escapes_a_telemetry_endpoint_with_special_characters() {
         let html = "<html><body></body></html>";
-        let out = inject(html, &ActivationManifest::new(), false, false, Some("/x\"; alert(1); //"));
+        let out = inject(html, &ActivationManifest::new(), false, false, false, Some("/x\"; alert(1); //"));
 
         // El endpoint queda como un literal de string JS válido — no
         // rompe (ni escapa) el resto del `<script>`.
@@ -160,7 +166,7 @@ mod tests {
     #[test]
     fn loads_islands_only_when_the_page_has_one() {
         let html = "<html><body><div data-nexa-island=\"x\"></div></body></html>";
-        let out = inject(html, &ActivationManifest::new(), false, true, None);
+        let out = inject(html, &ActivationManifest::new(), false, true, false, None);
 
         assert!(out.contains("/assets/nexa-islands.js"));
         assert!(out.contains("initIslands();"));
@@ -169,16 +175,32 @@ mod tests {
     #[test]
     fn does_not_load_islands_when_the_page_has_none() {
         let html = "<html><body><p>hola</p></body></html>";
-        let out = inject(html, &ActivationManifest::new(), false, false, None);
+        let out = inject(html, &ActivationManifest::new(), false, false, false, None);
 
         assert!(!out.contains("nexa-islands.js"));
         assert!(!out.contains("initIslands();"));
     }
 
     #[test]
+    fn registers_the_service_worker_only_when_the_page_declares_pwa() {
+        let html = "<html><body></body></html>";
+        let out = inject(html, &ActivationManifest::new(), false, false, true, None);
+
+        assert!(out.contains("navigator.serviceWorker.register(\"/sw.js\")"));
+    }
+
+    #[test]
+    fn does_not_register_a_service_worker_without_pwa() {
+        let html = "<html><body></body></html>";
+        let out = inject(html, &ActivationManifest::new(), false, false, false, None);
+
+        assert!(!out.contains("serviceWorker"));
+    }
+
+    #[test]
     fn inserts_before_the_closing_body_tag() {
         let html = "<html><body><p>hola</p></body></html>";
-        let out = inject(html, &ActivationManifest::new(), false, false, None);
+        let out = inject(html, &ActivationManifest::new(), false, false, false, None);
 
         let script_pos = out.find("<script").unwrap();
         let body_close_pos = out.find("</body>").unwrap();

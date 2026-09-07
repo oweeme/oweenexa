@@ -36,6 +36,11 @@ pub fn run() -> Result<()> {
     crate::copy_dir::copy_recursive(Path::new("public"), Path::new("dist"))
         .context("copiando public/ a dist/")?;
 
+    let project_manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
+    if let Some(pwa) = &project_manifest.pwa {
+        write_pwa_assets(pwa)?;
+    }
+
     let mut built = 0;
     let mut prerendered_routes = 0;
     let mut skipped_dynamic = 0;
@@ -398,6 +403,18 @@ fn write_framework_assets() -> Result<()> {
         crate::assets::NEXA_ISLANDS_JS,
     )?;
     fs::write(format!("dist/assets/{}", crate::assets::NEXA_UI_FILENAME), crate::assets::NEXA_UI_JS)?;
+    Ok(())
+}
+
+/// `dist/manifest.webmanifest` + `dist/sw.js` (Fase 18) — una sola vez
+/// para todo el sitio, no por página (a diferencia de `<link
+/// rel="manifest">`/el registro del service worker, que sí van en cada
+/// página vía `pipeline::compile_page`/`bootstrap::inject`).
+fn write_pwa_assets(pwa: &crate::manifest::PwaSection) -> Result<()> {
+    fs::write("dist/manifest.webmanifest", crate::pwa::render_manifest(pwa))?;
+    let sw = crate::pwa::render_service_worker(&pwa.cache).context("generando dist/sw.js")?;
+    fs::write("dist/sw.js", sw)?;
+    println!("Generado dist/manifest.webmanifest y dist/sw.js (PWA).");
     Ok(())
 }
 

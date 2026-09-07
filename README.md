@@ -11,21 +11,30 @@ empaquetado para escritorio/móvil. Ver también
 con lo que se verificó de cada una.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
-están completas**, más dos fases añadidas después, a partir de uso real
+están completas**, más tres fases añadidas después, a partir de uso real
 del framework en proyectos propios. El resto de esta sección es un
 resumen de lo que ya existe, fase por fase — para aprender a usarlo, la
 guía de arriba es el punto de partida.
 
-**Lo más reciente (Fase 17 — Pre-render de rutas dinámicas):** hasta
-ahora, una ruta `[slug].tsx` nunca se pre-renderizaba a HTML — `nexa
-build` la saltaba siempre, y solo `nexa preview`/`nexa dev` (un proceso
-vivo) podía servirla. Ahora, si la página declara `export const paths =
-{ url: "..." }` (misma forma exacta que `load` — un objeto literal, el
-backend responde con la lista de parámetros a enumerar), `nexa build`
-genera un `index.html` real por cada uno. Verificado apagando el
-backend por completo después del build: la página pre-renderizada
-siguió sirviendo 200 con el contenido correcto desde un servidor
-estático puro, sin Nexa ni el backend corriendo.
+**Lo más reciente (Fase 18 — PWA declarativo):** `nexa add pwa` agrega
+un `[pwa]` real a `nexa.toml` (nombre, ícono, colores, y `[pwa.cache]`
+con reglas `cache-first`/`network-first`/`stale-while-revalidate` por
+prefijo de ruta); `nexa build` genera `dist/manifest.webmanifest` y
+`dist/sw.js` de verdad — un service worker real, no una plantilla vacía.
+Verificado en Chromium real: con la red completamente cortada
+(`context.setOffline(true)`, no un mock) después de una segunda visita,
+la página siguió cargando con contenido real desde el cache.
+
+**Antes (Fase 17 — Pre-render de rutas dinámicas):** hasta
+ese momento, una ruta `[slug].tsx` nunca se pre-renderizaba a HTML —
+`nexa build` la saltaba siempre, y solo `nexa preview`/`nexa dev` (un
+proceso vivo) podía servirla. Ahora, si la página declara `export const
+paths = { url: "..." }` (misma forma exacta que `load` — un objeto
+literal, el backend responde con la lista de parámetros a enumerar),
+`nexa build` genera un `index.html` real por cada uno. Verificado
+apagando el backend por completo después del build: la página
+pre-renderizada siguió sirviendo 200 con el contenido correcto desde un
+servidor estático puro, sin Nexa ni el backend corriendo.
 
 **Antes (Fase 16 — Islas interactivas):** el hueco real que
 dejaba la Fase 15 — un proyecto con partes públicas/SEO y partes

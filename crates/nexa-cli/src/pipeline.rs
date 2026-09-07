@@ -138,8 +138,14 @@ pub fn compile_page(
     let schema_script = nexa_seo::render_schema_script(component.schema.as_ref(), &seo_ctx);
     let seo_warnings = nexa_seo::analyze(&ir.root, component.seo.as_ref());
 
+    let project_manifest = manifest::load_lenient(Path::new(MANIFEST_PATH));
+    let telemetry_endpoint = project_manifest.telemetry.as_ref().and_then(|t| t.endpoint.as_deref());
+
     let hreflang_head = hreflang_head(route_pattern, params, locales_dir);
-    let combined_head = join_head_fragments(&seo_head, &hreflang_head);
+    // `[pwa]` (Fase 18): `<link rel="manifest">` + `theme-color`, mismo
+    // costo cero que el resto — ausente si el proyecto no declaró `[pwa]`.
+    let pwa_head = project_manifest.pwa.as_ref().map(crate::pwa::head_fragment).unwrap_or_default();
+    let combined_head = join_head_fragments(&join_head_fragments(&seo_head, &hreflang_head), &pwa_head);
 
     let ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
     // El `href` es fijo (el archivo es compartido, ensamblado por
@@ -147,9 +153,6 @@ pub fn compile_page(
     // enlaza si ESTA página usa algo: una página sin `@nexa/ui` no debe
     // ni pedir el CSS.
     let ui_stylesheet_href = (!ui_used_classes.is_empty()).then_some("/assets/nexa-ui.css");
-
-    let project_manifest = manifest::load_lenient(Path::new(MANIFEST_PATH));
-    let telemetry_endpoint = project_manifest.telemetry.as_ref().and_then(|t| t.endpoint.as_deref());
 
     // Import map (Fase 15): `platform` (built-in) + lo que el proyecto
     // declare en `[imports]` — solo entra al `<head>` lo que esta
@@ -174,7 +177,8 @@ pub fn compile_page(
     let (activation_manifest, chunks) = nexa_activation::build(&ir, &component_name, &component.handlers, &import_names);
     let has_forms = has_forms(&ir.root);
     let has_islands = !island_specifiers.is_empty();
-    let html = bootstrap::inject(&html, &activation_manifest, has_forms, has_islands, telemetry_endpoint);
+    let has_pwa = project_manifest.pwa.is_some();
+    let html = bootstrap::inject(&html, &activation_manifest, has_forms, has_islands, has_pwa, telemetry_endpoint);
 
     let has_platform = component.handlers.values().any(|source| source.contains("platform."));
     let pkg_warnings = pkg_warnings::check(

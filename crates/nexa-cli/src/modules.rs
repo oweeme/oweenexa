@@ -79,6 +79,12 @@ pub const ADDABLE: &[ModuleInfo] = &[
         stability: Stability::Experimental,
         description: "Core Web Vitals + errores sin capturar — solo se inyecta si nexa.toml declara [telemetry] endpoint.",
     },
+    ModuleInfo {
+        name: "pwa",
+        version: "0.1.0",
+        stability: Stability::Experimental,
+        description: "manifest.webmanifest + service worker real generados por nexa build a partir de [pwa] en nexa.toml.",
+    },
 ];
 
 /// Módulos que existen pero que **no** se declaran con `nexa add`: son

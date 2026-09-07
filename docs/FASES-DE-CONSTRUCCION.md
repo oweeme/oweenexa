@@ -1179,6 +1179,61 @@ con el backend completamente apagado.
 
 ---
 
+## Fase 18 — PWA declarativo (`nexa add pwa`) (Hito 14) — ✅ completada
+
+**Objetivo:** que un sitio Nexa pueda instalarse y funcionar offline sin
+que el desarrollador escriba un service worker a mano — `[pwa]` en
+`nexa.toml` es la declaración, `nexa build` genera los dos artefactos
+reales que un navegador necesita.
+
+**Entregables:**
+- `nexa add pwa`: registra la dependencia y agrega un `[pwa]` real (no
+  texto suelto) a `nexa.toml`, pre-llenado con el nombre del proyecto —
+  mismo patrón de "andamiaje" que `tauri`/`capacitor` (Fase 13), pero sin
+  generar ningún directorio aparte.
+- `nexa_cli::manifest::PwaSection` (`name`, `shortName`, `themeColor`,
+  `backgroundColor`, `display`, `icon`, `[pwa.cache]`) — mismo patrón
+  serde que `[performance]`/`[telemetry]`, ausente por defecto.
+- `nexa build` genera `dist/manifest.webmanifest` (JSON real, con los
+  íconos declarados dos veces — 192x192 y 512x512 — apuntando al mismo
+  PNG) y `dist/sw.js` (un service worker real, no una plantilla vacía:
+  instala, reclama las páginas de inmediato con `skipWaiting`/
+  `clients.claim`, y por cada `fetch` GET elige entre tres estrategias
+  reales — `cache-first`/`network-first`/`stale-while-revalidate` — según
+  el prefijo de ruta más específico que matchea en `[pwa.cache]`, con
+  `network-first` como default seguro si no hay ninguna regla).
+- Cada página compilada lleva automáticamente `<link rel="manifest">` +
+  `<meta name="theme-color">` (mismo mecanismo de fragmentos de `<head>`
+  que ya usan SEO/hreflang) y el registro del service worker en el
+  `<script>` de arranque (`bootstrap::inject`, mismo costo-cero que
+  `has_forms`/`has_islands`: nada de esto aparece si el proyecto no
+  declaró `[pwa]`).
+
+**Criterio de salida:** un proyecto con `[pwa]` completo, compilado y
+servido, se comporta como una PWA real — instala un service worker que
+cachea de verdad, y sigue funcionando con la red completamente cortada.
+
+> **Verificado en Chromium real (Playwright), no solo generando los
+> archivos:** un proyecto con `[pwa]` (ícono real, `themeColor`, y
+> `[pwa.cache]` con reglas `cache-first`/`network-first`) servido con
+> `nexa preview` — el service worker llegó a estado `activated`, una
+> segunda visita cacheó de verdad la página y `/assets/nexa-router.js`
+> (confirmado leyendo `caches.open("nexa-pwa-v1")` directamente en el
+> navegador), y con `context.setOffline(true)` (la red completamente
+> cortada, no solo un mock) una nueva navegación a la misma URL siguió
+> mostrando el `<h1>` real de la página. Esa es la prueba que de verdad
+> importa para "esto es una PWA funcional" — no que los archivos
+> `manifest.webmanifest`/`sw.js` existan con la forma correcta, sino que
+> el navegador los usa de verdad para seguir funcionando sin red.
+>
+> 218 tests en Rust (workspace completo, +12 sobre la Fase 17): 8 en el
+> nuevo `pwa.rs` (generación del manifest, validación de estrategias de
+> cache, orden de prefijos más específico primero), 2 en `manifest.rs`
+> (parseo de `[pwa]`/`[pwa.cache]`), 2 en `bootstrap.rs` (el script de
+> registro solo aparece con `has_pwa`).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio
