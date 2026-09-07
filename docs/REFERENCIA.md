@@ -11,28 +11,29 @@ bitácora de cómo se construyó (esa es
 1. [El CLI](#el-cli)
 2. [Estructura de un proyecto](#estructura-de-un-proyecto)
 3. [Rutas](#rutas)
-4. [Una página, de arriba a abajo](#una-página-de-arriba-a-abajo)
-5. [`load` — traer datos](#load--traer-datos)
-6. [`paths` — pre-renderizar rutas dinámicas](#paths--pre-renderizar-rutas-dinámicas)
-7. [`seo` y `schema`](#seo-y-schema)
-8. [Internacionalización (`t()`, `[locale]`)](#internacionalización-t-locale)
-9. [El cuerpo de la página: estático, dinámico, interactivo](#el-cuerpo-de-la-página-estático-dinámico-interactivo)
-10. [Islas interactivas](#islas-interactivas)
-11. [`@nexa/ui`](#nexaui)
-12. [`@nexa/forms`](#nexaforms)
-13. [`@nexa/platform`](#nexaplatform)
-14. [`@nexa/reactivity`](#nexareactivity)
-15. [`@nexa/http`](#nexahttp)
-16. [`@nexa/test`](#nexatest)
-17. [Paquetes de terceros (`[imports]`)](#paquetes-de-terceros-imports)
-18. [Imágenes optimizadas automáticamente](#imágenes-optimizadas-automáticamente)
-19. [PWA](#pwa)
-20. [Telemetría](#telemetría)
-21. [Presupuestos de rendimiento](#presupuestos-de-rendimiento)
-22. [Empaquetado nativo (escritorio y móvil)](#empaquetado-nativo-escritorio-y-móvil)
-23. [Despliegue (`nginx`)](#despliegue-nginx)
-24. [`nexa.toml` — referencia completa](#nexatoml--referencia-completa)
-25. [Límites conocidos](#límites-conocidos)
+4. [Layouts compartidos](#layouts-compartidos)
+5. [Una página, de arriba a abajo](#una-página-de-arriba-a-abajo)
+6. [`load` — traer datos](#load--traer-datos)
+7. [`paths` — pre-renderizar rutas dinámicas](#paths--pre-renderizar-rutas-dinámicas)
+8. [`seo` y `schema`](#seo-y-schema)
+9. [Internacionalización (`t()`, `[locale]`)](#internacionalización-t-locale)
+10. [El cuerpo de la página: estático, dinámico, interactivo](#el-cuerpo-de-la-página-estático-dinámico-interactivo)
+11. [Islas interactivas](#islas-interactivas)
+12. [`@nexa/ui`](#nexaui)
+13. [`@nexa/forms`](#nexaforms)
+14. [`@nexa/platform`](#nexaplatform)
+15. [`@nexa/reactivity`](#nexareactivity)
+16. [`@nexa/http`](#nexahttp)
+17. [`@nexa/test`](#nexatest)
+18. [Paquetes de terceros (`[imports]`)](#paquetes-de-terceros-imports)
+19. [Imágenes optimizadas automáticamente](#imágenes-optimizadas-automáticamente)
+20. [PWA](#pwa)
+21. [Telemetría](#telemetría)
+22. [Presupuestos de rendimiento](#presupuestos-de-rendimiento)
+23. [Empaquetado nativo (escritorio y móvil)](#empaquetado-nativo-escritorio-y-móvil)
+24. [Despliegue (`nginx`)](#despliegue-nginx)
+25. [`nexa.toml` — referencia completa](#nexatoml--referencia-completa)
+26. [Límites conocidos](#límites-conocidos)
 
 ---
 
@@ -69,6 +70,7 @@ mi-sitio/
 ├── nexa.lock           Generado por `nexa add` — no se edita a mano.
 ├── nexa.config.ts      Config mínima de la app (nombre) — no crece más que esto hoy.
 ├── src/
+│   ├── layout.tsx      Opcional — envuelve toda página con header/footer (ver "Layouts").
 │   ├── pages/          Cada .tsx es una ruta — ver "Rutas".
 │   │   └── [locale]/   Segmento dinámico especial para i18n (opcional).
 │   ├── locales/        <locale>.json — diccionarios planos para t().
@@ -94,6 +96,51 @@ Una ruta puede tener varios segmentos dinámicos. `nexa build` compila
 directo a HTML cualquier ruta **sin** segmentos dinámicos; una ruta
 dinámica solo se pre-renderiza si declara `paths` (ver esa sección) —
 si no, se sirve al vuelo con `nexa preview`/`nexa dev`.
+
+## Layouts compartidos
+
+`src/layout.tsx`, opcional — si existe, envuelve el HTML de *toda*
+página del proyecto:
+
+```tsx
+export default function Layout() {
+    return (
+        <div class="site-shell">
+            <header><nav><a href="/">Inicio</a></nav></header>
+            <div data-nexa-slot></div>
+            <footer><p>© 2026</p></footer>
+        </div>
+    );
+}
+```
+
+Se compila con el mismo parser/analyzer/renderer que cualquier página —
+no es un mecanismo nuevo de composición, es un `.tsx` más. Lo único
+especial es el splice final: `nexa-cli` busca el único elemento marcado
+`data-nexa-slot` (debe estar **vacío** — si tiene hijos, o si no hay
+exactamente uno en todo el archivo, el build falla con un mensaje
+explícito) y ahí inserta, tal cual, el HTML que ya renderizó la página.
+Ni el layout ni la página se conocen entre sí en ningún punto anterior a
+ese splice.
+
+Puede usar `{params.x}`/`t(...)` igual que cualquier página (recibe los
+mismos `params`/traducciones que la página a la que envuelve). Sus
+clases `nx-*` de `@nexa/ui`, si las usa, se suman a las de cada página
+para decidir qué entra en `nexa-ui.css`.
+
+**No soportado esta fase:** un evento interactivo (`onClick`, etc.) o
+una isla dentro de `src/layout.tsx` — el build falla explícitamente. La
+razón es técnica, no arbitraria: los ids de nodo de un `IrComponent` se
+numeran desde 0, y el layout y cada página son `IrComponent`s
+compilados por separado — mezclarlos en el mismo manifiesto de
+activación produciría ids colisionados. El escape valve es el de
+siempre: un nav con estado (ej. un menú hamburguesa) se maqueta como
+contenido normal de cada página, o queda para una fase futura con
+islas (las islas no usan ids de manifiesto, así que no tienen este
+problema de raíz — solo no se habilitó todavía para no mezclar dos
+cambios en la misma fase). Tampoco hay layouts anidados por directorio
+(un solo `src/layout.tsx` para todo el proyecto, no uno por carpeta de
+`src/pages/`).
 
 ## Una página, de arriba a abajo
 
@@ -715,6 +762,8 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
   y no hay fallback automático a otro locale si falta una clave.
 - `@nexa/forms` valida solo con la Constraint Validation API nativa —
   sin reglas async o entre varios campos a la vez.
-- Sin layouts compartidos, sin WebSocket/SSE de primera clase — para
-  cualquiera de las dos, la isla es el mecanismo hoy (montar tu propio
-  código o un framework real adentro).
+- `src/layout.tsx` es único para todo el proyecto (sin anidar por
+  directorio) y no admite eventos ni islas propias — ver "Layouts
+  compartidos".
+- Sin WebSocket/SSE de primera clase — la isla es el mecanismo hoy
+  (montar tu propio código o un framework real adentro).

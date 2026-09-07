@@ -1596,6 +1596,82 @@ de salida.
 
 ---
 
+## Fase 25 — Layouts compartidos (`src/layout.tsx`) (Hito 21) — ✅ completada
+
+**Objetivo:** cerrar el último pendiente grande de la lista — un
+proyecto real (header/footer/nav repetidos en cada página) no tenía
+ninguna forma de compartir esa maqueta sin copiarla a mano en cada
+`.tsx`. El riesgo explícito, señalado desde que se dejó pendiente, era
+reabrir la composición de componentes rechazada desde la Fase 2 (props,
+`<Otro/>`, anidar un componente dentro de otro).
+
+**Entregables:**
+- `src/layout.tsx`, opcional, único para todo el proyecto (sin anidar
+  por directorio): se compila con el mismo parser/analyzer/renderer que
+  cualquier página — Rust nunca aprende a pasar props ni a componer.
+  Recibe los mismos `params`/traducciones que la página a la que
+  envuelve, así que puede usar `{params.x}`/`t(...)`.
+- El único mecanismo nuevo es un splice de texto sobre HTML ya
+  renderizado: se exige exactamente un elemento `data-nexa-slot`, vacío,
+  en todo el layout (si no, el build falla con un mensaje explícito); ahí
+  se inserta, tal cual, el HTML que ya renderizó la página. Ni el layout
+  ni la página se conocen entre sí antes de ese punto.
+- Explícitamente rechazado, con un error claro en el build: un evento
+  interactivo o una isla dentro del layout — sus ids de nodo viven en un
+  `IrComponent` separado del de cada página (ambos numerados desde 0),
+  así que compartir un manifiesto de activación colisionaría. Documentado
+  como límite deliberado, no oculto.
+- Las clases `nx-*` que el layout use se suman a las de cada página para
+  decidir el contenido de `nexa-ui.css` — sin esto, un `nx-btn` en el
+  header nunca habría enviado su CSS real.
+
+**Criterio de salida:** dos páginas envueltas por el mismo layout
+comparten header/footer/nav sin duplicar una línea de HTML, incluso a
+través de una navegación SPA; un layout con un evento interactivo o sin
+(o con más de un) `data-nexa-slot` falla el build con un mensaje que
+explica por qué.
+
+> **Bug real preexistente, encontrado construyendo esto — no en el
+> código nuevo:** `nexa_ui::collect_used_classes` recogía *cualquier*
+> `class="..."` estático del árbol, no solo clases `nx-*` reales. Una
+> página (o, con esta fase, un layout) con `class="site-shell"` o
+> cualquier clase propia del proyecto activaba en falso el aviso
+> `NEXA-PKG-001` ("usa clases nx-* de @nexa/ui") y enlazaba un
+> `<link rel="stylesheet" href="/assets/nexa-ui...css">` — que, como
+> ninguna clase real de `@nexa/ui` estaba en juego,
+> `build_stylesheet_from_classes` nunca llegaba a escribir. Con el
+> hashing de contenido de la Fase 23, este bug se volvió mucho más
+> visible: el HTML servido en producción habría llevado literalmente
+> `<link href="/assets/nexa-ui.pending.css">` — el hash "pendiente"
+> nunca resuelto, porque la resolución del placeholder solo ocurre
+> cuando `write_ui_stylesheet` encuentra contenido real. Se corrigió en
+> la raíz (`nexa-ui::scan::collect_used_classes` ahora filtra contra las
+> familias reales de `registry::COMPONENTS`), no en cada consumidor —
+> las dos decisiones (enlazar el `<link>`, generar el archivo) vuelven a
+> ser consistentes por construcción.
+>
+> **Verificado con un proyecto real, no solo con `cargo test`:** dos
+> páginas (`/`, `/about`) envueltas por un `src/layout.tsx` con
+> header/nav/footer reales y una clase (`site-shell`) deliberadamente NO
+> perteneciente a `@nexa/ui`. Antes del fix: `nexa build` emitía
+> `NEXA-PKG-001` en falso y `dist/index.html` quedaba con
+> `href="/assets/nexa-ui.pending.css"` literal. Después: cero avisos
+> falsos, sin `<link>` de CSS en absoluto (correcto, no se usó
+> `@nexa/ui` de verdad). Un navegador real (Chromium vía Playwright)
+> confirmó el header/footer/nav presentes en ambas páginas, incluso
+> navegando de una a otra por el router SPA (sin `page.goto` directo a
+> la segunda), y cero peticiones con error. Por separado, tres builds
+> reales de un layout inválido confirmaron los tres mensajes de error
+> esperados: un `onClick` en el layout, cero `data-nexa-slot`, y (por
+> revisión de código, ya cubierto por un test) más de uno.
+>
+> 250 tests en Rust (workspace completo, +4 sobre la Fase 24: el splice
+> del slot inserta el body y falla con un mensaje claro sin slot
+> (`layout.rs`), y `collect_used_classes` ignora clases ajenas a
+> `@nexa/ui` pero conserva las reales mezcladas con otras (`scan.rs`)).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

@@ -82,6 +82,13 @@ falta, en el mismo proyecto.
   `package.json`/npm para los módulos oficiales de Nexa: no hay
   `node_modules` de por medio para usar `@nexa/ui`, `@nexa/forms` o
   `@nexa/platform`.
+- **Layout compartido sin reabrir la composición.** Un `src/layout.tsx`
+  opcional envuelve header/footer/nav en toda página del proyecto — es
+  un splice de HTML ya renderizado, no props ni anidar componentes.
+- **`nexa lint`/`nexa test` para CI.** `nexa lint` falla si el SEO
+  Analyzer o los avisos de paquetes encontraron algo (`nexa build` nunca
+  falla por esto a propósito); `nexa test` compila el proyecto y corre
+  el test runner de JS del proyecto contra ese build fresco.
 
 ## Instalación rápida
 
@@ -98,6 +105,38 @@ cat dist/index.html
 ```
 
 ## Uso
+
+### Layout compartido: header/footer en todas las páginas
+
+```tsx
+// src/layout.tsx — opcional; si existe, envuelve TODA página del proyecto
+export default function Layout() {
+    return (
+        <div class="site-shell">
+            <header><nav><a href="/">Inicio</a> · <a href="/about">Nosotros</a></nav></header>
+            <div data-nexa-slot></div>
+            <footer><p>© 2026 Mi Sitio</p></footer>
+        </div>
+    );
+}
+```
+
+`nexa build`/`dev`/`preview` compilan `src/layout.tsx` con el mismo
+parser/analyzer/renderer que cualquier página, y sustituyen el único
+elemento marcado `data-nexa-slot` (debe estar vacío) por el HTML que ya
+renderizó cada página — sin que el layout ni la página sepan el uno del
+otro en ningún punto anterior a ese splice, así que esto no reabre la
+composición de componentes (props, `<Otro/>`, condicionales) rechazada
+desde el principio. El layout puede usar `{params.locale}`/`t(...)`
+igual que cualquier página, y sus clases `nx-*` (si usa `@nexa/ui`) se
+suman a las de cada página para `nexa-ui.css`.
+
+Esta primera versión es deliberadamente solo para contenido estático: un
+`onClick` o una isla dentro de `src/layout.tsx` hace fallar el build con
+un mensaje explícito (sus ids de nodo compartirían manifiesto con los de
+cada página). Un nav con estado real (ej. un menú hamburguesa) queda
+para una fase futura con islas — hoy, si lo necesitas, podés maquetarlo
+directamente en cada página en lugar del layout.
 
 ### `@nexa/ui` con tree-shaking real
 
@@ -533,6 +572,10 @@ imports circulares sin ganar claridad.
 - Un solo componente por página, sin composición (`<Otro/>` no
   soportado), sin props, sin condicionales. Es también la razón de que
   `@nexa/ui` se use con `<button class="nx-btn">` y no `<Button>`.
+- `src/layout.tsx` es único (no hay layouts anidados por directorio, a
+  diferencia de frameworks con rutas basadas en archivos que sí los
+  tienen) y no puede tener eventos interactivos ni islas propias — un
+  nav con estado real se maqueta en cada página, no en el layout.
 - `load`/`seo`/`schema` son objetos literales estáticos, no funciones —
   sin headers, sin autenticación, sin mutaciones en el servidor.
   Deliberado: Nexa Core no ejecuta JavaScript del desarrollador, solo lo

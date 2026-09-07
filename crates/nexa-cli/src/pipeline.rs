@@ -144,6 +144,19 @@ pub fn compile_page(
     let render_ctx = RenderContext { data: data.as_ref(), params, translations: translations.as_ref() };
     let body = nexa_renderer::render_node(&ir.root, &render_ctx);
 
+    // `src/layout.tsx` (Fase 25), opcional: envuelve el HTML que la
+    // página ya renderizó — ver el comentario de `crate::layout` sobre
+    // por qué esto no reabre la composición de componentes.
+    let mut layout_ui_used_classes = std::collections::BTreeSet::new();
+    let body = match crate::layout::find() {
+        Some(layout_file) => {
+            let rendered = crate::layout::render_for_page(&layout_file, &body, params, translations.as_ref())?;
+            layout_ui_used_classes = rendered.ui_used_classes;
+            rendered.html
+        }
+        None => body,
+    };
+
     let seo_ctx = SeoContext { data: data.as_ref(), params, translations: translations.as_ref() };
     let seo_head = nexa_seo::render_head(component.seo.as_ref(), &seo_ctx);
     let schema_script = nexa_seo::render_schema_script(component.schema.as_ref(), &seo_ctx);
@@ -158,7 +171,8 @@ pub fn compile_page(
     let pwa_head = project_manifest.pwa.as_ref().map(crate::pwa::head_fragment).unwrap_or_default();
     let combined_head = join_head_fragments(&join_head_fragments(&seo_head, &hreflang_head), &pwa_head);
 
-    let ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
+    let mut ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
+    ui_used_classes.extend(layout_ui_used_classes);
     // El nombre final de `nexa-ui.css` lleva un hash de su contenido
     // (Fase 23) — pero ese contenido es la unión de *todo el sitio*, que
     // recién se conoce después de compilar todas las páginas (ver

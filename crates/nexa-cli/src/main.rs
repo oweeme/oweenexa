@@ -9,6 +9,7 @@ mod document;
 mod image_pipeline;
 mod image_scan;
 mod import_map;
+mod layout;
 mod lockfile;
 mod manifest;
 mod modules;
