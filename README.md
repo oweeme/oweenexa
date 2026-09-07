@@ -6,9 +6,15 @@ Rust, aplicación en TypeScript/JSX.
 **📖 [Guía de instalación y uso](docs/GUIA-DE-INICIO.md)** — empezá acá si
 es la primera vez que ves Nexa: instalación, tu primer proyecto,
 sintaxis de una página, módulos oficiales, islas interactivas,
-empaquetado para escritorio/móvil. Ver también
-`docs/FASES-DE-CONSTRUCCION.md` para el roadmap de construcción por fases,
-con lo que se verificó de cada una.
+empaquetado para escritorio/móvil.
+
+**📚 [Referencia completa](docs/REFERENCIA.md)** — cada función, cada
+atributo, cada opción de `nexa.toml`, organizado por tema (no por cómo
+se construyó). Consultala cuando ya conozcas lo básico y necesites la
+forma exacta de algo puntual.
+
+Ver también `docs/FASES-DE-CONSTRUCCION.md` para el roadmap de
+construcción por fases, con lo que se verificó de cada una.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
 están completas**, más seis fases añadidas después, a partir de uso

@@ -506,6 +506,9 @@ uno, vive en `README.md`)
 
 ## Dónde seguir
 
+- `docs/REFERENCIA.md` — cada función, cada atributo, cada opción de
+  `nexa.toml`, organizado por tema — para cuando ya conocés lo básico y
+  necesitás la forma exacta de algo puntual.
 - `docs/FASES-DE-CONSTRUCCION.md` — el roadmap completo, fase por fase,
   con lo que se verificó de cada una.
 - `docs/POLITICA-DE-VERSIONES.md` — Stable/Experimental/Internal, por
