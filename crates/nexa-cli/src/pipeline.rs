@@ -166,8 +166,10 @@ pub fn compile_page(
     let used_imports = import_map::used_by_page(&all_imports, &component.handlers, &island_specifiers);
     let import_map_script = import_map::script_tag(&used_imports);
 
+    let lang = params.get("locale").map(String::as_str).unwrap_or("es");
     let html = document::assemble(
         &body,
+        lang,
         &combined_head,
         schema_script.as_deref(),
         ui_stylesheet_href,
