@@ -171,6 +171,7 @@ nexa add forms     # validación nativa progresiva (data-nexa-form, data-nexa-er
 nexa add platform  # platform.isTauri/isCapacitor/isWeb + notify/storage/share/capturePhoto
 nexa add telemetry # Web Vitals + errores — necesita además [telemetry] endpoint en nexa.toml
 nexa add pwa       # manifest.webmanifest + service worker real, a partir de [pwa] en nexa.toml
+nexa add nginx     # genera deploy/nginx.conf (gzip, cabeceras de seguridad, fallback de rutas dinámicas)
 nexa add tauri      # genera src-tauri/ (empaqueta dist/ como app de escritorio)
 nexa add capacitor  # genera capacitor.config.json (empaqueta dist/ como app móvil)
 ```
@@ -341,6 +342,45 @@ export default function mount(el: Element, props: Record<string, unknown>): void
   panel tipo Trello/SDLC que ya tengas en Vue puede vivir en el mismo
   proyecto Nexa, sin reescribirlo.
 
+### Escribir una isla a mano con `@nexa/reactivity`
+
+Sin Virtual DOM: una señal (`state`) notifica directamente a quien la
+lea (`effect`/`computed`) — vos tocás el DOM real a mano.
+
+```ts
+import { computed, effect, state } from "@nexa/reactivity";
+
+export default function mount(el: Element, props: Record<string, unknown>) {
+    const tasks = props.tasks as { title: string; done: boolean }[];
+    const filter = state<"all" | "pending">("all");
+
+    // computed: se recalcula solo cuando `filter` o `tasks` cambian, y
+    // solo re-notifica si la lista filtrada realmente es distinta.
+    const visible = computed(() => (filter.value === "pending" ? tasks.filter((t) => !t.done) : tasks));
+
+    const list = document.createElement("ul");
+    el.appendChild(list);
+
+    const stop = effect(() => {
+        list.innerHTML = visible.value.map((t) => `<li>${t.title}</li>`).join("");
+    });
+
+    return stop; // se llama si la isla alguna vez se desmonta
+}
+```
+
+`watch(fuente, callback)` es la otra pieza — igual que `effect`, pero
+**no** corre al crearse, solo cuando la fuente cambia de verdad después
+(útil para reaccionar a un cambio sin dispararse una vez de más al
+montar):
+
+```ts
+watch(
+    () => filter.value,
+    (nuevo) => analytics.track("filtro_cambiado", { valor: nuevo }),
+);
+```
+
 ## PWA (`nexa add pwa`)
 
 ```bash
@@ -406,6 +446,30 @@ se convierte, en `dist/`, en:
 - Esto tiene un costo real de tiempo de build (codificar AVIF no es
   gratis) — una foto de 1920x1080 tarda unos segundos. Si tu proyecto
   tiene muchas fotos, esperá que `nexa build` tarde más que antes.
+
+## Desplegar con nginx (`nexa add nginx`)
+
+```bash
+nexa add nginx
+```
+
+Genera `deploy/nginx.conf` — un archivo real, validado contra un nginx
+de verdad (`nginx -t`), no una plantilla genérica. Trae:
+
+- Las mismas tres cabeceras de seguridad que ya manda `nexa preview`/
+  `nexa dev` en desarrollo (`X-Content-Type-Options`, `X-Frame-Options`,
+  `Referrer-Policy`) — consistente entre desarrollo y producción.
+- `gzip` para texto/JS/CSS/JSON/SVG.
+- Un `try_files` que sirve cualquier ruta estática (incluidas las que
+  `paths`, Fase 17, pre-renderizó) — y un bloque comentado de
+  `proxy_pass` para el caso de tener rutas dinámicas sin `paths`, que
+  necesitan un `nexa preview` corriendo detrás.
+
+Revisá `server_name` y `root` antes de usarlo — están genéricos a
+propósito. Una nota real: el cacheo de `/assets/` es corto (una hora),
+no "para siempre" — los nombres de archivo de Nexa (`nexa-runtime.js`,
+`Home-15.js`) todavía no llevan un hash de contenido, así que cachear
+agresivo serviría JS viejo después de un redeploy.
 
 ## Presupuestos de rendimiento
 

@@ -134,3 +134,62 @@ export const effect: {
     (fn: () => void): () => void;
     client(fn: () => void): () => void;
 } = Object.assign(createEffect, { client: createEffect });
+
+/** Vista de solo lectura de una `Signal` — lo que devuelve `computed()`,
+ * para que nada fuera de este módulo pueda escribirle `.value` a mano
+ * (un valor derivado siempre se recalcula solo, nunca se asigna). */
+export interface ReadonlySignal<T> {
+    readonly value: T;
+    peek(): T;
+}
+
+/**
+ * `computed(() => a.value + b.value)` — una señal de solo lectura,
+ * derivada de otras. Se recalcula automáticamente cuando cambia
+ * cualquier señal que lea adentro (mismo tracking que `effect`), y solo
+ * notifica a quien la lea si el resultado realmente cambió (`Signal`
+ * ya descarta una escritura idéntica vía `Object.is`) — encadenar
+ * `computed(() => otroComputed.value * 2)` funciona igual que con
+ * `state()`, porque por dentro sigue siendo una `Signal` de verdad.
+ *
+ * Encadenar computeds sí tiene un costo real a tener en cuenta: cada
+ * salto (`state` -> `computed A` -> `computed B`) es un `effect` que se
+ * reprograma vía microtask, así que una cadena de N pasos necesita N
+ * vueltas de microtask para terminar de propagarse — no es un defecto
+ * de `computed`, es el mismo comportamiento que tendría encadenar los
+ * `effect()` a mano.
+ */
+export function computed<T>(fn: () => T): ReadonlySignal<T> {
+    const signal = new Signal<T>(undefined as T);
+    effect(() => {
+        signal.value = fn();
+    });
+    return signal;
+}
+
+/**
+ * `watch(() => count.value, (next, prev) => ...)` — a diferencia de
+ * `effect`, NO corre `callback` al crearse: solo cuando `source()`
+ * cambia de verdad después de eso (mismo criterio `Object.is` que
+ * `Signal.value`). Útil para reaccionar a un cambio (navegar, hacer un
+ * `fetch`, etc.) sin que ese código se dispare una vez de más al
+ * montar. Devuelve una función para dejar de observar.
+ */
+export function watch<T>(source: () => T, callback: (value: T, previous: T | undefined) => void): () => void {
+    let previous: T | undefined;
+    let first = true;
+
+    return effect(() => {
+        const value = source();
+        if (first) {
+            first = false;
+            previous = value;
+            return;
+        }
+        if (!Object.is(value, previous)) {
+            const old = previous;
+            previous = value;
+            callback(value, old);
+        }
+    });
+}

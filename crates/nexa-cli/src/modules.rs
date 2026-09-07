@@ -85,6 +85,12 @@ pub const ADDABLE: &[ModuleInfo] = &[
         stability: Stability::Experimental,
         description: "manifest.webmanifest + service worker real generados por nexa build a partir de [pwa] en nexa.toml.",
     },
+    ModuleInfo {
+        name: "nginx",
+        version: "0.1.0",
+        stability: Stability::Experimental,
+        description: "Genera deploy/nginx.conf para servir dist/ — gzip, cabeceras de seguridad, fallback de rutas dinámicas.",
+    },
 ];
 
 /// Módulos que existen pero que **no** se declaran con `nexa add`: son

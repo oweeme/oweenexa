@@ -1,2 +1,3 @@
-export { effect, state, Signal } from "./reactive";
+export { computed, effect, state, watch, Signal } from "./reactive";
+export type { ReadonlySignal } from "./reactive";
 export { bindText } from "./dom";

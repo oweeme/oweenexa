@@ -10,13 +10,36 @@ use nexa_router::scan_pages;
 use tiny_http::{Header, Response};
 
 pub fn respond(status: u16, content_type: Header, body: String) -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_string(body).with_status_code(status).with_header(content_type)
+    with_security_headers(Response::from_string(body).with_status_code(status).with_header(content_type))
 }
 
 /// Como `respond`, pero para contenido binario (imágenes, fuentes...) —
 /// `Response::from_string` asumiría UTF-8 y corrompería esos bytes.
 pub fn respond_bytes(status: u16, content_type: Header, body: Vec<u8>) -> Response<std::io::Cursor<Vec<u8>>> {
-    Response::from_data(body).with_status_code(status).with_header(content_type)
+    with_security_headers(Response::from_data(body).with_status_code(status).with_header(content_type))
+}
+
+/// Fase 20: las mismas tres cabeceras de seguridad que el `nginx.conf`
+/// generado por `nexa add nginx` documenta — en todo lo que sirve
+/// `nexa preview`/`nexa dev`, sin excepción y sin configuración: son
+/// seguras por defecto en cualquier sitio, nunca rompen nada.
+///
+/// Deliberadamente NO incluye `Content-Security-Policy` ni
+/// `Permissions-Policy`: una CSP por defecto rompería el import map de
+/// terceros de la Fase 15 (`stripe`, un CDN de Vue, etc. — no hay forma
+/// de adivinar de antemano qué orígenes un proyecto necesita permitir),
+/// y `Permissions-Policy: camera=()` rompería `platform.capturePhoto()`
+/// en la web (Fase 13). Ambas quedan fuera hasta que haya una forma real
+/// de que el proyecto declare qué necesita — adivinar mal sería peor que
+/// no ponerlas.
+fn with_security_headers<R: std::io::Read>(response: Response<R>) -> Response<R> {
+    response
+        .with_header(Header::from_bytes(&b"X-Content-Type-Options"[..], &b"nosniff"[..]).expect("header válido"))
+        .with_header(Header::from_bytes(&b"X-Frame-Options"[..], &b"SAMEORIGIN"[..]).expect("header válido"))
+        .with_header(
+            Header::from_bytes(&b"Referrer-Policy"[..], &b"strict-origin-when-cross-origin"[..])
+                .expect("header válido"),
+        )
 }
 
 /// Adivina el `Content-Type` de un archivo estático de `public/`/`dist/`
@@ -170,6 +193,24 @@ pub fn json_content_type() -> Header {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn header_value<'a, R: std::io::Read>(response: &'a Response<R>, name: &'static str) -> Option<&'a str> {
+        response.headers().iter().find(|h| h.field.equiv(name)).map(|h| h.value.as_str())
+    }
+
+    #[test]
+    fn respond_always_includes_the_security_headers() {
+        let response = respond(200, html_content_type(), "<p>hola</p>".to_string());
+        assert_eq!(header_value(&response, "X-Content-Type-Options"), Some("nosniff"));
+        assert_eq!(header_value(&response, "X-Frame-Options"), Some("SAMEORIGIN"));
+        assert_eq!(header_value(&response, "Referrer-Policy"), Some("strict-origin-when-cross-origin"));
+    }
+
+    #[test]
+    fn respond_bytes_also_includes_the_security_headers() {
+        let response = respond_bytes(200, css_content_type(), b"body{}".to_vec());
+        assert_eq!(header_value(&response, "X-Content-Type-Options"), Some("nosniff"));
+    }
 
     #[test]
     fn query_param_reads_a_value_from_the_query_string() {

@@ -4,7 +4,7 @@ pub fn run() -> Result<()> {
     println!("Nexa CLI");
     println!("Version: {}", env!("CARGO_PKG_VERSION"));
     println!();
-    println!("Fase actual: 19 — Pipeline de imágenes (AVIF + <picture> real)");
+    println!("Fase actual: 21 — computed()/watch() en @nexa/reactivity");
     println!("Ver docs/FASES-DE-CONSTRUCCION.md para el roadmap completo.");
     Ok(())
 }

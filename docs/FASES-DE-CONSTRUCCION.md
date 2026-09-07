@@ -1305,6 +1305,102 @@ los prefiere y los usa.
 
 ---
 
+## Fase 20 — Adaptador nginx + cabeceras de seguridad (Hito 16) — ✅ completada
+
+**Objetivo:** que salir de `nexa build` a producción no dependa de que
+cada quien reinvente su propio `nginx.conf` a mano, y que las cabeceras
+de seguridad más básicas estén puestas por defecto — en desarrollo
+(`nexa preview`/`nexa dev`) y en el adaptador generado, de forma
+consistente.
+
+**Entregables:**
+- `nexa add nginx`: genera `deploy/nginx.conf` real (mismo patrón que
+  `tauri`/`capacitor`, Fase 13) — gzip (sin `text/html`, que nginx ya
+  comprime siempre), cabeceras de seguridad, y un bloque comentado de
+  `proxy_pass` para las rutas dinámicas que no declaran `paths` (Fase
+  17) y por lo tanto siguen necesitando un `nexa preview` vivo detrás.
+- `X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
+  `Referrer-Policy: strict-origin-when-cross-origin` — las mismas tres
+  cabeceras, aplicadas de verdad en cada respuesta de `nexa preview`/
+  `nexa dev` (`serve::respond`/`respond_bytes`) y documentadas en el
+  `nginx.conf` generado, para que ambos entornos se comporten igual.
+- Deliberadamente **sin** `Content-Security-Policy` ni
+  `Permissions-Policy`: una CSP por defecto rompería el import map de
+  terceros (Fase 15 — Stripe, un CDN de Vue, etc., cuyos orígenes no se
+  pueden adivinar de antemano), y `Permissions-Policy: camera=()`
+  rompería `platform.capturePhoto()` en la web (Fase 13). Ninguna de
+  las dos se puede poner "segura por defecto" sin saber qué necesita
+  cada proyecto — se dejan fuera en vez de adivinar mal.
+
+**Criterio de salida:** el `nginx.conf` generado es válido de verdad
+para un nginx real (`nginx -t`), no solo "se ve razonable" — y sirve
+contenido real con las cabeceras correctas.
+
+> **Dos hallazgos reales, validando con un nginx de verdad (contenedor
+> `docker.io/library/nginx:alpine`), no solo revisando el texto a
+> mano:**
+> 1. La primera versión listaba `text/html` en `gzip_types` — nginx ya
+>    comprime `text/html` siempre que `gzip on` está activo, así que
+>    `nginx -t` marcó "duplicate MIME type" como warning real de
+>    sintaxis. Se sacó de la lista.
+> 2. La receta típica de "assets con cache agresivo e `immutable`" no
+>    aplica todavía a Nexa: los nombres de archivo (`nexa-runtime.js`,
+>    `Home-15.js`) no llevan hash de contenido, así que un `max-age` de
+>    un año serviría JS viejo para siempre después de un redeploy. El
+>    `nginx.conf` generado usa un `max-age` corto a propósito, con un
+>    comentario explicando por qué — no la plantilla genérica de
+>    internet copiada sin pensar.
+>
+> Verificado de punta a punta: `nginx -t` contra el archivo generado
+> por `nexa add nginx` (cero warnings tras el fix), y un contenedor real
+> de nginx sirviendo `dist/` con ese `nginx.conf` — `curl -I` mostró las
+> tres cabeceras de seguridad en la respuesta real, idénticas a las que
+> ya manda `nexa preview`.
+>
+> 234 tests en Rust (workspace completo, +8 sobre la Fase 19): 7 en
+> `nginx_scaffold.rs`, 2 en `serve.rs` (las cabeceras están en toda
+> respuesta, sin excepción) — más 1 ajuste de test.
+
+---
+
+## Fase 21 — `computed()`/`watch()` en `@nexa/reactivity` (Hito 17) — ✅ completada
+
+**Objetivo:** dos primitivas chicas que le faltaban a `@nexa/reactivity`
+para escribir una isla a mano sin reinventar valores derivados o
+reaccionar a un cambio — sin acercarse nunca a un Virtual DOM ni a un
+modelo de componentes (`store`/`resource`/`context`, sugeridos junto
+con estas dos, se dejaron fuera a propósito: para cualquier cosa que
+los necesite de verdad, la respuesta ya construida es una isla con un
+framework real adentro — Fase 16 —, no que Nexa reinvente Pinia/Redux).
+
+**Entregables:**
+- `computed(() => a.value + b.value)`: una `ReadonlySignal` derivada,
+  implementada como una `Signal` interna actualizada dentro de un
+  `effect()` — reutiliza el tracking y el batching que ya existían
+  desde la Fase 4, cero mecanismo nuevo. Encadenar computeds funciona
+  (`computed(() => otroComputed.value * 2)`), con un costo real
+  documentado: cada salto de la cadena es una vuelta más de microtask
+  para terminar de propagarse.
+- `watch(() => fuente.value, (nuevo, viejo) => ...)`: igual que
+  `effect`, pero **no** corre el callback al crearse — solo cuando la
+  fuente cambia de verdad después. Reutiliza `effect()` por dentro.
+
+**Criterio de salida:** ambas primitivas se comportan como se
+documentan, incluida la propagación en cadena.
+
+> Encontrado escribiendo los tests, no antes: dos de ellos fallaban al
+> principio (`computed` encadenado, y `watch` sobre un `computed`)
+> porque solo esperaban una vuelta de microtask — con dos saltos de
+> efecto hacen falta dos. No es un bug de `computed`/`watch`: es el
+> mismo comportamiento que ya tenía encadenar dos `effect()` a mano
+> desde la Fase 4, solo que nunca antes había un test que encadenara
+> dos niveles. Quedó documentado en el propio código, no solo en el test.
+>
+> 18 tests en TypeScript en `@nexa/reactivity` (+10 sobre lo que ya
+> existía).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

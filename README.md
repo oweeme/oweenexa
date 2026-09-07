@@ -11,12 +11,33 @@ empaquetado para escritorio/móvil. Ver también
 con lo que se verificó de cada una.
 
 **Estado actual: las 16 fases originales del roadmap (Fase 0 a Fase 15)
-están completas**, más cuatro fases añadidas después, a partir de uso
+están completas**, más seis fases añadidas después, a partir de uso
 real del framework en proyectos propios. El resto de esta sección es un
 resumen de lo que ya existe, fase por fase — para aprender a usarlo, la
 guía de arriba es el punto de partida.
 
-**Lo más reciente (Fase 19 — Pipeline de imágenes):** `nexa build` ahora
+**Lo más reciente (Fase 21 — `computed()`/`watch()`):** dos primitivas
+chicas para `@nexa/reactivity` — `computed()` deriva un valor de otras
+señales (memoizado, se puede encadenar), `watch()` reacciona a un
+cambio sin correr al crearse (a diferencia de `effect`). Ambas
+reutilizan el mismo `effect()`/scheduler de la Fase 4, sin mecanismo
+nuevo. `store`/`resource`/`context` quedaron fuera a propósito: para lo
+que de verdad los necesita, la respuesta ya construida es montar un
+framework real dentro de una isla (Fase 16), no que Nexa reinvente
+Pinia/Redux.
+
+**Antes (Fase 20 — Adaptador nginx + cabeceras de seguridad):**
+`nexa add nginx` genera un `deploy/nginx.conf` real — validado contra un
+nginx de verdad (`nginx -t`, cero warnings), sirviendo `dist/` con las
+mismas tres cabeceras de seguridad (`X-Content-Type-Options`,
+`X-Frame-Options`, `Referrer-Policy`) que `nexa preview`/`nexa dev` ya
+mandan en cada respuesta. En el camino se encontraron y corrigieron dos
+errores reales de la primera versión: `text/html` duplicado en
+`gzip_types` (nginx ya lo comprime siempre), y una recomendación de
+cache "immutable" de un año que sería insegura hoy — los nombres de
+archivo de Nexa todavía no llevan hash de contenido.
+
+**Antes (Fase 19 — Pipeline de imágenes):** `nexa build` ahora
 optimiza cualquier `<img src="/foto.jpg">` estático solo — sin que el
 desarrollador toque nada. Genera variantes AVIF reales en varios anchos
 y reescribe el HTML a un `<picture>` real. Verificado con una foto real

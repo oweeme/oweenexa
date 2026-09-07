@@ -45,6 +45,10 @@ pub fn run(name: &str) -> Result<()> {
         crate::capacitor_scaffold::scaffold(Path::new("."), &project.project.name)?;
         println!("Generado capacitor.config.json.");
     }
+    if name == "nginx" {
+        crate::nginx_scaffold::scaffold(Path::new("."), &project.project.name)?;
+        println!("Generado deploy/nginx.conf.");
+    }
     // `pwa` (Fase 18) no genera archivos aparte — deja un `[pwa]` real,
     // ya pre-llenado con el nombre del proyecto, directo en nexa.toml
     // (vía el propio `Manifest`, no texto suelto) para que el usuario
@@ -110,6 +114,13 @@ pub fn run(name: &str) -> Result<()> {
         println!("  [pwa.cache]                # opcional — sin esto, todo cae a network-first");
         println!("  \"/assets\" = \"cache-first\"");
         println!("`nexa build` genera dist/manifest.webmanifest y dist/sw.js automáticamente.");
+    }
+
+    if name == "nginx" {
+        println!();
+        println!("Revisá deploy/nginx.conf antes de usarlo: ajustá `server_name` a tu dominio real,");
+        println!("y si tenés rutas dinámicas sin `paths` declarado (Fase 17), descomentá el bloque");
+        println!("`proxy_pass` del final apuntando a un `nexa preview` corriendo detrás.");
     }
 
     Ok(())

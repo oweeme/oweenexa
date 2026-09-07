@@ -12,6 +12,7 @@ mod import_map;
 mod lockfile;
 mod manifest;
 mod modules;
+mod nginx_scaffold;
 mod page_resolver;
 mod performance_budget;
 mod pipeline;
