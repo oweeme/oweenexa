@@ -6,6 +6,7 @@ function initRouter(options = {}) {
   const root = options.root ?? document;
   const fetchPage = options.fetchPage ?? defaultFetcher;
   const cache = options.cache ?? /* @__PURE__ */ new Map();
+  const onNavigate = options.onNavigate;
   const onClick = (event) => {
     if (event.defaultPrevented || event.button !== 0) return;
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -23,6 +24,7 @@ function initRouter(options = {}) {
     const html = cache.get(path) ?? await fetchPage(path);
     cache.delete(path);
     applyPage(root, html);
+    onNavigate?.(root);
     if (push) {
       history.pushState({}, "", url);
     }

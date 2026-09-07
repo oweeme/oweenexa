@@ -688,9 +688,9 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
 - El tree-shaking de `@nexa/ui` es a nivel de sitio completo, no por
   página individual.
 - `initRouter` reemplaza `<body>` completo en cada navegación — no hay
-  contenedor de página más fino, y una isla montada no se desmonta
-  limpiamente al navegar a otra página de Nexa (memory leak menor; no
-  aplica si tu app entera vive en una sola ruta).
+  contenedor de página más fino. Sí reactiva correctamente eventos,
+  formularios e islas de la página de destino (Fase 22), y limpia los
+  de la página anterior antes de hacerlo.
 - `t(...)` no soporta interpolación, pluralización, ni clave dinámica —
   y no hay fallback automático a otro locale si falta una clave.
 - `@nexa/forms` valida solo con la Constraint Validation API nativa —

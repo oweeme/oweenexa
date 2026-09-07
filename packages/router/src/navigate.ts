@@ -8,6 +8,18 @@ export interface InitRouterOptions {
      * a ella no dispara un segundo fetch.
      */
     cache?: Map<string, string>;
+    /**
+     * Se llama después de reemplazar `<body>` con el contenido de la
+     * página de destino — es lo que le permite a quien arma el bootstrap
+     * (`nexa-cli::bootstrap`) reactivar esa página nueva: su manifiesto
+     * de eventos, sus formularios, sus islas. Sin esto, el contenido
+     * nuevo queda con el HTML correcto pero sin nada de JS activado —
+     * un `<script>` insertado vía `innerHTML` nunca se ejecuta solo, es
+     * un comportamiento estándar del navegador, no un bug de Nexa. Bug
+     * real encontrado con un navegador real: un botón en la página de
+     * destino de una navegación SPA no respondía a clics en absoluto.
+     */
+    onNavigate?: (root: Document) => void;
 }
 
 /**
@@ -28,6 +40,7 @@ export function initRouter(options: InitRouterOptions = {}): () => void {
     const root = options.root ?? document;
     const fetchPage = options.fetchPage ?? defaultFetcher;
     const cache = options.cache ?? new Map<string, string>();
+    const onNavigate = options.onNavigate;
 
     const onClick = (event: MouseEvent) => {
         if (event.defaultPrevented || event.button !== 0) return;
@@ -51,6 +64,7 @@ export function initRouter(options: InitRouterOptions = {}): () => void {
         cache.delete(path);
 
         applyPage(root, html);
+        onNavigate?.(root);
         if (push) {
             history.pushState({}, "", url);
         }

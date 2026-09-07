@@ -1401,6 +1401,76 @@ documentan, incluida la propagación en cadena.
 
 ---
 
+## Fase 22 — Reactivación real tras navegación SPA (Hito 18) — ✅ completada
+
+**Objetivo:** un bug de correctitud real, encontrado con un navegador
+real mientras se documentaba el framework para la Fase de referencia:
+navegar por un link interno (`initRouter`, Fase 6) a otra página de
+Nexa dejaba esa página de destino con el HTML correcto pero **cero JS
+activado** — ni botones, ni formularios, ni islas. Es, con diferencia,
+el bug más grave encontrado en toda la construcción de Nexa: afecta a
+cualquier sitio con más de una página interactiva navegada por SPA.
+
+**Por qué pasaba:** `initRouter` reemplaza `<body>` con
+`element.innerHTML = ...` — un `<script>` insertado así **nunca se
+ejecuta**, es comportamiento estándar de cualquier navegador, no algo
+que `packages/router` pudiera evitar por su cuenta. El manifiesto de
+activación de la página de destino, embebido como argumento de una
+llamada dentro de ese `<script>`, quedaba inerte para siempre.
+
+**Entregables:**
+- `initRouter` acepta `onNavigate?: (root) => void`, llamado justo
+  después de reemplazar `<body>`.
+- El manifiesto de activación se embebe también como datos inertes
+  (`<script type="application/json" data-nexa-manifest>`), que sí
+  sobrevive el reemplazo — a diferencia de una llamada dentro de un
+  `<script type="module">`. La activación inicial de la propia página
+  ahora lee de ahí también (una sola fuente de verdad, en vez de
+  embeber el JSON dos veces).
+- **Toda página, tenga o no contenido interactivo propio**, lleva una
+  función `reactivate(root)` — cualquier página puede navegarse *hacia*
+  una que sí lo tenga. Usa `import()` dinámico a propósito: el costo de
+  `@nexa/runtime`/`forms`/`islands` solo se paga si la página de
+  destino de verdad los necesita, nunca antes — la disciplina de costo
+  cero se mantiene, ahora evaluada por navegación en vez de fija en
+  tiempo de compilación.
+- Antes de reactivar, se limpian los disposers de la página anterior
+  (`disposeActivation`/`disposeForms`/`disposeIslands`) — esto también
+  resuelve, como efecto colateral correcto, la fuga que tenían las
+  islas al navegar (documentada como límite conocido hasta esta fase).
+
+**Criterio de salida:** un botón/formulario/isla en una página a la que
+se llega navegando por un link interno funciona igual que si se hubiera
+cargado con `nexa preview`/`nexa dev` directo — y no se activa dos
+veces al volver a visitarla.
+
+> **Encontrado y arreglado con un navegador real, no en el código:**
+> un proyecto de dos páginas (`/` estática, `/other` con un botón) —
+> `page.click("a[href='/other']")` seguido de un clic real en el
+> botón — confirmó el bug (el texto nunca cambiaba) antes del fix, y
+> lo confirmó arreglado después. En el camino, dos hallazgos más:
+> 1. La primera versión del fix embebía el manifiesto una segunda vez,
+>    sin escapar, directo en el `<script type="module">` — el propio
+>    test de regresión (`</script><script>alert(1)` como nombre de
+>    handler) lo encontró antes de llegar a ningún navegador.
+> 2. Verificar el fix requirió recordar reconstruir
+>    `crates/nexa-cli/assets/nexa-router.js` (`npm run
+>    build:cli-assets`) — el binario de Rust embebe ese archivo ya
+>    compilado; editar el TypeScript fuente no alcanza solo.
+>
+> Verificado además que un formulario en una página a la que se llega
+> por navegación SPA valida de verdad (`@nexa/forms` reactivado), y que
+> visitar la misma página varias veces no duplica el manejador de
+> eventos (un solo clic sigue disparando el handler una sola vez).
+>
+> 240 tests en Rust (workspace completo, +3 sobre la Fase 21: la
+> función `reactivate` presente en toda página, el manifiesto embebido
+> como JSON inerte, y el escape de `</script>` dentro de un valor del
+> manifiesto) + 2 nuevos en `@nexa/router` (`onNavigate` se llama tanto
+> sirviendo por red como desde caché de prefetch).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

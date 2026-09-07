@@ -576,7 +576,11 @@ test("el botón agrega el producto al carrito", () => {
   (no `class={expr}`), y es a nivel de sitio completo (`nexa build` junta
   todas las páginas), no por página individual.
 - `initRouter` reemplaza `<body>` completo, no un fragmento más fino: no
-  existe todavía un contenedor de página estable.
+  existe todavía un contenedor de página estable. Sí reactiva
+  correctamente eventos/formularios/islas de la página de destino
+  (Fase 22) y limpia los de la anterior — bug real que existió hasta
+  esa fase (una página a la que se llegaba por navegación SPA quedaba
+  con cero JS activado).
 - `t(...)` reconoce exactamente un patrón sintáctico: un identificador
   llamado `t` con un único argumento string literal (`t("clave")`). Ni
   interpolación (`t("hola {name}")`), ni pluralización, ni una clave

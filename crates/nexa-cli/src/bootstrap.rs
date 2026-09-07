@@ -26,6 +26,22 @@ use crate::assets::{
 /// cero que `has_forms`. `has_pwa` (Fase 18) registra `/sw.js` — no hace
 /// falta un paquete/import propio, es una sola llamada nativa del
 /// navegador.
+///
+/// **Reactivación en navegación SPA (bug real, encontrado con un
+/// navegador real):** `initRouter` reemplaza `<body>` vía `innerHTML` —
+/// eso nunca ejecuta el `<script>` de la página de destino (es
+/// comportamiento estándar del navegador, no algo que se pueda evitar
+/// desde `packages/router`). Sin nada más, cualquier página a la que se
+/// navega por un link interno queda con el HTML correcto pero CERO JS
+/// activado: ni botones, ni formularios, ni islas. Por eso el manifiesto
+/// se embebe también como datos inertes (`<script
+/// type="application/json" data-nexa-manifest>`, que sí sobrevive el
+/// reemplazo, a diferencia de una llamada dentro de un `<script
+/// type="module">`), y **toda página** — tenga o no contenido
+/// interactivo propio — lleva una función `reactivate(root)` que
+/// `initRouter` llama después de cada navegación: relee ese manifiesto
+/// del DOM ya reemplazado, y carga (con `import()` dinámico — recién
+/// ahí, nunca antes) lo que la página de destino necesite.
 pub fn inject(
     html: &str,
     manifest: &ActivationManifest,
@@ -34,6 +50,16 @@ pub fn inject(
     has_pwa: bool,
     telemetry_endpoint: Option<&str>,
 ) -> String {
+    let mut prelude = String::new();
+    if !manifest.is_empty() {
+        let manifest_json = manifest.to_json_pretty().unwrap_or_else(|_| "{}".to_string());
+        // Mismo cuidado que `nexa-seo::schema::render_schema_script`:
+        // un `</script>` dentro de un valor de texto no debe poder
+        // cerrar este tag antes de tiempo.
+        let safe_json = manifest_json.replace("</script>", "<\\/script>");
+        prelude.push_str(&format!("<script type=\"application/json\" data-nexa-manifest>{safe_json}</script>\n"));
+    }
+
     let mut script = String::from("<script type=\"module\">\n");
     script.push_str(&format!(
         "import {{ initRouter, initPrefetch }} from \"/assets/{NEXA_ROUTER_FILENAME}\";\n"
@@ -54,17 +80,24 @@ pub fn inject(
         script.push_str(&format!("import {{ initTelemetry }} from \"/assets/{NEXA_TELEMETRY_FILENAME}\";\n"));
     }
 
-    script.push_str("initRouter();\ninitPrefetch();\n");
+    script.push_str(REACTIVATE_FN);
+
+    script.push_str("initRouter({ onNavigate: reactivate });\ninitPrefetch();\n");
 
     if !manifest.is_empty() {
-        let manifest_json = manifest.to_json_pretty().unwrap_or_else(|_| "{}".to_string());
-        script.push_str(&format!("initActivation({manifest_json});\n"));
+        // Lee del mismo `<script data-nexa-manifest>` inerte de arriba
+        // en vez de embeber el JSON una segunda vez acá — una sola
+        // fuente de verdad, y una sola vez por la que hay que
+        // preocuparse de escapar `</script>` dentro de un valor.
+        script.push_str(
+            "disposeActivation = initActivation(JSON.parse(document.querySelector(\"script[data-nexa-manifest]\").textContent));\n",
+        );
     }
     if has_forms {
-        script.push_str("initForms();\n");
+        script.push_str("disposeForms = initForms();\n");
     }
     if has_islands {
-        script.push_str("initIslands();\n");
+        script.push_str("disposeIslands = initIslands();\n");
     }
     if let Some(endpoint) = telemetry_endpoint {
         // `serde_json::to_string` en vez de interpolar el string a mano:
@@ -79,8 +112,42 @@ pub fn inject(
 
     script.push_str("</script>\n");
 
-    insert_before_closing_tag(html, "body", &script)
+    insert_before_closing_tag(html, "body", &format!("{prelude}{script}"))
 }
+
+/// Se emite igual en toda página, tenga o no contenido interactivo
+/// propio: cualquier página puede navegarse *hacia* una que sí lo
+/// tenga. Usa `import()` dinámico a propósito — recién se paga el costo
+/// de `@nexa/runtime`/`forms`/`islands` si la página de destino de
+/// verdad los necesita, nunca antes. Los `import()` de una página que
+/// además los cargó estático (arriba) resuelven del propio caché de
+/// módulos del navegador — no hay descarga duplicada.
+const REACTIVATE_FN: &str = r#"
+let disposeActivation = () => {};
+let disposeForms = () => {};
+let disposeIslands = () => {};
+
+async function reactivate(root) {
+    disposeActivation();
+    disposeForms();
+    disposeIslands();
+    disposeActivation = disposeForms = disposeIslands = () => {};
+
+    const manifestEl = root.querySelector("script[data-nexa-manifest]");
+    if (manifestEl) {
+        const { initActivation } = await import("/assets/nexa-runtime.js");
+        disposeActivation = initActivation(JSON.parse(manifestEl.textContent), { root });
+    }
+    if (root.querySelector("[data-nexa-form]")) {
+        const { initForms } = await import("/assets/nexa-forms.js");
+        disposeForms = initForms(root);
+    }
+    if (root.querySelector("[data-nexa-island]")) {
+        const { initIslands } = await import("/assets/nexa-islands.js");
+        disposeIslands = initIslands({ root });
+    }
+}
+"#;
 
 /// Inserta `fragment` justo antes de `</{tag}>` (o al final del
 /// documento si esa etiqueta no existe). La usa este módulo para
@@ -106,9 +173,73 @@ mod tests {
         let out = inject(html, &ActivationManifest::new(), false, false, false, None);
 
         assert!(out.contains("/assets/nexa-router.js"));
-        assert!(!out.contains("/assets/nexa-runtime.js"));
-        assert!(!out.contains("/assets/nexa-forms.js"));
-        assert!(out.contains("initRouter();"));
+        // Ni `@nexa/runtime` ni `@nexa/forms` se cargan de forma
+        // *estática* (import de nivel superior) para esta página — pero
+        // `reactivate()` (Fase 22) sí puede pedirlos con `import()`
+        // dinámico si algún día se navega A una página que sí los usa;
+        // esa referencia sí aparece en el texto de esa función, a
+        // propósito, y no debe confundirse con una carga eager.
+        assert!(!out.contains("import { initActivation }"));
+        assert!(!out.contains("import { initForms }"));
+        assert!(out.contains("initRouter({ onNavigate: reactivate });"));
+    }
+
+    #[test]
+    fn every_page_defines_reactivate_even_with_no_interactive_content_of_its_own() {
+        // Bug real: sin esto, navegar (SPA) DESDE una página estática
+        // HACIA una con botones/formularios/islas dejaba esa página de
+        // destino con cero JS activado — un <script> insertado vía
+        // innerHTML nunca se ejecuta solo.
+        let html = "<html><body><p>hola</p></body></html>";
+        let out = inject(html, &ActivationManifest::new(), false, false, false, None);
+
+        assert!(out.contains("async function reactivate(root)"));
+        assert!(out.contains("initRouter({ onNavigate: reactivate });"));
+    }
+
+    #[test]
+    fn embeds_the_manifest_as_inert_json_that_survives_an_innerhtml_swap() {
+        let mut manifest = ActivationManifest::new();
+        manifest.insert(
+            3,
+            ActivationEntry {
+                event: "click".into(),
+                handler: "buy".into(),
+                module: "/assets/ProductPage-3.js".into(),
+                strategy: Strategy::Interaction,
+            },
+        );
+
+        let html = "<html><body><button data-nexa=\"3\">Comprar</button></body></html>";
+        let out = inject(html, &manifest, false, false, false, None);
+
+        assert!(out.contains("<script type=\"application/json\" data-nexa-manifest>"));
+        assert!(out.contains("\"handler\": \"buy\""));
+        // El script inerte tiene que ir ANTES del <script type="module">
+        // — no hace falta que ninguno se ejecute en un orden particular
+        // para funcionar, pero así es más fácil de leer en el HTML real.
+        let inert_pos = out.find("data-nexa-manifest").unwrap();
+        let module_pos = out.find("<script type=\"module\">").unwrap();
+        assert!(inert_pos < module_pos);
+    }
+
+    #[test]
+    fn escapes_a_closing_script_tag_inside_the_embedded_manifest() {
+        let mut manifest = ActivationManifest::new();
+        manifest.insert(
+            1,
+            ActivationEntry {
+                event: "click".into(),
+                handler: "</script><script>alert(1)".into(),
+                module: "/assets/x-1.js".into(),
+                strategy: Strategy::Interaction,
+            },
+        );
+
+        let html = "<html><body><button data-nexa=\"1\"></button></body></html>";
+        let out = inject(html, &manifest, false, false, false, None);
+
+        assert!(!out.contains("</script><script>alert(1)"));
     }
 
     #[test]
@@ -177,8 +308,11 @@ mod tests {
         let html = "<html><body><p>hola</p></body></html>";
         let out = inject(html, &ActivationManifest::new(), false, false, false, None);
 
-        assert!(!out.contains("nexa-islands.js"));
-        assert!(!out.contains("initIslands();"));
+        // No hay import estático ni llamada inicial a initIslands() —
+        // `reactivate()` sí puede pedirlo dinámico para una página de
+        // destino distinta, eso es intencional (ver el test de arriba).
+        assert!(!out.contains("import { initIslands }"));
+        assert!(!out.contains("disposeIslands = initIslands();"));
     }
 
     #[test]

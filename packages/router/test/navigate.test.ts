@@ -98,6 +98,38 @@ describe("initRouter — Fase 6, criterio de salida", () => {
         expect(fetchPage).not.toHaveBeenCalled();
     });
 
+    it("llama a onNavigate con el root después de reemplazar el body", async () => {
+        // Bug real: sin esto, un <script> de la página de destino
+        // insertado vía innerHTML nunca se ejecuta solo — el manifiesto
+        // de esa página nunca se activa. `onNavigate` es lo que le
+        // permite a quien arma el bootstrap reactivar el contenido nuevo.
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(pageHtml("Otra", "<button>x</button>"));
+        const onNavigate = vi.fn();
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage, onNavigate });
+
+        click(a);
+        await vi.waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+
+        expect(onNavigate).toHaveBeenCalledWith(document);
+        // Para cuando se llama, el body ya tiene que estar reemplazado.
+        expect(document.body.innerHTML).toContain("<button>x</button>");
+    });
+
+    it("llama a onNavigate también cuando sirve desde la caché de prefetch", async () => {
+        const fetchPage = vi.fn<PageFetcher>();
+        const cache = new Map<string, string>([["/otra", pageHtml("Otra", "<p>cache</p>")]]);
+        const onNavigate = vi.fn();
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage, cache, onNavigate });
+
+        click(a);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(onNavigate).toHaveBeenCalledTimes(1);
+    });
+
     it("dispose() deja de interceptar clics", async () => {
         const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(pageHtml("X", "<p>x</p>"));
         const a = link("/about");
