@@ -807,6 +807,9 @@ const stop = platform.lifecycle.onChange((state) => { ... })   // suscripción a
 
 const position = await platform.geolocation.getCurrentPosition()   // Fase 51 — { coords: { latitude, longitude, accuracy, ... }, timestamp }
 const stopWatch = platform.geolocation.watchPosition((position) => { ... })   // suscripción a cambios de posición; llamar stopWatch() para cancelarla
+
+const launch = await platform.deepLinks.getLaunchUrl()   // Fase 52 — { url: string }: "" en Web/Tauri (una página no se "lanza" con un deep link)
+const stopOpen = platform.deepLinks.onOpen((event) => { ... })   // suscripción a que la app se reabra con una URL; no dispara nunca en Web/Tauri
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -848,6 +851,16 @@ Geolocation API estándar del navegador (`navigator.geolocation`) — la
 misma API que usa la propia rama web de `@capacitor/geolocation` por
 dentro. La forma de `Position` coincide en ambos casos, sin necesidad
 de normalizar nada entre ramas.
+
+`platform.deepLinks` (Fase 52, cuarto plugin del issue #20): Capacitor
+nativo usa el plugin real `@capacitor/app` (`getLaunchUrl`/
+`appUrlOpen`). Web/Tauri: `getLaunchUrl()` siempre devuelve `{ url: "" }`
+y `onOpen()` nunca dispara — no es una limitación inventada, es
+literalmente lo que hace la propia rama web de `@capacitor/app`
+(`AppWeb`) para ambos casos, verificado leyendo su código fuente. Tiene
+sentido: una página no se "lanza" con una URL de deep link distinta de
+la que ya está cargada, ni se "reabre" con otra URL mientras sigue
+corriendo — cada URL nueva en un navegador es una navegación distinta.
 
 ## `@nexa/reactivity`
 

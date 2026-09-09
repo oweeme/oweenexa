@@ -9,6 +9,7 @@ import { theme } from "./theme";
 import { network } from "./network";
 import { lifecycle } from "./lifecycle";
 import { geolocation } from "./geolocation";
+import { deepLinks } from "./deeplinks";
 
 export { isTauri, isCapacitor, isWeb, currentGlobal, capacitorPlugin } from "./environment";
 export type { NexaPlatformGlobal } from "./environment";
@@ -32,6 +33,8 @@ export { getLifecycleState, onLifecycleChange, lifecycle } from "./lifecycle";
 export type { LifecycleState, LifecycleDeps, CapacitorAppPlugin } from "./lifecycle";
 export { getCurrentPosition, watchPosition, geolocation } from "./geolocation";
 export type { Position, Coordinates, GeolocationOptions, GeolocationDeps, CapacitorGeolocationPlugin } from "./geolocation";
+export { getLaunchUrl, onOpen, deepLinks } from "./deeplinks";
+export type { LaunchUrl, AppUrlOpenEvent, DeepLinksDeps, CapacitorAppLinksPlugin } from "./deeplinks";
 
 /**
  * El objeto que de verdad se usa desde un handler de una página Nexa
@@ -56,4 +59,5 @@ export const platform = {
     network,
     lifecycle,
     geolocation,
+    deepLinks,
 };

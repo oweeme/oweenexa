@@ -3214,6 +3214,56 @@ documentado.
 > **Quedan pendientes, mismo issue:** deep links, push real, biometría,
 > haptics.
 
+## Fase 52 — `platform.deepLinks` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #20 — cuarto plugin de la lista incremental (deep
+links, siguiente en el orden sugerido tras geolocalización).
+
+**Entregables:**
+
+- `packages/platform/src/deeplinks.ts` (nuevo): `getLaunchUrl()`
+  (`{ url: string }`) y `onOpen(callback)` (mismo contrato de
+  cancelación que el resto de los plugins incrementales). Capacitor
+  nativo: el plugin real `@capacitor/app` (`getLaunchUrl`/
+  `addListener("appUrlOpen", ...)`). Web/Tauri: `getLaunchUrl()`
+  siempre `{ url: "" }` y `onOpen()` nunca dispara — no inventado: es
+  literalmente lo que hace la propia rama web de `@capacitor/app`
+  (`AppWeb.getLaunchUrl()` devuelve `{ url: '' }` sin condición, y
+  nunca llama a `notifyListeners("appUrlOpen", ...)`), verificado
+  instalando el paquete real y leyendo su `web.js` compilado, no solo
+  sus `.d.ts`.
+- Expuesto como `platform.deepLinks.getLaunchUrl`/`platform.deepLinks.onOpen`
+  en `packages/platform/src/index.ts`.
+- 8 tests nuevos en `packages/platform/test/deeplinks.test.ts` (89
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** mismos tres criterios del issue por plugin —
+las dos ramas reales sin inventar la forma del plugin nativo, tests,
+documentado.
+
+> **Por qué la rama web no aproxima nada (ni siquiera `location.href`):**
+> la primera idea fue que `getLaunchUrl()` devolviera `location.href`
+> en Web/Tauri (parecía razonable: "la URL con la que se cargó esta
+> página"). Leer el código fuente real de `@capacitor/app` mostró que
+> su propia rama web no hace eso — devuelve `{ url: '' }` siempre, sin
+> condición. La semántica de "launch URL" es específicamente sobre
+> deep links de una app nativa (un esquema de URL personalizado que
+> abrió la app), no sobre cualquier URL con la que se cargó una página
+> — replicar exactamente ese comportamiento, en vez de la aproximación
+> que parecía razonable a primera vista, es lo que exige la disciplina
+> de "verificado contra el código fuente real, nunca inventado" que ya
+> rige el resto de `@nexa/platform`.
+>
+> **Verificado en Chromium real (Playwright), no solo en vitest:**
+> dentro de una página Nexa real compilada, `platform.deepLinks.getLaunchUrl()`
+> devolvió `{"url":""}` de verdad, y suscribirse con `onOpen()` no
+> lanzó ningún error y nunca invocó el callback — confirma que el
+> chunk se importa y expone correctamente, más allá de lo que ya
+> prueban los tests unitarios con dependencias inyectadas.
+>
+> **Quedan pendientes, mismo issue:** push real, biometría, haptics.
+
 ---
 
 ## Regla de disciplina para todas las fases

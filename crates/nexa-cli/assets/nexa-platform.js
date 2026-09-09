@@ -374,6 +374,45 @@ function watchPosition(callback, options = {}, deps = {}) {
 }
 var geolocation = { getCurrentPosition, watchPosition };
 
+// packages/platform/src/deeplinks.ts
+async function getLaunchUrl(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "App");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/app no est\xE1 instalado en esta app.");
+    }
+    const result = await plugin.getLaunchUrl();
+    return result ?? { url: "" };
+  }
+  return { url: "" };
+}
+function onOpen(callback, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "App");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/app no est\xE1 instalado en esta app.");
+    }
+    let cancelled = false;
+    let handle;
+    plugin.addListener("appUrlOpen", callback).then((h) => {
+      if (cancelled) {
+        void h.remove();
+      } else {
+        handle = h;
+      }
+    });
+    return () => {
+      cancelled = true;
+      void handle?.remove();
+    };
+  }
+  return () => {
+  };
+}
+var deepLinks = { getLaunchUrl, onOpen };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -389,7 +428,8 @@ var platform = {
   theme,
   network,
   lifecycle,
-  geolocation
+  geolocation,
+  deepLinks
 };
 export {
   capacitorPlugin,
@@ -397,8 +437,10 @@ export {
   createSessionStorage,
   createStorage,
   currentGlobal,
+  deepLinks,
   geolocation,
   getCurrentPosition,
+  getLaunchUrl,
   getLifecycleState,
   getNetworkStatus,
   isCapacitor,
@@ -409,6 +451,7 @@ export {
   notify,
   onLifecycleChange,
   onNetworkChange,
+  onOpen,
   openCache,
   openCollection,
   platform,
