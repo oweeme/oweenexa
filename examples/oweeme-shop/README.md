@@ -53,6 +53,11 @@ Luego abre `http://127.0.0.1:4950/es` (o `/en`).
   PHP, `seo`/`schema` de `Product` reales, y el botón de "Comprar" que
   usa `stripe.load(...)` — el paquete de comunidad de referencia.
 - `src/pages/[locale]/contact.tsx` — `@nexa/forms` con validación nativa.
+- `src/pages/[locale]/articles.tsx` — vendoring de un paquete npm real
+  sin envoltorio propio (`marked`, ver `docs/VENDORING.md`, Fase 46):
+  vista previa en vivo de Markdown mientras se escribe. A diferencia de
+  Stripe, acá no hay ningún código de Nexa en el medio — `marked.js` es
+  el bundle del paquete tal cual lo publica su autor.
 - `nexa.toml` — `[dependencies]`, `[performance]` (presupuestos reales),
   y `[imports]` (`stripe`, `productFilter`, `dashboardIsland` — mismo
   mecanismo de las Fases 15 y 16).
@@ -62,6 +67,9 @@ Luego abre `http://127.0.0.1:4950/es` (o `/en`).
   respectivamente. Regenéralos desde la raíz del repo si tocas esos
   archivos, por ejemplo:
   `npx esbuild examples/oweeme-shop/src/islands/productFilter.island.ts --bundle --format=esm --target=es2022 --outfile=examples/oweeme-shop/public/vendor/product-filter-island.js`
+- `public/vendor/marked.js` — bundle real (esbuild) del paquete npm
+  `marked`, sin ningún wrapper de Nexa (ver `docs/VENDORING.md`, Fase
+  46, para el proceso completo de regenerarlo).
 - `backend/index.php` — un backend real en un lenguaje distinto al que
   se usó en las fases anteriores (Node/Python), sin tocar el core de
   Nexa para nada. Incluye `/products` (catálogo completo, para la isla

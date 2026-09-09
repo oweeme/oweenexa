@@ -24,3 +24,9 @@ stripe = "/vendor/nexa-stripe.js"
 # identificadores dentro de un handler.
 productFilter = "/vendor/product-filter-island.js"
 dashboardIsland = "/vendor/dashboard-island.js"
+# Vendoring directo sin paquete wrapper (Fase 46, issue #21, ver
+# docs/VENDORING.md): a diferencia de `stripe` (que necesitaba código
+# propio en packages/stripe/), `marked` se usa tal cual lo publica su
+# autor — `public/vendor/marked.js` es un bundle real (esbuild) del
+# paquete npm `marked`, sin ninguna capa de Nexa en el medio.
+marked = "/vendor/marked.js"

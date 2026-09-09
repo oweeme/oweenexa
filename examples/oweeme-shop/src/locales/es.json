@@ -17,5 +17,12 @@
         "email": "Correo",
         "message": "Mensaje",
         "send": "Enviar"
+    },
+    "articles": {
+        "title": "Artículos",
+        "subtitle": "Vista previa en vivo de Markdown, con marked vendorizado (issue #21)",
+        "writeLabel": "Escribí",
+        "previewLabel": "Vista previa",
+        "placeholder": "# Un título\n\nEscribí *Markdown* acá."
     }
 }

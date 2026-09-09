@@ -2896,6 +2896,60 @@ verificado con `nexa build`/`nexa lint` reales, no solo `cargo test`.
 > contra una clave sin ningún `{unused}`) también falló con un mensaje
 > igual de claro.
 
+## Fase 46 — Guía de vendoring de paquetes npm (Hito 12) — ✅ completada
+
+**Objetivo:** issue #21 — `[imports]` solo declara un nombre y una URL;
+conseguir que el archivo exista era "responsabilidad del proyecto" sin
+ninguna guía, y el único ejemplo real era Stripe (que además necesita
+un envoltorio propio, no el caso más simple).
+
+**Entregables:**
+
+- `docs/VENDORING.md` (nuevo): el proceso paso a paso (instalar el
+  paquete en cualquier lado con npm, un `entry.js` que re-exporte lo
+  necesario, `esbuild --bundle --format=esm`, copiar a `public/vendor/`,
+  declarar en `[imports]`, usar desde un handler) — con dos casos
+  documentados: vendoring directo (sin wrapper) y con un envoltorio
+  propio (`packages/stripe`, ya existente, citado como ejemplo real).
+- Enlazado desde `docs/REFERENCIA.md`, sección `[imports]`.
+- Segundo ejemplo real, `marked` (npm real, sin wrapper), vendorizado
+  siguiendo la guía: `examples/oweeme-shop/public/vendor/marked.js`
+  (bundle real de esbuild, 55kb), declarado en `nexa.toml [imports]`, y
+  usado en una página nueva,
+  `src/pages/[locale]/articles.tsx` — una vista previa en vivo de
+  Markdown mientras se escribe un artículo (el caso concreto que cita
+  el propio issue: "`marked`, ya lo usás para artículos").
+
+**Criterio de salida:** guía documentada paso a paso; segundo ejemplo
+real (además de Stripe) vendorizado y probado de punta a punta.
+
+> **Por qué la vista previa de Markdown corre 100% en el cliente:**
+> Nexa nunca ejecuta JavaScript en build time (es un compilador/
+> analizador estático en Rust) — `marked.parse(...)` no puede formar
+> parte del HTML servidor-renderizado de un artículo ya publicado (ese
+> seguiría siendo texto resuelto por `load()`, un campo más de
+> `data.*`). Lo que sí es un caso de uso real y honesto es la
+> herramienta de *autoría*: alguien escribiendo Markdown y viendo el
+> resultado antes de guardarlo — que es justo lo que demuestra el
+> ejemplo.
+>
+> **Verificado de punta a punta con un navegador real (Playwright):**
+> el `<textarea>` trae su valor por defecto como HTML real generado por
+> el servidor (sin JS); escribir Markdown ahí (`# Hola`, `*artículo*`,
+> `**marked**`) actualiza la vista previa con el HTML real que produce
+> `marked.parse(...)` (`<h1>Hola</h1>`, `<em>artículo</em>`,
+> `<strong>marked</strong>` — no simulado ni mockeado).
+>
+> **Bug real encontrado en el propio proceso de verificación:** el
+> primer intento contra `nexa preview` dio 404 en `/vendor/marked.js`
+> — `public/vendor/marked.js` existía, pero `nexa preview` sirve desde
+> `dist/`, y `dist/vendor/` recién se genera con un `nexa build` previo
+> (documentado ya en el README del ejemplo para los otros vendors, pero
+> lo pasé por alto al agregar uno nuevo). Un `nexa build` antes de
+> `nexa preview` lo resolvió — no es un bug de Nexa, es exactamente el
+> comportamiento que el propio README de `examples/oweeme-shop` ya
+> documentaba para `nexa-stripe.js`.
+
 ---
 
 ## Regla de disciplina para todas las fases

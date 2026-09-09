@@ -1007,6 +1007,15 @@ async function checkout() {
 Solo entra al `<script type="importmap">` del `<head>` lo que la página
 de verdad usa — una página sin `stripe.` no lo declara ni lo carga.
 
+Conseguir que `/vendor/nexa-stripe.js` (o el archivo que sea) exista es
+responsabilidad del proyecto — ver **`docs/VENDORING.md`** (Fase 46)
+para el proceso paso a paso de tomar un paquete de npm cualquiera
+(`marked`, Firebase Auth, el SDK de PayPal...) y bundlearlo a un único
+archivo ESM servible, con dos ejemplos reales ya probados:
+`packages/stripe` (con un envoltorio propio) y `marked` en
+`examples/oweeme-shop/src/pages/[locale]/articles.tsx` (vendorizado
+directo, sin wrapper).
+
 ## Imágenes optimizadas automáticamente
 
 Sin configuración: `nexa build` optimiza todo `<img src="/foto.jpg">`
