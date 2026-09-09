@@ -1,0 +1,31 @@
+.nx-breadcrumbs {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    font-family: var(--nx-font-body);
+    font-size: 0.875rem;
+}
+
+.nx-breadcrumbs-link {
+    color: var(--nx-color-text);
+    text-decoration: none;
+    opacity: 0.7;
+}
+
+.nx-breadcrumbs-link:hover {
+    opacity: 1;
+    color: var(--nx-color-primary);
+}
+
+.nx-breadcrumbs-link:not(:last-child)::after {
+    content: "/";
+    margin: 0 var(--nx-space-2);
+    color: var(--nx-color-border);
+    opacity: 1;
+}
+
+.nx-breadcrumbs-link[aria-current] {
+    color: var(--nx-color-text);
+    font-weight: 600;
+    opacity: 1;
+}

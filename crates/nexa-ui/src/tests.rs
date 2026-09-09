@@ -76,6 +76,66 @@ fn using_grid_or_stack_alone_does_not_pull_in_flex_or_gap() {
 }
 
 #[test]
+fn using_the_table_includes_tokens_and_table_css_only() {
+    let root = element("table", vec![static_class("nx-table nx-table-zebra")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-table {"));
+    assert!(css.contains(".nx-table-zebra "));
+    assert!(!css.contains(".nx-badge {"));
+    assert!(!css.contains(".nx-card {"));
+}
+
+#[test]
+fn using_the_badge_includes_tokens_and_badge_css_only() {
+    let root = element("span", vec![static_class("nx-badge nx-badge-success")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-badge {"));
+    assert!(css.contains("--nx-color-success"));
+    assert!(!css.contains(".nx-avatar {"));
+    assert!(!css.contains(".nx-table {"));
+}
+
+#[test]
+fn using_the_avatar_includes_tokens_and_avatar_css_only() {
+    let root = element("span", vec![static_class("nx-avatar nx-avatar-lg")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-avatar {"));
+    assert!(!css.contains(".nx-breadcrumbs {"));
+}
+
+#[test]
+fn using_breadcrumbs_includes_tokens_and_breadcrumbs_css_only() {
+    let root = element("nav", vec![static_class("nx-breadcrumbs")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-breadcrumbs {"));
+    assert!(css.contains(".nx-breadcrumbs-link"));
+    assert!(!css.contains(".nx-alert {"));
+}
+
+#[test]
+fn using_the_alert_includes_tokens_and_alert_css_only() {
+    let root = element("div", vec![static_class("nx-alert nx-alert-warning")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-alert {"));
+    assert!(css.contains("--nx-color-warning"));
+    assert!(!css.contains(".nx-divider {"));
+}
+
+#[test]
+fn using_the_divider_includes_tokens_and_divider_css_only() {
+    let root = element("hr", vec![static_class("nx-divider")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-divider {"));
+    assert!(!css.contains(".nx-table {"));
+}
+
+#[test]
 fn using_two_components_includes_both_and_nothing_else() {
     let root = element(
         "div",
@@ -130,6 +190,12 @@ fn full_source_includes_tokens_and_every_component_regardless_of_usage() {
     assert!(css.contains(".nx-gap-1 {"));
     assert!(css.contains(".nx-grid {"));
     assert!(css.contains(".nx-stack > * + * {"));
+    assert!(css.contains(".nx-table {"));
+    assert!(css.contains(".nx-badge {"));
+    assert!(css.contains(".nx-avatar {"));
+    assert!(css.contains(".nx-breadcrumbs {"));
+    assert!(css.contains(".nx-alert {"));
+    assert!(css.contains(".nx-divider {"));
 }
 
 #[test]

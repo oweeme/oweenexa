@@ -1,0 +1,13 @@
+.nx-divider {
+    border: none;
+    border-top: 1px solid var(--nx-color-border);
+    margin: var(--nx-space-4) 0;
+}
+
+.nx-divider-vertical {
+    border: none;
+    border-left: 1px solid var(--nx-color-border);
+    width: 0;
+    align-self: stretch;
+    margin: 0 var(--nx-space-2);
+}

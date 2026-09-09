@@ -42,3 +42,31 @@ export default function ProductPage() {
     assert!(!css.contains(".nx-card {"));
     assert!(!css.contains(".nx-input {"));
 }
+
+#[test]
+fn a_page_using_a_table_and_badges_ships_only_those_two_families() {
+    let source = r#"
+export default function Orders() {
+    return (
+        <div class="nx-table-wrap">
+            <table class="nx-table nx-table-zebra">
+                <thead><tr><th>Pedido</th><th>Estado</th></tr></thead>
+                <tbody>
+                    <tr><td>#1024</td><td><span class="nx-badge nx-badge-success">Pagado</span></td></tr>
+                    <tr><td>#1025</td><td><span class="nx-badge nx-badge-warning">Pendiente</span></td></tr>
+                </tbody>
+            </table>
+        </div>
+    );
+}
+"#;
+    let component = nexa_parser::parse_component("orders.tsx", source).expect("should parse");
+    let ir = nexa_analyzer::analyze(&component);
+
+    let css = nexa_ui::build_stylesheet(&ir.root).expect("expected some css");
+    assert!(css.contains(".nx-table {"));
+    assert!(css.contains(".nx-badge {"));
+    assert!(!css.contains(".nx-card {"));
+    assert!(!css.contains(".nx-dialog {"));
+    assert!(!css.contains(".nx-avatar {"));
+}

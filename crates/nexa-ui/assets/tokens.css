@@ -3,12 +3,11 @@
  * componente — cualquier CSS externo puede seguir funcionando junto a
  * estos, son variables normales, no un framework que tome el control.
  *
- * Tema oscuro (Fase 43, issue #11): los 4 componentes existentes
- * (Button, Input, Card, Dialog) y Drawer ya usan estos tokens para
- * todos sus colores (verificado leyendo cada .css — ninguno tiene un
- * color hardcodeado), así que darles una variante oscura acá alcanza,
- * sin tocar ningún componente. Dos capas, mismo patrón que usan sitios
- * reales:
+ * Tema oscuro (Fase 43, issue #11): los componentes existentes ya usan
+ * estos tokens para todos sus colores (verificado leyendo cada .css —
+ * ninguno tiene un color hardcodeado), así que darles una variante
+ * oscura acá alcanza, sin tocar ningún componente. Dos capas, mismo
+ * patrón que usan sitios reales:
  * - Sin JS: `@media (prefers-color-scheme: dark)` respeta el sistema
  *   operativo, salvo que el propio proyecto haya forzado `light` a mano.
  * - Con JS (`platform.theme.set("dark"|"light")`, `theme.ts`):
@@ -22,6 +21,12 @@
     --nx-color-text: #111827;
     --nx-color-border: #d1d5db;
     --nx-color-danger: #dc2626;
+    --nx-color-on-danger: #ffffff;
+    --nx-color-success: #16a34a;
+    --nx-color-on-success: #ffffff;
+    --nx-color-warning: #d97706;
+    --nx-color-on-warning: #1f2937;
+    --nx-color-zebra: #f3f4f6;
 
     --nx-space-1: 0.25rem;
     --nx-space-2: 0.5rem;
@@ -47,6 +52,12 @@
         --nx-color-text: #f3f4f6;
         --nx-color-border: #4b5563;
         --nx-color-danger: #f87171;
+        --nx-color-on-danger: #1f0a0a;
+        --nx-color-success: #22c55e;
+        --nx-color-on-success: #052e16;
+        --nx-color-warning: #f59e0b;
+        --nx-color-on-warning: #1f2937;
+        --nx-color-zebra: #263142;
 
         color-scheme: dark;
     }
@@ -60,6 +71,12 @@
     --nx-color-text: #f3f4f6;
     --nx-color-border: #4b5563;
     --nx-color-danger: #f87171;
+    --nx-color-on-danger: #1f0a0a;
+    --nx-color-success: #22c55e;
+    --nx-color-on-success: #052e16;
+    --nx-color-warning: #f59e0b;
+    --nx-color-on-warning: #1f2937;
+    --nx-color-zebra: #263142;
 
     color-scheme: dark;
 }

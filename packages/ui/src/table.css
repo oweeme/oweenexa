@@ -1,0 +1,31 @@
+.nx-table-wrap {
+    overflow-x: auto;
+}
+
+.nx-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: var(--nx-font-body);
+    font-size: 0.9rem;
+    color: var(--nx-color-text);
+}
+
+.nx-table th,
+.nx-table td {
+    padding: var(--nx-space-3) var(--nx-space-4);
+    text-align: left;
+    border-bottom: 1px solid var(--nx-color-border);
+}
+
+.nx-table thead th {
+    font-weight: 600;
+    border-bottom: 2px solid var(--nx-color-border);
+}
+
+.nx-table-zebra tbody tr:nth-child(even) {
+    background-color: var(--nx-color-zebra);
+}
+
+.nx-table tbody tr:hover {
+    background-color: var(--nx-color-zebra);
+}

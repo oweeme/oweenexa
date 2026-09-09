@@ -169,9 +169,15 @@ se produce ese HTML:
   real, sin escribir el HTML del diálogo a mano); `Drawer` para
   sidebars con el mismo foco atrapado que `Dialog`; un tema oscuro de
   primera clase (`platform.theme.set("dark")`, tokens con variante
-  oscura, respeta `prefers-color-scheme` incluso sin JavaScript); y un
-  set chico de utilidades de layout (`nx-flex`/`nx-grid`/`nx-stack`),
-  tree-shakeadas igual que el resto.
+  oscura, respeta `prefers-color-scheme` incluso sin JavaScript); un
+  set chico de utilidades de layout (`nx-flex`/`nx-grid`/`nx-stack`); y
+  seis componentes puramente visuales para armar UI rápido —
+  `nx-table` (con zebra), `nx-badge`, `nx-avatar`, `nx-breadcrumbs`,
+  `nx-alert` y `nx-divider` — todos tree-shakeados igual que el resto,
+  cero JavaScript. Los componentes con estado propio (pestañas,
+  acordeón, orden de tabla) siguen el mismo patrón que `Dialog`/`Drawer`
+  — una función de `@nexa/ui` llamada desde un `onClick` normal, nunca
+  una isla — ver la Fase 57 en `docs/FASES-DE-CONSTRUCCION.md`.
 - **i18n con interpolación real.** `t("perfil.saludo", { name: data.x })`
   sustituye `{name}` en el texto del diccionario — `nexa build`/`nexa
   lint` fallan con un error claro si una clave y sus argumentos no se

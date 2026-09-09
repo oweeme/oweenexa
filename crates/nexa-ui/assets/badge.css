@@ -1,0 +1,36 @@
+.nx-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nx-space-1);
+    padding: 0.15rem var(--nx-space-2);
+    border-radius: 999px;
+    font-family: var(--nx-font-body);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1.4;
+}
+
+.nx-badge-primary {
+    background-color: var(--nx-color-primary);
+    color: var(--nx-color-on-primary);
+}
+
+.nx-badge-success {
+    background-color: var(--nx-color-success);
+    color: var(--nx-color-on-success);
+}
+
+.nx-badge-warning {
+    background-color: var(--nx-color-warning);
+    color: var(--nx-color-on-warning);
+}
+
+.nx-badge-danger {
+    background-color: var(--nx-color-danger);
+    color: var(--nx-color-on-danger);
+}
+
+.nx-badge-neutral {
+    background-color: var(--nx-color-border);
+    color: var(--nx-color-text);
+}

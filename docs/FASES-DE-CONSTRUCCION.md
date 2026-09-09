@@ -3458,6 +3458,104 @@ los otros seis plugins de este issue.
 
 ---
 
+## Fase 56 — Seis componentes nuevos en `@nexa/ui`: Table, Badge, Avatar, Breadcrumbs, Alert, Divider
+
+**Objetivo:** cerrar parte de la brecha de "pocos componentes" frente a
+librerías maduras (Quasar, Bootstrap) con el lote más barato posible —
+componentes puramente visuales, sin estado propio, que no necesitan ni
+una línea de JavaScript. Se agregan siguiendo exactamente el patrón
+existente desde la Fase 9 (`packages/ui/src/<nombre>.css` +
+`crates/nexa-ui/src/registry.rs`), sin tocar el mecanismo de
+tree-shaking ni el de tema oscuro.
+
+**Entregables:**
+- `table.css` (`nx-table`, `nx-table-wrap`, `nx-table-zebra`), `badge.css`
+  (`nx-badge` + variantes `primary/success/warning/danger/neutral`),
+  `avatar.css` (`nx-avatar` + tamaños `sm/lg`), `breadcrumbs.css`
+  (`nx-breadcrumbs`/`nx-breadcrumbs-link`), `alert.css` (`nx-alert` +
+  variantes `success/warning/danger`), `divider.css` (`nx-divider`,
+  `nx-divider-vertical`).
+- Tokens nuevos en `tokens.css` (con su variante oscura, mismo patrón
+  que el resto): `--nx-color-success`/`--nx-color-on-success`,
+  `--nx-color-warning`/`--nx-color-on-warning`, `--nx-color-on-danger`,
+  `--nx-color-zebra` — ningún componente nuevo tiene un color
+  hardcodeado, igual que los anteriores.
+- `registry.rs` gana seis entradas nuevas; `build:ui-assets` copia los
+  seis archivos nuevos a `crates/nexa-ui/assets/`.
+- Tests unitarios por familia en `tests.rs` (uno por componente, más
+  las aserciones nuevas en `full_source_includes_tokens_and_every_component_regardless_of_usage`)
+  y un test de integración end-to-end en `tsx_to_stylesheet.rs` que
+  parsea una página real con tabla + badges y confirma que el CSS
+  resultante no arrastra `nx-card`/`nx-dialog`/`nx-avatar`.
+
+**Criterio de salida:**
+- `cargo test --workspace --release`: 0 failed.
+- Proyecto de scratch real con los seis componentes juntos (tabla con
+  zebra, breadcrumbs, alert, avatares, badges) compilado con `nexa
+  lint`/`nexa build` reales — el CSS generado (`nexa-ui.<hash>.css`)
+  contiene únicamente las familias usadas (verificado contando
+  selectores: 0 apariciones de `.nx-card`/`.nx-dialog`/`.nx-drawer`/
+  `.nx-btn`/`.nx-input`).
+- Verificado en un navegador real (Playwright/Chromium) en modo claro y
+  oscuro (`emulateMedia({ colorScheme: "dark" })`) sin tocar ningún
+  componente ni el proyecto — el tema oscuro ya definido en `tokens.css`
+  alcanza solo.
+
+> **Ajuste de alcance, documentado desde el principio:** estos seis
+> componentes son deliberadamente "solo CSS" — ninguno necesita estado
+> en cliente (no hay pestaña activa que recordar, no hay orden de
+> columna, no hay opción resaltada). Los que sí necesitan estado
+> (`Tabs`, `Accordion`, un `Select` con búsqueda, orden/paginación real
+> de una tabla) quedan fuera de esta fase a propósito — la Fase 57
+> documenta por qué esos **no** deberían resolverse como islas.
+
+---
+
+## Fase 57 — Componentes con estado sin isla: el mismo patrón de `Dialog`/`Drawer`, extendido
+
+**Contexto:** feedback directo del usuario tras la Fase 56 — "eso de
+componentes tenemos que ver cómo arreglarlo para que todo el tiempo no
+se esté creando una isla, eso sería frustrante". Es una preocupación
+válida: si cada `Tabs` o cada tabla ordenable necesitara una isla
+(specifier en `nexa.toml`, archivo `.island.ts` aparte, bundle propio),
+`@nexa/ui` sería tedioso de usar para exactamente el tipo de UI que
+más lo necesita.
+
+**La respuesta ya existe en el propio código, desde antes de esta
+fase — solo faltaba nombrarla como patrón general:** `Dialog`, `Drawer`,
+`ui.confirm()`/`ui.alert()` y `notify()` (Toast) ya tienen estado real
+en cliente (abierto/cerrado, foco atrapado, pila de z-index) y **ninguno
+es una isla.** Son funciones normales de `@nexa/ui`, detectadas por el
+mismo mecanismo textual que ya usan `platform.`/`stripe.` (Fase 15):
+el chunk que genera un `onClick={fn}` antepone el `import` necesario
+si `fn` menciona `ui.`/`nombreDeLaFunción` en su código fuente. Ese
+JavaScript corre en el nodo interactivo de siempre (activación
+progresiva, Fase 5) — nunca abre la puerta a composición de
+componentes ni a un framework externo.
+
+**Regla general para decidir isla vs. función de `@nexa/ui` (a
+documentar en `docs/REFERENCIA.md`):**
+- **Función de `@nexa/ui` + `onClick`/estrategia de activación** — si
+  el estado es local a un widget concreto y se puede modelar como
+  "manipular directamente el DOM que ya está en la página" (abrir/cerrar,
+  marcar una pestaña activa, reordenar filas de una tabla que ya está
+  renderizada, filtrar una lista ya renderizada por texto). Sin
+  Virtual DOM, sin re-render — el mismo trato que ya recibe `Dialog`.
+- **Isla** — solo cuando de verdad se necesita un framework completo
+  (Vue/React/etc. con su propio ciclo de vida) o composición real con
+  props/children profundos (Fase 50, modelo de componentes liviano,
+  dentro de la isla). Nunca como default para "este botón hace algo".
+
+**Próximos candidatos concretos para este patrón (sin isla):** `tabs.ts`
+(cambiar panel activo + `aria-selected`), `accordion.ts` (expandir/
+colapsar), `dropdown.ts`/`select.ts` con búsqueda simple, y
+`sortTable(el, columnIndex)` para ordenar client-side las filas que
+`nx-table` ya renderizó — los cuatro candidatos a implementar en una
+fase futura, cada uno verificado igual que `Dialog`/`Drawer`: con un
+navegador real, nunca solo con `cargo test`.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio
