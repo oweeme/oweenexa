@@ -404,6 +404,23 @@ lo renderiza como HTML real una vez por cada elemento del array que
   es `visible` (no `interaction`: una isla no tiene "el" evento obvio
   de un botón).
 
+El fallback (los hijos del `<div data-nexa-island>`) no está limitado a
+HTML fijo: es un nodo más, resuelto con el mismo mecanismo que
+cualquier otro contenido de la página — `data.*`, `params.*`, `t(...)`,
+`<For>` incluido. Si ya tenés el dato al momento de renderizar la
+página, mostralo de verdad en vez de un placeholder:
+
+```tsx
+<div data-nexa-island="commentCount" data-nexa-props={{ articleId: params.slug }}>
+    <span>{data.commentCount}{" "}comentarios</span>   {/* HTML real, no un spinner */}
+</div>
+```
+
+Un placeholder fijo (`<p>Cargando…</p>`) sigue siendo válido — tiene
+sentido cuando el contenido de la isla no existe todavía en el
+servidor (por ejemplo, un carrito que solo vive en `localStorage`) —
+pero no es la única opción.
+
 El módulo al que apunta el specifier debe exportar por defecto:
 
 ```ts
