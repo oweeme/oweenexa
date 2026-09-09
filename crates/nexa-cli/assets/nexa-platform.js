@@ -413,6 +413,118 @@ function onOpen(callback, deps = {}) {
 }
 var deepLinks = { getLaunchUrl, onOpen };
 
+// packages/platform/src/push.ts
+async function register(options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "PushNotifications");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/push-notifications no est\xE1 instalado en esta app.");
+    }
+    return new Promise((resolve, reject) => {
+      let registrationHandle;
+      let errorHandle;
+      const cleanup = () => {
+        void registrationHandle?.remove();
+        void errorHandle?.remove();
+      };
+      Promise.all([
+        plugin.addListener("registration", (token) => {
+          cleanup();
+          resolve({ platform: "capacitor", token: token.value });
+        }),
+        plugin.addListener("registrationError", (error) => {
+          cleanup();
+          reject(new Error(`[nexa/platform] fall\xF3 el registro de push: ${error.error}`));
+        })
+      ]).then(([regHandle, errHandle]) => {
+        registrationHandle = regHandle;
+        errorHandle = errHandle;
+        return plugin.register();
+      }).catch(reject);
+    });
+  }
+  const nav = deps.navigatorObject ?? (typeof navigator !== "undefined" ? navigator : void 0);
+  if (!nav?.serviceWorker) {
+    throw new Error("[nexa/platform] los Service Workers no est\xE1n disponibles en este entorno.");
+  }
+  if (!options.vapidPublicKey) {
+    throw new Error("[nexa/platform] platform.push.register() necesita `vapidPublicKey` en la Web.");
+  }
+  const registration = deps.serviceWorkerRegistration ?? await nav.serviceWorker.getRegistration();
+  if (!registration) {
+    throw new Error(
+      "[nexa/platform] no hay un Service Worker registrado \u2014 declar\xE1 [pwa] en nexa.toml (Fase 18) o registr\xE1 uno propio antes de llamar a esto."
+    );
+  }
+  const subscription = await registration.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(options.vapidPublicKey)
+  });
+  return { platform: "web", subscription: subscription.toJSON() };
+}
+function onReceived(callback, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "PushNotifications");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/push-notifications no est\xE1 instalado en esta app.");
+    }
+    let cancelled = false;
+    let handle;
+    plugin.addListener("pushNotificationReceived", callback).then((h) => {
+      if (cancelled) {
+        void h.remove();
+      } else {
+        handle = h;
+      }
+    });
+    return () => {
+      cancelled = true;
+      void handle?.remove();
+    };
+  }
+  throw new Error(
+    '[nexa/platform] en la Web, un push llega al Service Worker, no a la p\xE1gina \u2014 agreg\xE1 tu propio self.addEventListener("push", ...) ah\xED.'
+  );
+}
+function onActionPerformed(callback, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "PushNotifications");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/push-notifications no est\xE1 instalado en esta app.");
+    }
+    let cancelled = false;
+    let handle;
+    plugin.addListener("pushNotificationActionPerformed", callback).then((h) => {
+      if (cancelled) {
+        void h.remove();
+      } else {
+        handle = h;
+      }
+    });
+    return () => {
+      cancelled = true;
+      void handle?.remove();
+    };
+  }
+  throw new Error(
+    '[nexa/platform] en la Web, la acci\xF3n sobre un push se maneja en el Service Worker (notificationclick), no en la p\xE1gina \u2014 agreg\xE1 tu propio self.addEventListener("notificationclick", ...) ah\xED.'
+  );
+}
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  const outputArray = new Uint8Array(new ArrayBuffer(rawData.length));
+  for (let i = 0; i < rawData.length; i++) {
+    outputArray[i] = rawData.charCodeAt(i);
+  }
+  return outputArray;
+}
+var push = { register, onReceived, onActionPerformed };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -429,7 +541,8 @@ var platform = {
   network,
   lifecycle,
   geolocation,
-  deepLinks
+  deepLinks,
+  push
 };
 export {
   capacitorPlugin,
@@ -449,12 +562,16 @@ export {
   lifecycle,
   network,
   notify,
+  onActionPerformed,
   onLifecycleChange,
   onNetworkChange,
   onOpen,
+  onReceived,
   openCache,
   openCollection,
   platform,
+  push,
+  register,
   share,
   theme,
   watchPosition

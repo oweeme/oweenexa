@@ -810,6 +810,10 @@ const stopWatch = platform.geolocation.watchPosition((position) => { ... })   //
 
 const launch = await platform.deepLinks.getLaunchUrl()   // Fase 52 — { url: string }: "" en Web/Tauri (una página no se "lanza" con un deep link)
 const stopOpen = platform.deepLinks.onOpen((event) => { ... })   // suscripción a que la app se reabra con una URL; no dispara nunca en Web/Tauri
+
+const registration = await platform.push.register({ vapidPublicKey })   // Fase 53 — { platform: "capacitor", token } | { platform: "web", subscription }
+platform.push.onReceived((n) => { ... })          // solo Capacitor — en Web lanza, hay que escuchar "push" en tu Service Worker
+platform.push.onActionPerformed((a) => { ... })   // solo Capacitor — en Web lanza, hay que escuchar "notificationclick" en tu Service Worker
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -861,6 +865,21 @@ literalmente lo que hace la propia rama web de `@capacitor/app`
 sentido: una página no se "lanza" con una URL de deep link distinta de
 la que ya está cargada, ni se "reabre" con otra URL mientras sigue
 corriendo — cada URL nueva en un navegador es una navegación distinta.
+
+`platform.push` (Fase 53, quinto plugin del issue #20) — deliberadamente
+más chico que el plugin completo de Capacitor: solo registro + recibir,
+sin `checkPermissions`/canales/notificaciones ya entregadas. Distinto
+de `platform.notify()` (notificación local, sin servidor). Capacitor y
+Web no comparten forma de registro (un token de FCM/APNs no es una
+`PushSubscription` del Web Push estándar), por eso `register()` devuelve
+una unión discriminada (`{ platform: "capacitor", token }` |
+`{ platform: "web", subscription }`) en vez de forzar una forma común
+inventada. En Web hace falta un Service Worker ya registrado (`[pwa]`,
+Fase 18) y una `vapidPublicKey` real de tu backend. `onReceived()`/
+`onActionPerformed()` solo existen de verdad en Capacitor — en Web, un
+push siempre llega al Service Worker (`self.addEventListener("push",
+...)`), nunca a la página; llamar a estas funciones ahí lanza un error
+explícito con la solución, en vez de no hacer nada en silencio.
 
 ## `@nexa/reactivity`
 

@@ -3264,6 +3264,78 @@ documentado.
 >
 > **Quedan pendientes, mismo issue:** push real, biometría, haptics.
 
+## Fase 53 — `platform.push` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #20 — quinto plugin de la lista incremental (push
+real, distinto de `platform.notify()` que ya existía desde la Fase 5
+como notificación local sin servidor).
+
+**Entregables:**
+
+- `packages/platform/src/push.ts` (nuevo): `register(options?)`,
+  `onReceived(callback)`, `onActionPerformed(callback)`.
+  Deliberadamente más chico que el plugin completo de
+  `@capacitor/push-notifications`: sin `checkPermissions`/
+  `requestPermissions` separados, sin canales de Android, sin gestión
+  de notificaciones ya entregadas — si un proyecto real necesita eso,
+  es la próxima pieza a agregar, no algo que resolver de antemano.
+  Capacitor nativo: el plugin real `@capacitor/push-notifications`
+  (`register()` + los eventos `registration`/`registrationError`,
+  envueltos en una única `Promise`). Web: el Web Push estándar
+  (`PushManager.subscribe` sobre un Service Worker ya registrado) — no
+  una aproximación de Capacitor, que **no tiene rama web en absoluto**
+  para este plugin (sin `web.js` en el paquete, verificado). Como un
+  token de FCM/APNs y una `PushSubscription` del Web Push no son la
+  misma forma, `register()` devuelve una unión discriminada en vez de
+  forzar una forma común inventada.
+- Expuesto como `platform.push.register`/`onReceived`/`onActionPerformed`
+  en `packages/platform/src/index.ts`.
+- 13 tests nuevos en `packages/platform/test/push.test.ts` (102
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** las dos ramas reales sin inventar la forma del
+plugin nativo, tests, documentado — igual que el resto de los plugins
+de este issue.
+
+> **Bug real encontrado por el propio proceso de escritura, antes de
+> llegar a los tests:** la primera versión de `register()` en
+> Capacitor armaba una `Promise.race` con una promesa que nunca se
+> resolvía de verdad (código muerto que quedó de un diseño a medio
+> terminar) y nunca limpiaba los listeners `registration`/
+> `registrationError` una vez que uno de los dos disparaba — quedaban
+> vivos para siempre. Se reescribió para que cada listener llame a un
+> `cleanup()` compartido apenas se resuelve/rechaza la promesa,
+> liberando ambos.
+>
+> **Por qué `onReceived`/`onActionPerformed` lanzan en Web en vez de no
+> hacer nada:** a diferencia de `platform.deepLinks.onOpen` (donde
+> literalmente no existe ningún evento equivalente en ningún
+> navegador, así que un no-op silencioso es honesto), un push real
+> *sí* llega al navegador en Web — solo que llega al Service Worker
+> (`self.addEventListener("push", ...)`), nunca a la página donde vive
+> este módulo. Fingir que `onReceived` "funciona" sin hacer nada sería
+> peor que decir explícitamente por qué no y qué hacer en su lugar.
+>
+> **Límite real de infraestructura encontrado verificando en Chromium
+> (Playwright), documentado en vez de forzado:** el binario de
+> Chromium open-source que descarga Playwright (distinto del Google
+> Chrome propietario) no trae las API keys de Google compiladas, así
+> que cualquier suscripción real a FCM falla con `Registration failed
+> - permission denied` sin importar el código — límite bien conocido
+> en la comunidad de desarrollo web, no un bug de esta implementación.
+> Lo que sí se verificó de punta a punta con un Service Worker real
+> (generado por `[pwa]`, Fase 18) y una VAPID key real (par de claves
+> EC P-256 generado de verdad, no inventada): una key mal formada se
+> rechaza con un error de formato distinto (`applicationServerKey` no
+> válida) *antes* de llegar a pedirle nada al navegador, y una key bien
+> formada sí llega hasta el servicio de push real del navegador — la
+> prueba de que la conversión de la key y el resto del código corren
+> correctamente, el único paso que no se puede completar en este
+> entorno es el registro final contra la infraestructura de Google.
+>
+> **Quedan pendientes, mismo issue:** biometría, haptics.
+
 ---
 
 ## Regla de disciplina para todas las fases
