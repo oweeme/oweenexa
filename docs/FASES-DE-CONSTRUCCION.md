@@ -2950,6 +2950,34 @@ real (además de Stripe) vendorizado y probado de punta a punta.
 > comportamiento que el propio README de `examples/oweeme-shop` ya
 > documentaba para `nexa-stripe.js`.
 
+## Fase 47 — [Diseño] Cookies en `load()` (Hito 12) — ✅ completada (solo diseño, sin código)
+
+**Objetivo:** issue #18 — decidir, antes de escribir una sola línea, si
+`load()` puede leer cookies de sesión server-side, y cómo eso convive
+con la premisa central de Nexa ("todo es un patrón sintáctico literal,
+nunca código arbitrario"). El propio issue pide explícitamente un
+documento de diseño primero, no una implementación directa.
+
+**Entregable:** `docs/DISENO-COOKIES-EN-LOAD.md` — decisión completa:
+`cookies.*` con allowlist explícita en `nexa.toml [cookies]`, resoluble
+solo dentro de `load.headers` (nunca en JSX/`seo`/`schema`, para no
+poder filtrar un token de sesión al HTML), sin redirects ni control de
+flujo condicional dentro de `load`, y un bosquejo concreto de
+implementación para cuando/si se decida seguir adelante.
+
+> **El hallazgo que no estaba en el issue original:** una cookie es
+> información de una petición concreta, y `nexa build` no tiene ninguna
+> petición — un `load()` que dependa de `cookies.*` no puede
+> pre-renderizarse como HTML estático nunca. Es, por diseño, una
+> capacidad exclusiva de rutas dinámicas servidas en el momento (mismo
+> bucket que las rutas sin `paths` de la Fase 34), nunca del build
+> estático. Esta restricción condiciona toda la decisión y no era obvia
+> antes de escribir el documento.
+>
+> Sin código de esta fase — el issue de implementación queda como
+> siguiente paso explícito, a abrir cuando el usuario confirme la
+> dirección.
+
 ---
 
 ## Regla de disciplina para todas las fases
