@@ -47,6 +47,15 @@ Luego abre `http://127.0.0.1:4950/es` (o `/en`).
   3 real** (`src/islands/Dashboard.ts`) vía `@nexa/vue-island` — la
   prueba concreta de que un panel administrativo (tipo SDLC/Trello)
   puede vivir en el mismo proyecto Nexa sin reescribirlo.
+- `src/pages/[locale]/tasks.tsx` — el mismo panel de tareas que
+  `/dashboard`, pero con el modelo de componentes liviano de
+  `@nexa/reactivity` (Fase 50, issue #19) en vez de Vue:
+  `src/islands/taskList.island.ts` (~4.3KB) contra
+  `dashboard-island.js` (~245.7KB, Vue 3 completo) — la comparación de
+  peso de bundle real que documenta la Fase 50. Ninguna reemplaza a la
+  otra: `dashboard.tsx` sigue siendo la prueba de "un framework externo
+  real cabe en una isla"; `tasks.tsx` es la de "algo chico no necesita
+  cargar un framework externo entero".
 - `src/islands/productFilter.island.ts` — isla escrita a mano con
   `@nexa/reactivity` (sin ningún framework externo).
 - `src/pages/[locale]/products/[slug].tsx` — `load()` contra el backend

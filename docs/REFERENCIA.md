@@ -875,6 +875,51 @@ que normalmente escribas a mano.
 No hay `store`/`resource`/`context` — para eso, la respuesta es montar
 un framework real dentro de una isla.
 
+### Modelo de componentes liviano (Fase 50) — **solo dentro de islas nativas**
+
+> **Esto no aplica a páginas Nexa Core.** Una página `.tsx` sigue
+> siendo "un componente por página, sin `<Otro/>`, sin props" — esa
+> regla no cambia. `nexa-parser` no entiende nada de este módulo; es
+> exclusivamente una utilidad de runtime para organizar el código
+> *dentro* del `mount(el, props)` de una isla escrita a mano (Fase 16).
+
+```ts
+import { mountComponent, type Component } from "@nexa/reactivity";
+
+interface ItemProps { label: string }
+const Item: Component<ItemProps> = (el, props) => {
+    el.textContent = props.label;
+};
+
+interface ListProps { labels: string[] }
+const List: Component<ListProps> = (el, props, ctx) => {
+    for (const label of props.labels) {
+        const li = document.createElement("li");
+        el.appendChild(li);
+        ctx.mount(Item, li, { label });   // un componente monta a otro, props tipadas
+    }
+};
+
+export default function mount(el: Element, props: Record<string, unknown>) {
+    return mountComponent(List, el, { labels: props.labels as string[] });
+}
+```
+
+`mountComponent` devuelve una función de limpieza que desmonta, en
+orden inverso, todo lo que se registró con `ctx.onCleanup`/`ctx.mount`
+durante el montaje — incluidos los componentes hijos, transitivamente.
+Sin Virtual DOM: cada componente manipula DOM real una sola vez al
+montarse, nunca se "re-renderiza" solo. Una `Signal` pasada como prop
+ya alcanza para que un hijo reaccione a cambios del padre (leerla con
+`.value` dentro de su propio `effect()`) — no hace falta ningún
+mecanismo de props reactivas aparte.
+
+Ejemplo real, de punta a punta:
+`examples/oweeme-shop/src/islands/taskList.island.ts` — el mismo panel
+de tareas que `dashboardIsland` (Vue 3 real), reescrito con este
+modelo. Comparación de peso de bundle real en
+`docs/FASES-DE-CONSTRUCCION.md`, Fase 50.
+
 ## `@nexa/http`
 
 Sin dependencias — cliente HTTP + capa de datos reactiva, para usar

@@ -3081,6 +3081,86 @@ documentado.
 > **Quedan pendientes, mismo issue:** geolocalización, deep links, push
 > real, biometría, haptics.
 
+## Fase 50 — Modelo de componentes liviano en `@nexa/reactivity` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #19 — el hueco medio entre "señales sueltas" y
+"montar un framework externo completo" para una isla chica con estado
+real (un dropdown, un widget simple): hoy ambos extremos existían, pero
+nada en el medio. **Explícitamente solo para código dentro de una isla
+nativa** — nunca páginas Nexa Core, eso reabriría la regla de "sin
+composición" rechazada desde la Fase 2.
+
+**Entregables:**
+
+- `packages/reactivity/src/component.ts` (nuevo): `Component<P>` (una
+  función `(el, props, ctx) => void`, tipada por props) y
+  `mountComponent(component, container, props)`, que devuelve una
+  función de limpieza. `ComponentContext` da `onCleanup(fn)` y
+  `mount(child, el, props)` — montar un hijo encadena su limpieza a la
+  del padre automáticamente, sin combinar funciones de limpieza a mano
+  en cada nivel (el código repetitivo que ya se veía en
+  `productFilter.island.ts`). Sigue siendo cero Virtual DOM: cada
+  componente manipula DOM real una sola vez al montarse. Reactividad
+  entre componentes sin ningún mecanismo nuevo: una `Signal` pasada
+  como prop ya alcanza (el hijo la lee con `.value` dentro de su propio
+  `effect()`).
+- 8 tests nuevos en `packages/reactivity/test/component.test.ts` (24
+  totales en el paquete), incluyendo composición real (un padre monta
+  N hijos), limpieza encadenada (desmontar el padre desmonta a los
+  hijos), y una `Signal` como prop reactiva de verdad.
+- Ejemplo real: `examples/oweeme-shop/src/islands/taskList.island.ts` —
+  el mismo panel de tareas (contador de pendientes + checkboxes) que
+  `Dashboard.ts` (Vue 3 real, Fase 16), con dos componentes reales
+  compuestos (`TaskItem`, montado por `TaskList`), en una página nueva
+  `src/pages/[locale]/tasks.tsx`. `dashboard.tsx` (Vue) sigue existiendo
+  sin cambios — las dos conviven a propósito, cada una demostrando algo
+  distinto.
+- Documentado en `docs/REFERENCIA.md`, con la advertencia de alcance
+  explícita en el primer párrafo: no aplica a páginas Nexa Core.
+
+**Criterio de salida:** dos o más componentes compuestos con props
+tipadas, sin Virtual DOM; un ejemplo real reemplazando (agregando junto
+a, sin romper) un caso de Vue chico, con comparación de peso de bundle;
+alcance documentado explícitamente; tests reales.
+
+> **La comparación de bundle, con números reales, no estimados:**
+> `dashboard-island.js` (Vue 3 completo + `Dashboard.ts`) pesa
+> **245.7KB**. `task-list-island.js` (el mismo widget, con
+> `@nexa/reactivity` + este modelo de componentes, sin ningún framework
+> externo) pesa **4.3KB** — ambos bundleados con el mismo comando
+> exacto de esbuild (`--bundle --format=esm --target=es2022`), sin
+> ninguna optimización especial de un lado ni del otro. ~57x más chico
+> para el mismo caso de uso — el hueco real que describía el issue.
+>
+> **Verificado con Chromium real (Playwright), no solo unitario:** en
+> `/es/tasks`, el contador inicial ("Pendientes: 2") es correcto contra
+> datos reales con una tarea ya completada; esa tarea tiene
+> `text-decoration-line: line-through` computado de verdad; marcar una
+> tarea pendiente real actualiza el contador y aplica el tachado;
+> desmarcarla la revierte — el ciclo completo de estado + composición +
+> DOM real, no un mock.
+>
+> **Por qué el ejemplo usa `mountComponent` directo para los hijos de
+> la lista, en vez de `ctx.mount`:** `ctx.mount` encadena la limpieza
+> del hijo a la del padre de forma permanente — perfecto para
+> composición estática (un hijo que se monta una vez y vive tanto como
+> el padre), pero una lista que se reconstruye en cada `effect()` (cada
+> toggle) necesita desmontar y volver a montar sus hijos en cada
+> pasada, no solo una vez. Usar `mountComponent` directo con un array
+> de limpiezas manejado a mano (mismo patrón que ya usa el resto del
+> ejemplo) evita acumular limpiezas huérfanas de items ya removidos del
+> DOM. La composición estática (`ctx.mount`) queda demostrada en los
+> tests, que es donde de verdad importa que el contrato sea correcto.
+>
+> **Explícitamente fuera de alcance, documentado, no una laguna
+> olvidada:** sin lifecycle hooks complejos, sin context API, sin un
+> helper de reconciliación de listas (`<For>`-equivalente) — cualquiera
+> de esos empieza a competir con lo que ya hace mejor un framework
+> externo real, que es exactamente lo que este issue pedía evitar. El
+> propio issue marca un modo "resumible" (estilo Qwik) como
+> prerrequisito de esto, pero fuera de este issue — no se abre ese
+> issue todavía, tal como pide el texto original.
+
 ---
 
 ## Regla de disciplina para todas las fases

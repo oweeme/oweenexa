@@ -24,6 +24,11 @@ stripe = "/vendor/nexa-stripe.js"
 # identificadores dentro de un handler.
 productFilter = "/vendor/product-filter-island.js"
 dashboardIsland = "/vendor/dashboard-island.js"
+# Modelo de componentes liviano de @nexa/reactivity (Fase 50, issue
+# #19): el mismo widget que `dashboardIsland` (Vue 3 real), reescrito
+# sin ningún framework externo — comparación de peso de bundle real en
+# docs/FASES-DE-CONSTRUCCION.md.
+taskListIsland = "/vendor/task-list-island.js"
 # Vendoring directo sin paquete wrapper (Fase 46, issue #21, ver
 # docs/VENDORING.md): a diferencia de `stripe` (que necesitaba código
 # propio en packages/stripe/), `marked` se usa tal cual lo publica su
