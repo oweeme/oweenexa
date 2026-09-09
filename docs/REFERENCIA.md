@@ -150,19 +150,46 @@ Mismo patrón que `seo`/`schema`: un objeto literal, nunca código
 ejecutado — `nexa-cli` lo resuelve y lo mezcla en el `<head>` real del
 documento, antes de `</head>`. Los tres campos son opcionales.
 
-**No soportado esta fase:** un evento interactivo (`onClick`, etc.) o
-una isla dentro de `src/layout.tsx` — el build falla explícitamente. La
-razón es técnica, no arbitraria: los ids de nodo de un `IrComponent` se
-numeran desde 0, y el layout y cada página son `IrComponent`s
-compilados por separado — mezclarlos en el mismo manifiesto de
-activación produciría ids colisionados. El escape valve es el de
-siempre: un nav con estado (ej. un menú hamburguesa) se maqueta como
-contenido normal de cada página, o queda para una fase futura con
-islas (las islas no usan ids de manifiesto, así que no tienen este
-problema de raíz — solo no se habilitó todavía para no mezclar dos
-cambios en la misma fase). Tampoco hay layouts anidados por directorio
-(un solo `src/layout.tsx` para todo el proyecto, no uno por carpeta de
-`src/pages/`).
+### Header/nav con estado real: una isla dentro del layout (Fase 31)
+
+Un evento interactivo directo (`onClick`, etc.) en `src/layout.tsx`
+sigue sin soportarse — el build falla explícitamente. La razón es
+técnica, no arbitraria: los ids de nodo de un `IrComponent` se numeran
+desde 0, y el layout y cada página son `IrComponent`s compilados por
+separado — mezclarlos en el mismo manifiesto de activación produciría
+ids colisionados.
+
+Una **isla** (`data-nexa-island`) sí está permitida — nunca tuvo ese
+problema: el cliente lee specifier/props/estrategia directamente del
+DOM, sin ninguna entrada en el manifiesto de activación. Es la forma
+real de tener un header compartido por todas las páginas con estado de
+verdad (toggle de tema, selector de idioma, menú hamburguesa móvil) sin
+copiarlo a mano en cada página:
+
+```tsx
+// src/layout.tsx
+export default function Layout() {
+    return (
+        <div class="site-shell">
+            <div data-nexa-island="siteHeader" data-nexa-strategy="load">
+                <header><nav><a href="/">Inicio</a></nav></header>
+            </div>
+            <div data-nexa-slot></div>
+        </div>
+    );
+}
+```
+
+El specifier del layout se une al import map y al bootstrap de
+`nexa-islands.js` exactamente igual que uno declarado en la propia
+página — no hace falta nada especial en `nexa.toml [imports]` más allá
+de declararlo como cualquier otro. Un `onClick` **dentro** del fallback
+de esa isla (no en la propia isla montada del lado del cliente, sino en
+el HTML que el servidor renderiza) sigue sin soportarse, por la misma
+razón de ids colisionados.
+
+Tampoco hay layouts anidados por directorio (un solo `src/layout.tsx`
+para todo el proyecto, no uno por carpeta de `src/pages/`).
 
 ## Una página, de arriba a abajo
 
@@ -924,7 +951,7 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
 - `@nexa/forms` valida solo con la Constraint Validation API nativa —
   sin reglas async o entre varios campos a la vez.
 - `src/layout.tsx` es único para todo el proyecto (sin anidar por
-  directorio) y no admite eventos ni islas propias — ver "Layouts
-  compartidos".
+  directorio) y no admite eventos interactivos propios (`onClick`,
+  etc.) — sí admite islas desde la Fase 31 — ver "Layouts compartidos".
 - Sin WebSocket/SSE de primera clase — la isla es el mecanismo hoy
   (montar tu propio código o un framework real adentro).

@@ -2046,6 +2046,61 @@ ante cualquier forma no reconocida.
 
 ---
 
+## Fase 31 — Islas dentro de `src/layout.tsx` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #6 del backlog de gaps (mismo origen que la Fase
+30) — un header/nav compartido con estado real (toggle de tema,
+selector de idioma, menú hamburguesa móvil) hoy había que copiarlo a
+mano en cada página, porque `src/layout.tsx` rechazaba cualquier
+`onClick` **o isla** con el mismo error. El propio comentario de la
+Fase 25 ya señalaba el escape valve: una isla no usa ids de manifiesto
+de activación, así que el problema de colisión de ids (la razón real
+del rechazo) nunca le aplicó — solo no se había habilitado todavía.
+
+**Entregables:**
+- `crates/nexa-cli/src/layout.rs::validate`: separa el chequeo — sigue
+  rechazando `Classification::Interactive` (un `onClick` en cualquier
+  parte del layout, incluido dentro del fallback de una isla, donde el
+  problema de ids colisionados sigue aplicando igual) pero ya no
+  rechaza `Classification::Island`.
+- `RenderedLayout` gana `island_specifiers: BTreeSet<String>` — los
+  specifiers que el layout mismo declara, recogidos con la misma
+  función que ya usaba `pipeline.rs` para la página
+  (`island_specifiers`, subida a `pub(crate)` para reutilizarla tal
+  cual en vez de duplicar la lógica).
+- `pipeline::compile_page` une esos specifiers a los de la página antes
+  de calcular `used_imports`/`has_islands`/`pkg_warnings` — sin esto,
+  un `data-nexa-island` en el layout habría compilado sin error pero
+  jamás se habría activado en ninguna página (el import map no lo
+  tendría, y el bootstrap de `nexa-islands.js` ni se cargaría si la
+  página en sí no tenía islas propias).
+
+**Criterio de salida:** un `data-nexa-island` dentro de
+`src/layout.tsx` compila sin error y se activa correctamente en cada
+página del sitio; un `onClick` directo (dentro o fuera de una isla)
+sigue fallando con un mensaje explícito.
+
+> **Verificado con un proyecto real y un navegador real, no solo
+> `cargo test`:** un layout con una isla `siteHeader` (`data-nexa-island`
+> + `data-nexa-strategy="load"`) montando un toggle de tema real, dos
+> páginas distintas compartiendo el mismo layout, cero islas propias en
+> ninguna de las dos páginas. `nexa build` generó el import map
+> (`{"siteHeader":"/vendor/site-header.js"}`) y el bootstrap con
+> `initIslands` en **ambas** páginas — la prueba de que el mecanismo de
+> unión de specifiers layout+página funciona, no solo que compila. En
+> Chromium real (Playwright): la isla montó (`data-mounted="true"`),
+> clickear el header cambió el texto y `<html data-theme="dark">` de
+> verdad, sin errores de consola. Un segundo proyecto con un `onClick`
+> directo en el layout siguió fallando con el mensaje esperado,
+> confirmando que esto es aditivo, no un aflojamiento general.
+>
+> Los 273 tests del workspace de Rust (+3 sobre los 270 de la Fase 30,
+> los tres en `nexa-cli::layout::tests` — isla aceptada, `onClick`
+> directo rechazado, `onClick` dentro del fallback de una isla también
+> rechazado) siguen en verde.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

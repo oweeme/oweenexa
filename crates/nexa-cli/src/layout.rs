@@ -12,17 +12,21 @@
 //! HTML que ya renderizó la página. Ni el layout ni la página saben el
 //! uno del otro en ningún punto anterior a ese splice.
 //!
-//! **Alcance deliberado de esta fase:** el layout no puede tener eventos
-//! interactivos propios (`onClick`, etc.) ni islas — sus ids de nodo
-//! viven en un `IrComponent` separado del de la página, así que
-//! mezclarlos en el mismo manifiesto de activación colisionaría (ambos
-//! empiezan a contar desde 0). El escape valve es el de siempre: un nav
-//! con estado (ej. un menú hamburguesa) se implementa como isla dentro
-//! del propio layout — las islas no usan ids de manifiesto, así que no
-//! tienen este problema en principio, pero queda fuera de esta fase para
-//! no mezclar dos cambios; el error de abajo lo deja explícito. Las
-//! clases `nx-*` del layout SÍ se cuentan: se unen a las de la página
-//! para decidir qué entra en `nexa-ui.css`.
+//! **Alcance deliberado de la Fase 25:** el layout no puede tener eventos
+//! interactivos propios (`onClick`, etc.) — sus ids de nodo viven en un
+//! `IrComponent` separado del de la página, así que mezclarlos en el
+//! mismo manifiesto de activación colisionaría (ambos empiezan a contar
+//! desde 0). Las clases `nx-*` del layout SÍ se cuentan: se unen a las
+//! de la página para decidir qué entra en `nexa-ui.css`.
+//!
+//! **Islas sí, desde la Fase 31:** a diferencia de un evento, una isla
+//! (`data-nexa-island`) no tiene entrada en el manifiesto de
+//! activación — el cliente lee specifier/props/estrategia directamente
+//! del DOM (Fase 16), así que el problema de ids colisionados nunca
+//! aplicó. Lo único que hacía falta era que el pipeline recogiera los
+//! specifiers de islas *del layout* además de los de la página, para
+//! que el import map en `<head>` y el bootstrap de `nexa-islands.js`
+//! los tuvieran en cuenta — ver `island_specifiers` en `pipeline.rs`.
 
 use std::collections::BTreeMap;
 use std::fs;
@@ -49,6 +53,11 @@ pub struct RenderedLayout {
     /// (que termina dentro de `<body>`, por el splice del slot), esto
     /// el llamador lo mezcla en el `<head>` de verdad del documento.
     pub head_html: String,
+    /// `data-nexa-island="..."` que el layout mismo declara (Fase 31) —
+    /// el llamador los une a los de la página para el import map y el
+    /// bootstrap de islas, exactamente igual que ya hace con
+    /// `ui_used_classes`.
+    pub island_specifiers: std::collections::BTreeSet<String>,
 }
 
 /// Compila `layout_file` (parse -> analyze -> render, igual que una
@@ -76,20 +85,22 @@ pub fn render_for_page(
 
     let seo_ctx = nexa_seo::SeoContext { data: None, params, translations };
     let head_html = nexa_seo::render_layout_head(component.head.as_ref(), &seo_ctx);
+    let island_specifiers = crate::pipeline::island_specifiers(&ir.root);
 
-    Ok(RenderedLayout { html, ui_used_classes, head_html })
+    Ok(RenderedLayout { html, ui_used_classes, head_html, island_specifiers })
 }
 
-/// Exactamente un elemento `data-nexa-slot`, vacío, y ningún nodo
-/// interactivo/isla en todo el layout — ver el comentario del módulo.
+/// Exactamente un elemento `data-nexa-slot`, vacío, y ningún evento
+/// interactivo en todo el layout — las islas sí están permitidas desde
+/// la Fase 31, ver el comentario del módulo.
 fn validate(root: &IrNode) -> Result<()> {
     let mut slots = 0usize;
     let mut non_empty_slot = false;
-    let mut interactive_or_island = false;
+    let mut interactive = false;
 
     root.walk(&mut |node| {
-        if matches!(node.classification, Classification::Interactive | Classification::Island) {
-            interactive_or_island = true;
+        if node.classification == Classification::Interactive {
+            interactive = true;
         }
         if let IrNodeKind::Element { attrs, children, .. } = &node.kind {
             if attrs.iter().any(|a| a.name == SLOT_ATTR) {
@@ -101,11 +112,12 @@ fn validate(root: &IrNode) -> Result<()> {
         }
     });
 
-    if interactive_or_island {
+    if interactive {
         bail!(
-            "src/layout.tsx tiene un evento interactivo o una isla — esta fase no lo soporta \
+            "src/layout.tsx tiene un evento interactivo (onClick/etc.) — no soportado \
              (los ids de nodo del layout y los de cada página compartirían el mismo manifiesto \
-             de activación)."
+             de activación). Una isla (`data-nexa-island`) sí está permitida — no usa ids de \
+             manifiesto."
         );
     }
     if slots != 1 {
@@ -145,5 +157,71 @@ mod tests {
         let layout = "<html><body><header>Nav</header></body></html>";
         let err = splice_slot(layout, "<p>hola</p>").unwrap_err();
         assert!(err.to_string().contains("data-nexa-slot"));
+    }
+
+    fn ir_root_for(source: &str) -> IrNode {
+        let component = nexa_parser::parse_component("layout.tsx", source).expect("should parse");
+        nexa_analyzer::analyze(&component).root
+    }
+
+    #[test]
+    fn validate_accepts_an_island_inside_the_layout() {
+        // Fase 31: a diferencia de un `onClick`, una isla no tiene
+        // entrada en el manifiesto de activación — no hay ids que
+        // puedan colisionar con los de la página.
+        let source = r#"
+export default function Layout() {
+    return (
+        <div class="shell">
+            <div data-nexa-island="siteHeader" data-nexa-strategy="load">
+                <header>Nav estático</header>
+            </div>
+            <div data-nexa-slot></div>
+        </div>
+    );
+}
+"#;
+        assert!(validate(&ir_root_for(source)).is_ok());
+    }
+
+    #[test]
+    fn validate_still_rejects_a_direct_onclick_in_the_layout() {
+        let source = r#"
+function toggle() {}
+
+export default function Layout() {
+    return (
+        <div class="shell">
+            <button onClick={toggle}>Menu</button>
+            <div data-nexa-slot></div>
+        </div>
+    );
+}
+"#;
+        let err = validate(&ir_root_for(source)).unwrap_err();
+        assert!(err.to_string().contains("evento interactivo"));
+    }
+
+    #[test]
+    fn validate_still_rejects_an_onclick_inside_an_islands_fallback() {
+        // El fallback de una isla se renderiza server-side como
+        // cualquier otro nodo — un `onClick` ahí sí tendría el mismo
+        // problema de ids colisionados que en cualquier otro lugar del
+        // layout, así que sigue sin estar permitido.
+        let source = r#"
+function toggle() {}
+
+export default function Layout() {
+    return (
+        <div class="shell">
+            <div data-nexa-island="siteHeader">
+                <button onClick={toggle}>Menu</button>
+            </div>
+            <div data-nexa-slot></div>
+        </div>
+    );
+}
+"#;
+        assert!(validate(&ir_root_for(source)).is_err());
     }
 }

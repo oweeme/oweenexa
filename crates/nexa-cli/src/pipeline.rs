@@ -175,11 +175,13 @@ pub fn compile_page(
     // por qué esto no reabre la composición de componentes.
     let mut layout_ui_used_classes = std::collections::BTreeSet::new();
     let mut layout_head_html = String::new();
+    let mut layout_island_specifiers = std::collections::BTreeSet::new();
     let body = match crate::layout::find() {
         Some(layout_file) => {
             let rendered = crate::layout::render_for_page(&layout_file, &body, params, translations.as_ref())?;
             layout_ui_used_classes = rendered.ui_used_classes;
             layout_head_html = rendered.head_html;
+            layout_island_specifiers = rendered.island_specifiers;
             rendered.html
         }
         None => body,
@@ -226,7 +228,12 @@ pub fn compile_page(
     // chunk).
     let all_imports = import_map::resolved(&project_manifest);
     let import_names: std::collections::BTreeSet<String> = all_imports.keys().cloned().collect();
-    let island_specifiers = island_specifiers(&ir.root);
+    let mut island_specifiers = island_specifiers(&ir.root);
+    // Fase 31: un `data-nexa-island` declarado en `src/layout.tsx` (no
+    // solo en la página) también necesita entrar al import map y al
+    // bootstrap de `nexa-islands.js` — se une acá, antes de que
+    // `used_imports`/`has_islands`/`pkg_warnings` lo necesiten.
+    island_specifiers.extend(layout_island_specifiers);
     let used_imports = import_map::used_by_page(&all_imports, &component.handlers, &island_specifiers);
     let import_map_script = import_map::script_tag(&used_imports);
 
@@ -319,8 +326,10 @@ fn has_forms(root: &nexa_ir::IrNode) -> bool {
 /// Los specifiers (`data-nexa-island="..."`) que declara esta página
 /// (Fase 16) — se usan tanto para decidir qué entra al import map
 /// (`import_map::used_by_page`) como para avisar (`pkg_warnings`) si
-/// alguno no está declarado en `nexa.toml [imports]`.
-fn island_specifiers(root: &nexa_ir::IrNode) -> BTreeSet<String> {
+/// alguno no está declarado en `nexa.toml [imports]`. `pub(crate)`
+/// desde la Fase 31: `layout.rs` la reutiliza tal cual para recoger los
+/// specifiers que declare `src/layout.tsx`.
+pub(crate) fn island_specifiers(root: &nexa_ir::IrNode) -> BTreeSet<String> {
     use nexa_ir::IrNodeKind;
 
     let mut out = BTreeSet::new();
