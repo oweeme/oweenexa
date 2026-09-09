@@ -131,10 +131,16 @@ fn write_variant(img: &DynamicImage, dist_root: &Path, rel: &str, format: ImageF
     }
 }
 
-/// `"/img/foto.jpg"` -> `("/img", "foto", "jpg")`.
+/// `"/img/foto.jpg"` -> `("/img", "foto", "jpg")`. `"/foto.jpg"` (imagen en
+/// la raíz de `public/`) -> `("", "foto", "jpg")` — `Path::parent()` de un
+/// path de un solo segmento absoluto devuelve `Some("/")`, no `None`/`""`,
+/// así que hay que tratar ese `"/"` igual que vacío a propósito: de lo
+/// contrario `format!("{dir}/{stem}-{w}.{ext}")` en el llamador arma
+/// `"//foto-480.jpg"` (doble slash, una URL a otro dominio para el
+/// navegador, no una ruta del sitio).
 fn split_public_rel(public_rel: &str) -> (String, String, String) {
     let path = Path::new(public_rel);
-    let dir = path.parent().map(|p| p.to_string_lossy().to_string()).filter(|s| !s.is_empty()).unwrap_or_default();
+    let dir = path.parent().map(|p| p.to_string_lossy().to_string()).filter(|s| !s.is_empty() && s != "/").unwrap_or_default();
     let stem = path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
     let ext = path.extension().map(|s| s.to_string_lossy().to_lowercase()).unwrap_or_default();
     (dir, stem, ext)
@@ -328,6 +334,27 @@ mod tests {
         // agranda una imagen).
         let widths: Vec<u32> = generated.avif_srcset.iter().map(|(w, _)| *w).collect();
         assert_eq!(widths, vec![480, 600]);
+    }
+
+    #[test]
+    fn root_level_images_do_not_produce_double_slash_urls() {
+        // Bug #23: `Path::new("/medium.jpg").parent()` es `Some("/")`, no
+        // `None` — sin el fix, `split_public_rel` deja `dir = "/"` y las
+        // URLs generadas quedan como "//medium-480.avif" (doble slash: el
+        // navegador lo interpreta como un dominio distinto, no una ruta).
+        let dir = scratch_dir();
+        let src = dir.join("medium.jpg");
+        write_test_jpeg(&src, 600, 4);
+
+        let generated = generate(&src, "/medium.jpg", &dir).unwrap().unwrap();
+
+        for (_, rel) in &generated.avif_srcset {
+            assert!(!rel.starts_with("//"), "URL con doble slash: {rel}");
+            assert!(rel.starts_with("/medium-") || rel == "/medium.jpg", "URL inesperada: {rel}");
+        }
+        for (_, rel) in &generated.fallback_srcset {
+            assert!(!rel.starts_with("//"), "URL con doble slash: {rel}");
+        }
     }
 
     #[test]

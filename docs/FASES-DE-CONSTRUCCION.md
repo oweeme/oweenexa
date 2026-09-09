@@ -3629,6 +3629,93 @@ fuente. Esta fase agrega cinco piezas nuevas al mismo patrón.
 
 ---
 
+## Fase 58 — Tres bugs reales encontrados usando Nexa en un proyecto externo (Oweeme)
+
+**Contexto:** el usuario reportó tres bugs concretos, con causa raíz ya
+identificada, encontrados migrando un proyecto real (Oweeme, backend Go)
+a Nexa — cada uno con su workaround ya aplicado en ese proyecto mientras
+tanto. Los tres eran del tipo "el mecanismo entero funciona bien, pero
+un caso de borde puntual no se contempló".
+
+### Bug #23 — doble slash en imágenes optimizadas en la raíz de `public/`
+
+`crates/nexa-cli/src/image_pipeline.rs`, `split_public_rel`:
+`Path::new("/foto.jpg").parent()` devuelve `Some("/")`, no `None`/`""` —
+el filtro `.filter(|s| !s.is_empty())` no lo descartaba, así que `dir`
+quedaba literalmente `"/"` y `format!("{dir}/{stem}-{w}.{ext}")`
+generaba `"//foto-480.jpg"` (doble slash: el navegador lo interpreta
+como un link a otro dominio, no como una ruta del sitio — la imagen no
+carga, sin ningún error visible salvo mirando la pestaña de red).
+
+**Fix:** una condición más en el filtro — tratar `"/"` igual que `""`.
+
+> **Verificado con una imagen real** (generada con ImageMagick,
+> `convert -size 600x400 xc:blue medium.jpg`) puesta en la raíz de
+> `public/` de un proyecto de scratch, compilada con `nexa build` real:
+> el `<picture>` resultante (`srcset="/medium-480.avif 480w, ..."`) no
+> tiene ningún `//`, y los archivos (`medium-480.avif`, `medium.jpg`,
+> ...) existen de verdad en `dist/`.
+
+### Bug #24 — `:param` dentro de un query string no se sustituía
+
+`crates/nexa-loader/src/url.rs`, `resolve_url`: partía la plantilla por
+`/` y solo reemplazaba un pedazo si el segmento *completo* empezaba con
+`:` (`segment.strip_prefix(':')`). Un template como
+`/api/projects?type=service&lang=:locale` tiene todo eso como un único
+segmento (no hay ningún `/` de por medio) que no empieza con `:` —
+nunca se tocaba, y el backend recibía literalmente el texto `:locale`.
+
+**Fix:** `substitute_in_segment` busca `:nombre` en cualquier posición
+del segmento (no solo al principio), reemplazando cada ocurrencia — un
+`:` sin identificador después (ej. el de `https://`) se deja intacto.
+
+> **Verificado con un backend HTTP real** (Python) que devuelve en su
+> respuesta el path exacto que recibió: con `load = { url:
+> "/projects?type=service&lang=:locale" }` en una página bajo
+> `[locale]`, el HTML compilado para `/es` y `/en` muestra
+> `lang=es`/`lang=en` reales — antes del fix, ambos mostraban
+> literalmente `lang=:locale`.
+
+### Bug #25 — `nexa dev` confunde un archivo estático con una página
+
+`crates/nexa-cli/src/commands/dev.rs`, función `handle`: probaba
+`resolve_page` (¿es esto una página?) antes que `read_static_file`
+(¿existe este archivo en `public/`?) — al revés de lo que hace falta.
+Con una página dinámica de un solo segmento (`[locale]/index.tsx`),
+`crates/nexa-router/src/route.rs::matches` matchea *cualquier* ruta de
+un solo segmento (`/site.css`, `/logo.svg`), capturando
+`locale = "site.css"` — `resolve_page` nunca devolvía `NotFound`, así
+que el archivo real de `public/` no se llegaba a mirar. Solo afectaba a
+`nexa dev` — `nexa build`/`nexa preview` sirven `public/` por un camino
+distinto, sin este orden invertido.
+
+**Fix:** invertir el orden — `read_static_file` primero, `resolve_page`
+solo si no hay un archivo real con ese nombre.
+
+> **Verificado con `nexa dev` real** (no un test unitario — el lookup
+> de `public/` es relativo al directorio de trabajo del proceso, así
+> que un test unitario necesitaría manipular el `cwd` compartido entre
+> tests en paralelo; más confiable probarlo de punta a punta): un
+> proyecto de scratch con `[locale]/index.tsx` + `public/site.css`,
+> `nexa dev` real, `curl /site.css` devuelve `Content-Type: text/css`
+> con el contenido real del archivo — antes del fix devolvía el HTML de
+> la página con `params.locale = "site.css"`. Confirmado también que
+> una ruta que no matchea ningún archivo real (`/no-existe.css`) sigue
+> cayendo en `resolve_page` como antes (no se rompió el catch-all).
+
+**Criterio de salida:** `cargo test --workspace --release` (0 failed,
+con tests nuevos para cada bug: `root_level_images_do_not_produce_double_slash_urls`
+en `nexa-cli`, y `substitutes_a_param_inside_a_query_string` +
+`substitutes_multiple_params_in_the_same_segment` +
+`a_lone_colon_with_no_identifier_after_it_is_left_as_is` +
+`missing_param_inside_a_query_string_is_still_an_error` en
+`nexa-loader`), más los tres proyectos de scratch de arriba, cada uno
+verificado con la herramienta real correspondiente (`nexa build`, un
+backend HTTP real, `nexa dev` real) en vez de solo inspeccionar el
+código.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

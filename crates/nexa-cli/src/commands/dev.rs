@@ -106,16 +106,25 @@ fn handle(pages_dir: &Path, url: &str, api_base: &str) -> Response<std::io::Curs
         return respond(200, text_content_type(), robots_or_generate());
     }
 
+    // Bug #25: un archivo físico de `public/` tiene que ganarle a
+    // cualquier página, chequeado ANTES de `resolve_page` — no después,
+    // como caía por `ResolveError::NotFound` en la versión anterior. Con
+    // una página dinámica de un solo segmento (`[locale]/index.tsx`),
+    // `resolve_page` matchea *cualquier* ruta de un solo segmento
+    // (`/site.css`, `/logo.svg`, `/favicon.ico` — quedan capturados como
+    // si fueran `locale = "site.css"`), así que nunca devolvía
+    // `NotFound` y el archivo real de `public/` no se llegaba a mirar.
+    if let Some(bytes) = read_static_file(Path::new("public"), path) {
+        return respond_bytes(200, guess_static_content_type(path), bytes);
+    }
+
     // `use_prebuilt_html: false` — a diferencia de `nexa preview`, `nexa
     // dev` nunca debe servir un `dist/.../index.html` que haya quedado de
     // un `nexa build` anterior: la razón de ser de este comando es que lo
     // que se ve siempre viene del `src/` actual.
     match resolve_page(pages_dir, path, api_base, false) {
         Ok(html) => respond(200, html_content_type(), with_dev_client(&html)),
-        Err(ResolveError::NotFound) => match read_static_file(Path::new("public"), path) {
-            Some(bytes) => respond_bytes(200, guess_static_content_type(path), bytes),
-            None => respond(404, html_content_type(), with_dev_client(&not_found_page(path))),
-        },
+        Err(ResolveError::NotFound) => respond(404, html_content_type(), with_dev_client(&not_found_page(path))),
         Err(ResolveError::Failed(message)) => {
             respond(500, html_content_type(), with_dev_client(&compile_error_page(&message)))
         }
