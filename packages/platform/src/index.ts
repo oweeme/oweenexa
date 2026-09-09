@@ -1,12 +1,13 @@
 import { isCapacitor, isTauri, isWeb } from "./environment";
 import { capturePhoto } from "./camera";
+import { openCache } from "./cache";
 import { notify } from "./notifications";
 import { share } from "./share";
-import { createStorage } from "./storage";
+import { createSessionStorage, createStorage } from "./storage";
 
 export { isTauri, isCapacitor, isWeb, currentGlobal, capacitorPlugin } from "./environment";
 export type { NexaPlatformGlobal } from "./environment";
-export { createStorage } from "./storage";
+export { createStorage, createSessionStorage } from "./storage";
 export type { KeyValueStorage } from "./storage";
 export { notify } from "./notifications";
 export type { NotifyOptions, NotifyDeps, CapacitorNotificationsPlugin } from "./notifications";
@@ -14,6 +15,8 @@ export { share } from "./share";
 export type { ShareOptions, ShareDeps, CapacitorSharePlugin } from "./share";
 export { capturePhoto } from "./camera";
 export type { CameraResult, CameraDeps, CapacitorCameraPlugin, WebCapture } from "./camera";
+export { openCache } from "./cache";
+export type { CacheStore } from "./cache";
 
 /**
  * El objeto que de verdad se usa desde un handler de una página Nexa
@@ -31,4 +34,6 @@ export const platform = {
     share,
     capturePhoto,
     storage: createStorage,
+    sessionStorage: createSessionStorage,
+    cache: openCache,
 };

@@ -64,6 +64,20 @@ async function defaultWebCapture() {
   }
 }
 
+// packages/platform/src/cache.ts
+async function openCache(name, backend) {
+  const storage = backend ?? (typeof caches !== "undefined" ? caches : void 0);
+  if (!storage) {
+    throw new Error("[nexa/platform] la Cache API no est\xE1 disponible en este entorno.");
+  }
+  const cache = await storage.open(name);
+  return {
+    match: (request) => cache.match(request),
+    put: (request, response) => cache.put(request, response),
+    delete: (request) => cache.delete(request)
+  };
+}
+
 // packages/platform/src/notifications.ts
 async function notify(options, deps = {}) {
   const environment = deps.environment ?? currentGlobal();
@@ -111,16 +125,26 @@ async function share(options, deps = {}) {
 }
 
 // packages/platform/src/storage.ts
-function createStorage(backend) {
-  const store = backend ?? (typeof localStorage !== "undefined" ? localStorage : void 0);
-  if (!store) {
-    throw new Error("[nexa/platform] no hay almacenamiento disponible en este entorno.");
-  }
+function wrapStorage(store) {
   return {
     get: (key) => store.getItem(key),
     set: (key, value) => store.setItem(key, value),
     remove: (key) => store.removeItem(key)
   };
+}
+function createStorage(backend) {
+  const store = backend ?? (typeof localStorage !== "undefined" ? localStorage : void 0);
+  if (!store) {
+    throw new Error("[nexa/platform] no hay almacenamiento disponible en este entorno.");
+  }
+  return wrapStorage(store);
+}
+function createSessionStorage(backend) {
+  const store = backend ?? (typeof sessionStorage !== "undefined" ? sessionStorage : void 0);
+  if (!store) {
+    throw new Error("[nexa/platform] no hay almacenamiento de sesi\xF3n disponible en este entorno.");
+  }
+  return wrapStorage(store);
 }
 
 // packages/platform/src/index.ts
@@ -131,17 +155,21 @@ var platform = {
   notify,
   share,
   capturePhoto,
-  storage: createStorage
+  storage: createStorage,
+  sessionStorage: createSessionStorage,
+  cache: openCache
 };
 export {
   capacitorPlugin,
   capturePhoto,
+  createSessionStorage,
   createStorage,
   currentGlobal,
   isCapacitor,
   isTauri,
   isWeb,
   notify,
+  openCache,
   platform,
   share
 };

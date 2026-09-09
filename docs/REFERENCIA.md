@@ -674,6 +674,14 @@ await platform.capturePhoto()
 const storage = platform.storage()
 storage.get(key) / storage.set(key, value) / storage.remove(key)
 // Web: localStorage. Mismo contrato en cualquier entorno.
+
+const session = platform.sessionStorage()   // Fase 38 — mismo contrato, sobre sessionStorage
+session.get(key) / session.set(key, value) / session.remove(key)
+// Vive solo mientras dure la pestaña — a diferencia de storage()/localStorage, no sobrevive cerrar el navegador.
+
+const cache = await platform.cache("nombre-de-cache")   // Fase 39 — Cache API directa, sin [pwa]
+await cache.match(url) / await cache.put(url, response) / await cache.delete(url)
+// Independiente de [pwa.cache] (que vive en el service worker) — para cachear algo puntual desde código normal.
 ```
 
 Cada función lanza un `Error` con mensaje claro (`[nexa/platform] ...`)

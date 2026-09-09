@@ -2493,6 +2493,58 @@ solo del cuerpo.
 
 ---
 
+## Fase 38 — `platform.sessionStorage()` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #15 — `platform.storage()` solo envuelve
+`localStorage`, sin variante de sesión para datos que no deberían
+sobrevivir cerrar la pestaña (un paso de wizard, un filtro temporal).
+
+**Entregables:** `packages/platform/src/storage.ts` extrae un
+`wrapStorage()` compartido (ambas funciones envuelven un objeto
+`Storage`-shaped, la única diferencia es cuál usan por defecto) y
+agrega `createSessionStorage()`, expuesta como `platform.sessionStorage()`
+— mismo contrato exacto (`get`/`set`/`remove`) que `platform.storage()`.
+
+**Criterio de salida:** `platform.sessionStorage()` funciona igual que
+`platform.storage()` pero sobre `sessionStorage` real.
+
+> **Verificado con un navegador real, no solo `vitest`:** una página
+> con un handler que escribe en ambos (`platform.sessionStorage()` y
+> `platform.storage()`) — en Chromium real, confirmado con
+> `sessionStorage.getItem()`/`localStorage.getItem()` directos (no solo
+> leyendo de vuelta con el propio wrapper) que cada uno escribió en el
+> almacenamiento real correspondiente, sin cruzarse.
+>
+> 5 tests nuevos en `packages/platform` (31 total, todos en verde).
+
+## Fase 39 — Acceso directo a Cache API (Hito 12) — ✅ completada
+
+**Objetivo:** issue #17 — el único acceso a la Cache API era indirecto,
+vía `[pwa.cache]` dentro del service worker que genera `nexa add pwa`.
+Un proyecto sin PWA que igual quisiera cachear puntualmente una
+respuesta pesada no tenía ninguna vía declarativa.
+
+**Entregables:** `packages/platform/src/cache.ts::openCache(name,
+backend?)` — envoltorio delgado sobre la Cache API nativa
+(`caches.open`/`match`/`put`/`delete`), expuesto como
+`await platform.cache("nombre")`. Independiente por completo de
+`[pwa]`/`[pwa.cache]` — ambos mecanismos pueden convivir sin pisarse
+porque operan sobre cachés con nombre propio.
+
+**Criterio de salida:** se puede cachear y leer una respuesta puntual
+sin depender de `[pwa]`/service worker.
+
+> **Verificado con un navegador real:** un handler que hace
+> `platform.cache("test-cache")`, guarda una `Response` real con
+> `put()` y la relee con `match()` — en Chromium real, confirmado
+> además con `caches.open()` directo del navegador (no solo el propio
+> wrapper) que la entrada quedó en la Cache API real, con el nombre de
+> caché correcto.
+>
+> 5 tests nuevos en `packages/platform` (36 total, todos en verde).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio
