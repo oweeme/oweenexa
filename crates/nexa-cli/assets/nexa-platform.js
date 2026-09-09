@@ -625,6 +625,101 @@ function base64ToBuffer(base64) {
 }
 var biometrics = { isAvailable, authenticate };
 
+// packages/platform/src/haptics.ts
+async function impact(options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Haptics");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/haptics no est\xE1 instalado en esta app.");
+    }
+    await plugin.impact(options);
+    return;
+  }
+  vibrateWithPattern(patternForImpact(options.style), deps);
+}
+async function notification(options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Haptics");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/haptics no est\xE1 instalado en esta app.");
+    }
+    await plugin.notification(options);
+    return;
+  }
+  vibrateWithPattern(patternForNotification(options.type), deps);
+}
+async function vibrate(options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Haptics");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/haptics no est\xE1 instalado en esta app.");
+    }
+    await plugin.vibrate(options);
+    return;
+  }
+  vibrateWithPattern([options.duration ?? 300], deps);
+}
+var selectionStarted = false;
+async function selectionStart(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Haptics");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/haptics no est\xE1 instalado en esta app.");
+    }
+    await plugin.selectionStart();
+    return;
+  }
+  selectionStarted = true;
+}
+async function selectionChanged(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Haptics");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/haptics no est\xE1 instalado en esta app.");
+    }
+    await plugin.selectionChanged();
+    return;
+  }
+  if (selectionStarted) {
+    vibrateWithPattern([70], deps);
+  }
+}
+async function selectionEnd(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Haptics");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/haptics no est\xE1 instalado en esta app.");
+    }
+    await plugin.selectionEnd();
+    return;
+  }
+  selectionStarted = false;
+}
+function patternForImpact(style = "HEAVY") {
+  if (style === "MEDIUM") return [43];
+  if (style === "LIGHT") return [20];
+  return [61];
+}
+function patternForNotification(type = "SUCCESS") {
+  if (type === "WARNING") return [30, 40, 30, 50, 60];
+  if (type === "ERROR") return [27, 45, 50];
+  return [35, 65, 21];
+}
+function vibrateWithPattern(pattern, deps) {
+  const nav = deps.navigatorObject ?? (typeof navigator !== "undefined" ? navigator : void 0);
+  if (!nav?.vibrate) {
+    throw new Error("[nexa/platform] la Vibration API no est\xE1 disponible en este entorno.");
+  }
+  nav.vibrate(pattern);
+}
+var haptics = { impact, notification, vibrate, selectionStart, selectionChanged, selectionEnd };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -643,7 +738,8 @@ var platform = {
   geolocation,
   deepLinks,
   push,
-  biometrics
+  biometrics,
+  haptics
 };
 export {
   authenticate,
@@ -659,6 +755,9 @@ export {
   getLaunchUrl,
   getLifecycleState,
   getNetworkStatus,
+  haptics,
+  notification as hapticsNotification,
+  impact,
   isAvailable,
   isCapacitor,
   isTauri,
@@ -676,7 +775,11 @@ export {
   platform,
   push,
   register,
+  selectionChanged,
+  selectionEnd,
+  selectionStart,
   share,
   theme,
+  vibrate,
   watchPosition
 };

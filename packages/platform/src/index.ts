@@ -12,6 +12,7 @@ import { geolocation } from "./geolocation";
 import { deepLinks } from "./deeplinks";
 import { push } from "./push";
 import { biometrics } from "./biometrics";
+import { haptics } from "./haptics";
 
 export { isTauri, isCapacitor, isWeb, currentGlobal, capacitorPlugin } from "./environment";
 export type { NexaPlatformGlobal } from "./environment";
@@ -41,6 +42,24 @@ export { register, onReceived, onActionPerformed, push } from "./push";
 export type { PushRegistration, PushOptions, PushDeps, CapacitorPushPlugin } from "./push";
 export { isAvailable, authenticate, biometrics } from "./biometrics";
 export type { BiometryType, BiometricsAvailability, AuthenticateOptions, BiometricsDeps, CapacitorBiometricsPlugin } from "./biometrics";
+export {
+    impact,
+    notification as hapticsNotification,
+    vibrate,
+    selectionStart,
+    selectionChanged,
+    selectionEnd,
+    haptics,
+} from "./haptics";
+export type {
+    ImpactStyle,
+    HapticsNotificationType,
+    ImpactOptions,
+    HapticsNotificationOptions,
+    VibrateOptions,
+    HapticsDeps,
+    CapacitorHapticsPlugin,
+} from "./haptics";
 
 /**
  * El objeto que de verdad se usa desde un handler de una página Nexa
@@ -68,4 +87,5 @@ export const platform = {
     deepLinks,
     push,
     biometrics,
+    haptics,
 };

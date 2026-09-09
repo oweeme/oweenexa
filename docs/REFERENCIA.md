@@ -817,6 +817,13 @@ platform.push.onActionPerformed((a) => { ... })   // solo Capacitor — en Web l
 
 const status = await platform.biometrics.isAvailable()   // Fase 54 — { isAvailable, biometryType }
 await platform.biometrics.authenticate({ reason: "Desbloquear" })   // dispara el prompt biométrico real; rechaza si falla/cancela
+
+await platform.haptics.impact({ style: "MEDIUM" })       // Fase 55 — HEAVY (default) | MEDIUM | LIGHT
+await platform.haptics.notification({ type: "ERROR" })  // SUCCESS (default) | WARNING | ERROR
+await platform.haptics.vibrate({ duration: 250 })        // ms; default 300
+await platform.haptics.selectionStart()   // hint de "empezar a arrastrar por una selección" (ej. un slider)
+await platform.haptics.selectionChanged() // solo vibra si hubo un selectionStart() sin su selectionEnd() todavía
+await platform.haptics.selectionEnd()
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -897,6 +904,15 @@ código fuente, esa rama es una simulación deliberada para tests (un
 fiel a la disciplina de "verificado contra algo real, nunca inventado"
 que copiar esa simulación. El id de la credencial creada la primera
 vez se guarda con `platform.storage()` (Fase 38, reutilizado tal cual).
+
+`platform.haptics` (Fase 55, séptimo y último plugin del issue #20):
+Capacitor nativo usa el plugin real `@capacitor/haptics`. Web/Tauri
+usan la Vibration API estándar (`navigator.vibrate`) — la misma que
+usa la propia rama web de `@capacitor/haptics` por dentro (a
+diferencia de biometría, esta rama web sí es real). Los patrones de
+vibración de cada `impact`/`notification`/`selectionChanged` son
+exactamente los que usa `HapticsWeb`, verificados leyendo su código
+fuente.
 
 ## `@nexa/reactivity`
 

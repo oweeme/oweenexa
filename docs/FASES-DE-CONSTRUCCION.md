@@ -3398,6 +3398,64 @@ plugin nativo, tests, documentado.
 > **Quedan pendientes, mismo issue:** haptics — el último de la lista
 > sugerida por el propio issue.
 
+## Fase 55 — `platform.haptics` (Hito 12) — ✅ completada, issue #20 cerrado
+
+**Objetivo:** issue #20 — séptimo y último plugin de la lista
+incremental sugerida por el propio issue (estado de red → ciclo de
+vida → geolocalización → deep links → push real → biometría →
+haptics). Con esta fase, el issue queda cerrado — los siete quedaron
+resueltos, cada uno con sus dos ramas reales y verificado de punta a
+punta.
+
+**Entregables:**
+
+- `packages/platform/src/haptics.ts` (nuevo): `impact(options?)`,
+  `notification(options?)`, `vibrate(options?)`, `selectionStart()`,
+  `selectionChanged()`, `selectionEnd()`. Capacitor nativo: el plugin
+  real `@capacitor/haptics`. Web/Tauri: la Vibration API estándar del
+  navegador (`navigator.vibrate`) — a diferencia de biometría, esta
+  rama web de Capacitor **sí es real**, así que se replicaron
+  exactamente sus patrones de vibración (`impact` HEAVY/MEDIUM/LIGHT
+  -> `[61]`/`[43]`/`[20]`; `notification` SUCCESS/WARNING/ERROR ->
+  `[35,65,21]`/`[30,40,30,50,60]`/`[27,45,50]`; `selectionChanged` ->
+  `[70]` solo entre un `selectionStart()` y su `selectionEnd()`),
+  verificados leyendo el `web.js` real del paquete, no solo sus
+  `.d.ts`.
+- Expuesto como `platform.haptics.*` en `packages/platform/src/index.ts`.
+- 15 tests nuevos en `packages/platform/test/haptics.test.ts` (133
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** las dos ramas reales sin inventar la forma del
+plugin nativo, tests, documentado — el mismo criterio que ya cumplieron
+los otros seis plugins de este issue.
+
+> **Verificado contra la Vibration API real de Chromium (Playwright),
+> no contra un mock de nuestro propio código:** se interceptó
+> `navigator.vibrate` real (envolviéndolo, sin dejar de llamar a la
+> implementación real del navegador) para confirmar el patrón exacto
+> que recibió en cada caso — `impact({ style: "MEDIUM" })` ->
+> `[43]` real; `notification({ type: "ERROR" })` -> `[27,45,50]` real;
+> `vibrate({ duration: 250 })` -> `[250]` real; y la secuencia
+> `selectionStart()` -> `selectionChanged()` -> `selectionEnd()`
+> disparó exactamente una llamada real a `vibrate([70])`, ni una más —
+> confirma que el estado de "¿hay una selección en curso?" se maneja
+> bien entre las tres llamadas.
+>
+> **Issue #20 completo — resumen de los siete plugins añadidos a
+> `@nexa/platform` en las Fases 48 a 55:** `network` (Fase 48),
+> `lifecycle` (Fase 49), `geolocation` (Fase 51), `deepLinks` (Fase
+> 52), `push` (Fase 53), `biometrics` (Fase 54), `haptics` (Fase 55).
+> Cada uno verificado con sus dos ramas reales contra el código fuente
+> del plugin de Capacitor correspondiente (o, cuando esa rama web
+> resultó ser una simulación como en biometría, con el estándar web
+> real equivalente en su lugar) — nunca inventado, siempre confirmado
+> con un navegador real (Playwright/Chromium: `setOffline`,
+> `dispatchEvent`, `setGeolocation`, un Service Worker real, un
+> autenticador WebAuthn virtual real, o interceptando la API real del
+> navegador, según lo que cada plugin necesitaba para una prueba
+> genuina).
+
 ---
 
 ## Regla de disciplina para todas las fases
