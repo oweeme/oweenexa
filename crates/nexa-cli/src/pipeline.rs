@@ -210,6 +210,12 @@ pub fn compile_page(
     let seo_head = nexa_seo::render_head(component.seo.as_ref(), &seo_ctx);
     let schema_script = nexa_seo::render_schema_script(component.schema.as_ref(), &seo_ctx);
     let seo_warnings = nexa_seo::analyze(&ir.root, component.seo.as_ref());
+    // Fase 37: `export const head` no es exclusivo de `src/layout.tsx`
+    // — una página individual también puede declararlo (ej. un
+    // `google-site-verification` que solo aplica a esa ruta, o un
+    // `theme-color` distinto para una sola página). Mismo mecanismo de
+    // resolución que ya usaba el layout, invocado una segunda vez acá.
+    let page_head_html = nexa_seo::render_layout_head(component.head.as_ref(), &seo_ctx);
 
     let project_manifest = manifest::load_lenient(Path::new(MANIFEST_PATH));
     let telemetry_endpoint = project_manifest.telemetry.as_ref().and_then(|t| t.endpoint.as_deref());
@@ -225,6 +231,11 @@ pub fn compile_page(
     // <link rel="icon"> puesto en <body> no lo detectan todos los
     // navegadores de forma confiable.
     let combined_head = join_head_fragments(&combined_head, &layout_head_html);
+    // `export const head` de la propia página (Fase 37) — se agrega
+    // después del de layout, así una página puede repetir una clave
+    // (ej. un `theme-color` distinto) sin que el orden en el HTML
+    // final quede ambiguo sobre cuál "gana" para el navegador.
+    let combined_head = join_head_fragments(&combined_head, &page_head_html);
 
     let mut ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
     ui_used_classes.extend(layout_ui_used_classes);

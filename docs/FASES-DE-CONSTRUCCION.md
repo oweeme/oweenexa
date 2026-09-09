@@ -2452,6 +2452,47 @@ siempre.
 
 ---
 
+## Fase 37 — Meta tags arbitrarios en `export const head` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #13 — `seo{}` cubre title/description/canonical/
+OpenGraph/Twitter card, pero no tiene escape hatch para un meta tag
+suelto que un servicio de terceros pida (verificación de Search
+Console, dominio de Facebook, `theme-color` puntual).
+
+**Entregables:**
+- `nexa-seo::render_layout_head` (Fase 27) gana un campo `meta: [{name
+  | property, content}]` — reutiliza la infraestructura de resolución
+  ya existente (`JsonTemplate` → `resolve_json_template`), no un
+  mecanismo nuevo. Acepta `name` (la forma común) o `property` (la que
+  usan Open Graph/`theme-color`); una entrada sin `content` se omite en
+  silencio.
+- **De paso, un hueco real encontrado revisando el código, no en el
+  issue original:** `component.head` (el campo del propio `nexa-ast`)
+  se parseaba para *cualquier* componente desde la Fase 27, pero
+  `pipeline::compile_page` solo lo usaba para el layout — una página
+  individual podía escribir `export const head = {...}` y quedaba
+  parseado y **completamente descartado**, sin error ni aviso. Arreglado:
+  ahora `compile_page` también resuelve el `head` de la propia página,
+  agregado al `<head>` final después del del layout.
+
+**Criterio de salida:** `export const head = { meta: [...] }` en
+`src/layout.tsx` o en una página produce `<meta>` reales dentro de
+`<head>` — verificado con `curl`/lectura directa del HTML servido, no
+solo del cuerpo.
+
+> **Verificado con un proyecto real, no solo `cargo test`:** `nexa
+> build` sobre una página con `head.meta` de dos entradas (`name` y
+> `property`) generó ambos `<meta>` reales, confirmados dentro de
+> `<head>...</head>` (no en `<body>`) por posición literal en el HTML
+> servido. `nexa lint` sin avisos. Reverificado que un proyecto con
+> layout (Fase 31) sigue compilando sin error tras agregar la segunda
+> llamada a `render_layout_head` — sin regresión.
+>
+> Los 300 tests del workspace de Rust (+5 sobre los 295 de la Fase 36,
+> todos en `nexa-seo::layout_head::tests`) siguen en verde.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

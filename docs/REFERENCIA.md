@@ -140,7 +140,10 @@ de forma confiable. Para favicon y hojas de estilo compartidas, declará
 export const head = {
     icon: "/static/logo.svg",            // <link rel="icon"> — el type se infiere de la extensión
     appleTouchIcon: "/static/icon-180.png", // <link rel="apple-touch-icon">
-    stylesheets: ["/static/site.css"]     // un <link rel="stylesheet"> por entrada
+    stylesheets: ["/static/site.css"],    // un <link rel="stylesheet"> por entrada
+    meta: [                               // Fase 37 — meta tags sueltos, ver más abajo
+        { name: "google-site-verification", content: "abc123" }
+    ]
 };
 
 export default function Layout() { /* ... */ }
@@ -148,7 +151,29 @@ export default function Layout() { /* ... */ }
 
 Mismo patrón que `seo`/`schema`: un objeto literal, nunca código
 ejecutado — `nexa-cli` lo resuelve y lo mezcla en el `<head>` real del
-documento, antes de `</head>`. Los tres campos son opcionales.
+documento, antes de `</head>`. Todos los campos son opcionales.
+
+**`meta` — escape hatch para lo que no tiene campo propio en `seo{}`
+(Fase 37):** `seo{}` cubre title/description/canonical/OpenGraph/
+Twitter card — pero verificación de Search Console, dominio de
+Facebook, o un `theme-color` puntual no tenían ningún lugar declarativo
+antes de esto:
+
+```tsx
+export const head = {
+    meta: [
+        { name: "google-site-verification", content: "abc123" },
+        { property: "theme-color", content: "#C8102E" }  // property, no name — igual que Open Graph
+    ]
+};
+```
+
+Cada entrada necesita `content` y exactamente uno de `name`/`property`
+— si no tiene `content`, se omite en silencio (nunca un `<meta
+content="">` roto). **`export const head` no es exclusivo del
+layout** — una página individual también puede declararlo (ej. un
+`theme-color` distinto solo para esa ruta); el de la página se agrega
+después del del layout en el HTML final.
 
 ### Header/nav con estado real: una isla dentro del layout (Fase 31)
 
