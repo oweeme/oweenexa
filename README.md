@@ -52,10 +52,19 @@ falta, en el mismo proyecto.
   cualquier backend (PHP, Go, Node, lo que ya tengas) y le pasa el
   resultado a la página — Nexa no impone su propio backend ni su propio
   ORM.
-- **Rutas dinámicas pre-renderizables.** Una ruta como `[slug].tsx`
-  puede declarar `paths` y salir del build como HTML estático real, sin
-  servidor Nexa corriendo en producción — o servirse al vuelo si el
-  espacio de parámetros no se puede enumerar de antemano.
+- **Iteración real de listas.** `<For each={data.items}>{(item) => (...)}</For>`
+  reconocido como un patrón sintáctico más (igual que `t()`), nunca un
+  `.map()` arbitrario — un catálogo, un listado de artículos o un
+  directorio son páginas Nexa reales, con HTML indexable por cada
+  elemento, no algo que haya que meter en una isla para poder iterar.
+- **Rutas dinámicas pre-renderizables — o servidas en producción de
+  verdad.** Una ruta como `[slug].tsx` puede declarar `paths` y salir
+  del build como HTML estático real, sin servidor Nexa corriendo en
+  producción; si el espacio de parámetros no se puede enumerar de
+  antemano, `nexa add nginx` genera un `proxy_pass` real (probado de
+  punta a punta contra un `nexa preview` detrás de nginx) para
+  servirla al vuelo de forma confiable, no como "corré el dev server
+  en prod".
 - **PWA declarativo.** `nexa add pwa` + un bloque `[pwa]` en `nexa.toml`
   generan un manifest y un service worker reales, con reglas de caché
   (`cache-first`/`network-first`/`stale-while-revalidate`) por prefijo
@@ -82,17 +91,57 @@ falta, en el mismo proyecto.
   `package.json`/npm para los módulos oficiales de Nexa: no hay
   `node_modules` de por medio para usar `@nexa/ui`, `@nexa/forms` o
   `@nexa/platform`.
+- **Vendoring de terceros, documentado y probado.** `[imports]` acepta
+  cualquier paquete de npm — `docs/VENDORING.md` documenta el proceso
+  paso a paso (instalar, bundlear a un único ESM con esbuild, declarar
+  en `nexa.toml`), con dos casos reales ya probados: con envoltorio
+  propio (`packages/stripe`) y sin ninguno (`marked`, vendorizado tal
+  cual lo publica su autor).
 - **Layout compartido sin reabrir la composición.** Un `src/layout.tsx`
   opcional envuelve header/footer/nav en toda página del proyecto — es
   un splice de HTML ya renderizado, no props ni anidar componentes.
+  Puede tener islas propias (Fase 16) que sobreviven intactas a la
+  navegación SPA; lo único que sigue sin poder tener son eventos
+  interactivos propios (`onClick`, etc.).
 - **`nexa lint`/`nexa test` para CI.** `nexa lint` falla si el SEO
   Analyzer o los avisos de paquetes encontraron algo (`nexa build` nunca
   falla por esto a propósito); `nexa test` compila el proyecto y corre
   el test runner de JS del proyecto contra ese build fresco.
-- **Tiempo real de primera clase.** `connectSSE`/`connectSocket` en
-  `@nexa/http` envuelven `EventSource`/`WebSocket` nativos en `Signal`s
-  reactivos — notificaciones, chat, dashboards en vivo, sin que cada
-  proyecto reinvente su propio wrapper.
+- **Tiempo real de primera clase, con reconexión real.**
+  `connectSSE`/`connectSocket` en `@nexa/http` envuelven
+  `EventSource`/`WebSocket` nativos en `Signal`s reactivos —
+  notificaciones, chat, dashboards en vivo. Si la conexión se cae,
+  reconectan solos con backoff exponencial + jitter (`status` pasa por
+  `"reconnecting"`), configurable u opcional; verificado matando y
+  levantando un servidor real de WebSocket mientras un navegador real
+  mantenía la conexión abierta.
+- **`@nexa/ui` creciendo más allá de Button/Input/Card.** `Dialog` se
+  apila de verdad (z-index/foco/`aria-hidden` correctos con 2+
+  diálogos abiertos) y suma `ui.confirm()`/`ui.alert()` (una `Promise`
+  real, sin escribir el HTML del diálogo a mano); `Drawer` para
+  sidebars con el mismo foco atrapado que `Dialog`; un tema oscuro de
+  primera clase (`platform.theme.set("dark")`, tokens con variante
+  oscura, respeta `prefers-color-scheme` incluso sin JavaScript); y un
+  set chico de utilidades de layout (`nx-flex`/`nx-grid`/`nx-stack`),
+  tree-shakeadas igual que el resto.
+- **i18n con interpolación real.** `t("perfil.saludo", { name: data.x })`
+  sustituye `{name}` en el texto del diccionario — `nexa build`/`nexa
+  lint` fallan con un error claro si una clave y sus argumentos no se
+  corresponden, en vez de dejar un `{placeholder}` roto en producción.
+- **`@nexa/platform` ampliándose módulo a módulo.** Más allá de
+  `share`/`notify`/`capturePhoto`/`storage`: `sessionStorage()`,
+  `cache()` (Cache API directa), `db()` (wrapper mínimo sobre
+  IndexedDB), y estado de dispositivo (`network`, `lifecycle`) — cada
+  uno con sus dos ramas reales (Web y Capacitor nativo, verificadas
+  contra el código fuente del plugin correspondiente, nunca
+  inventadas).
+- **Un modelo de componentes liviano para islas chicas.** Cuando una
+  isla necesita algo más que una señal suelta pero no justifica cargar
+  un framework externo completo, `@nexa/reactivity` ofrece composición
+  real (`Component<P>`, props tipadas, limpieza encadenada) — sin
+  Virtual DOM, y explícitamente solo para código dentro de una isla
+  nativa, nunca para páginas Nexa Core. El mismo widget que antes
+  necesitaba Vue 3 completo (~245KB) pesa ~4KB con esto.
 
 ## Instalación rápida
 
@@ -135,12 +184,13 @@ desde el principio. El layout puede usar `{params.locale}`/`t(...)`
 igual que cualquier página, y sus clases `nx-*` (si usa `@nexa/ui`) se
 suman a las de cada página para `nexa-ui.css`.
 
-Esta primera versión es deliberadamente solo para contenido estático: un
-`onClick` o una isla dentro de `src/layout.tsx` hace fallar el build con
-un mensaje explícito (sus ids de nodo compartirían manifiesto con los de
-cada página). Un nav con estado real (ej. un menú hamburguesa) queda
-para una fase futura con islas — hoy, si lo necesitas, podés maquetarlo
-directamente en cada página en lugar del layout.
+Un `onClick` (o cualquier otro evento) dentro de `src/layout.tsx` sigue
+haciendo fallar el build con un mensaje explícito (sus ids de nodo
+compartirían manifiesto con los de cada página) — un nav con un evento
+real se maqueta en cada página, no en el layout. Una **isla** (Fase 16)
+sí puede vivir en el layout, y sobrevive intacta a la navegación SPA:
+un dropdown de usuario con estado, o un menú hamburguesa montado con
+`@nexa/reactivity`, funcionan ahí.
 
 ### `@nexa/ui` con tree-shaking real
 
@@ -175,6 +225,66 @@ nexa add ui
 #   Design tokens + Button/Input/Card/Dialog en CSS, con tree-shaking real.
 # Registrado en nexa.toml y nexa.lock — sin package.json, sin npm.
 ```
+
+`@nexa/ui` también trae `Drawer` (sidebars, mismo foco atrapado que
+`Dialog`), diálogos apilables con `ui.confirm()`/`ui.alert()`, un tema
+oscuro de primera clase, y utilidades de layout — ver
+**[docs/REFERENCIA.md](docs/REFERENCIA.md)** para la tabla completa de
+clases:
+
+```tsx
+async function removeItem() {
+    if (await ui.confirm("¿Seguro que querés borrar esto?")) {
+        // ...
+    }
+}
+```
+
+```tsx
+<nav class="nx-flex nx-gap-3">...</nav>
+<ul class="nx-grid nx-grid-cols-3">...</ul>
+<main class="nx-stack">...</main>   {/* espaciado vertical consistente */}
+```
+
+```tsx
+<button data-nexa-strategy="load" onClick={() => platform.theme.set("dark")}>
+    Oscuro
+</button>
+```
+
+Sin llamar nunca a `platform.theme.set()`, el sitio ya respeta
+`prefers-color-scheme` del sistema operativo — el helper es solo para
+que el usuario elija explícitamente y esa elección le gane al sistema.
+
+### Iteración real de listas: `<For>`
+
+```tsx
+// src/pages/articles/index.tsx
+export const load = { url: "/articles" };
+
+export default function Articles() {
+    return (
+        <ul>
+            <For each={data.items}>
+                {(item) => (
+                    <li>
+                        <a href={`/articles/${item.slug}`}>{item.title}</a>
+                    </li>
+                )}
+            </For>
+        </ul>
+    );
+}
+```
+
+Reconocido como un patrón sintáctico más — igual que `t()` u `onClick`
+— nunca un `.map()` arbitrario: `each` solo acepta `data.x`/`params.x`,
+y el callback es un único elemento JSX por `item`. Esto es lo que hace
+que un catálogo, un listado de artículos o un directorio sean páginas
+Nexa reales, con un `<li>` indexable por cada elemento desde el primer
+byte — antes de esto, la única forma de mostrar una lista era dentro de
+una isla, perdiendo exactamente el HTML real que es la razón de ser de
+Nexa.
 
 ### Página de producto completa: datos, SEO y schema.org reales
 
@@ -311,6 +421,20 @@ npx @capacitor/cli add android   # requiere el SDK de Android (ANDROID_HOME)
 cd android && ./gradlew assembleDebug   # APK real en app/build/outputs/apk/debug/
 ```
 
+Igual mecanismo para el resto de `@nexa/platform`, que se amplía módulo
+a módulo (cada uno con sus dos ramas reales, Web y Capacitor):
+
+```ts
+platform.storage() / platform.sessionStorage()   // localStorage/sessionStorage, mismo contrato
+const cache = await platform.cache("nombre")     // Cache API directa, sin [pwa]
+const users = platform.db("users")               // wrapper mínimo sobre IndexedDB
+await platform.network.getStatus()               // { online, type }
+platform.network.onChange((status) => { ... })   // suscripción real a online/offline
+
+await platform.lifecycle.getState()              // { active }: false en segundo plano
+platform.lifecycle.onChange((state) => { ... })  // suscripción real a resume/pause
+```
+
 ### Un paquete de un tercero, con el mismo mecanismo (`[imports]`)
 
 ```toml
@@ -333,6 +457,14 @@ resuelve. Ver `examples/oweeme-shop` (con `packages/stripe`, un
 envoltorio real sobre `@stripe/stripe-js`) para la integración completa,
 verificada con un navegador real cargando el SDK real de Stripe desde su
 CDN.
+
+Conseguir que ese archivo exista (bundlear un paquete de npm cualquiera
+a un único ESM) es responsabilidad del proyecto —
+**[docs/VENDORING.md](docs/VENDORING.md)** documenta el proceso paso a
+paso, con un segundo ejemplo real además de Stripe: `marked`,
+vendorizado sin ningún envoltorio propio, usado en
+`examples/oweeme-shop/src/pages/[locale]/articles.tsx` para una vista
+previa en vivo de Markdown.
 
 ### Islas interactivas: un dashboard/tablero en el mismo proyecto
 
@@ -359,15 +491,21 @@ export default function mount(el: Element, props: Record<string, unknown>): void
 Rust solo ve `data-nexa-island="dashboardIsland"` como un `Element` más
 — nunca abre ni interpreta el módulo al que apunta el specifier. El
 servidor solo renderiza el fallback (los hijos del `<div>`, contenido
-real como cualquier otro nodo de Nexa); el montaje real ocurre 100% en
-el cliente, con la misma estrategia de activación que ya usan los
-eventos (`interaction`/`visible`/`idle`/`load`/`manual` — por defecto
+real como cualquier otro nodo de Nexa, incluido `<For>` si el fallback
+es una lista real); el montaje real ocurre 100% en el cliente, con la
+misma estrategia de activación que ya usan los eventos
+(`interaction`/`visible`/`idle`/`load`/`manual` — por defecto
 `visible`, no `interaction`: una isla no tiene "el" evento obvio de un
-`onClick`). Ver `examples/oweeme-shop` para dos islas reales: una
-escrita a mano con `@nexa/reactivity`, y un dashboard con un componente
-**Vue 3 real** montado vía `@nexa/vue-island` — la prueba de que un
-proyecto Vue existente puede convivir con las páginas públicas de Nexa
-sin reescribirse.
+`onClick`). Ver `examples/oweeme-shop` para tres islas reales: un
+filtro de productos escrito a mano con `@nexa/reactivity`, un dashboard
+con un componente **Vue 3 real** montado vía `@nexa/vue-island` (la
+prueba de que un proyecto Vue existente puede convivir con las páginas
+públicas de Nexa sin reescribirse), y un panel de tareas equivalente
+escrito con el **modelo de componentes liviano** de `@nexa/reactivity`
+(composición real, props tipadas, sin Virtual DOM — pesa ~4KB contra
+los ~245KB del mismo widget en Vue; ver
+[docs/REFERENCIA.md](docs/REFERENCIA.md), sección `@nexa/reactivity`,
+para el porqué de cada decisión de alcance).
 
 ### Tiempo real: SSE y WebSocket con `@nexa/http`
 
@@ -378,8 +516,8 @@ const notifications = connectSSE<{ mensaje: string }>({ url: "/events" });
 notifications.data   // Signal<T | undefined> — último mensaje, JSON parseado si se puede
 notifications.error  // Signal<unknown>
 
-const chat = connectSocket<{ from: string; text: string }>({ url: "wss://miapp.com/chat" });
-chat.status // Signal<"connecting" | "open" | "closed">
+const chat = connectSocket<{ from: string; text: string }>({ url: "wss://miapp.com/chat", reconnect: true });
+chat.status // Signal<"connecting" | "open" | "reconnecting" | "closed">
 chat.data   // Signal<T | undefined>
 chat.send({ text: "hola" });
 ```
@@ -389,9 +527,13 @@ Mismo espíritu que `query()`/`mutation()`: un envoltorio delgado sobre
 `Signal`s de `@nexa/reactivity` en vez de que cada proyecto reinvente su
 propio wrapper de eventos del navegador. Corre 100% en el cliente —
 dentro de una isla, o de un handler normal (vía `[imports]`, igual que
-`platform`/`stripe`); Nexa Core no sabe nada de WebSocket/SSE. Sin
-reconexión automática todavía: si la conexión se cae, `status` pasa a
-`"closed"` y se queda ahí — reconectar es responsabilidad del proyecto.
+`platform`/`stripe`); Nexa Core no sabe nada de WebSocket/SSE.
+Reconexión real con backoff exponencial + jitter si se pasa
+`reconnect: true` (o un objeto `{ maxAttempts, baseDelayMs, maxDelayMs }`
+para ajustarlo) — verificado matando y levantando un servidor de
+WebSocket real mientras un navegador real mantenía la conexión abierta.
+Sin eso, sigue siendo el comportamiento de siempre: `status` pasa a
+`"closed"` y se queda ahí.
 
 ### Formulario con validación nativa + i18n con `hreflang`
 
@@ -436,7 +578,10 @@ data-nexa-form>` de verdad (mismo costo cero que `@nexa/ui`).
 `t("clave")` se reconoce tanto en el cuerpo JSX como dentro de
 `seo`/`schema`, y `curl http://127.0.0.1:4321/es` frente a `/en` devuelve
 `<title>`, `<h1>` y `<link rel="alternate" hreflang="...">` todos
-traducidos.
+traducidos. También acepta interpolación —
+`t("perfil.saludo", { name: data.creatorName })` sustituye `{name}` en
+el texto del diccionario; `nexa build`/`nexa lint` fallan con un error
+claro si una clave y sus argumentos no se corresponden.
 
 `nexa build` imprime warnings del SEO Analyzer cuando falta algo
 (`[NEXA-SEO-001] falta \`title\` en \`seo\``, `[NEXA-A11Y-001] <img> sin
@@ -553,20 +698,27 @@ crates/                (Rust — el compilador/toolchain)
                        @nexa/forms y el CSS de @nexa/ui ya compilados (assets/)
 
 packages/               (TypeScript — lo que corre en el navegador; workspace de npm)
-├── reactivity/     state(), effect(), scheduler, bindText() — sin Virtual DOM
+├── reactivity/     state(), effect(), scheduler, bindText() — sin Virtual
+│                    DOM — + un modelo de componentes liviano
+│                    (mountComponent()/Component<P>), solo para islas nativas
 ├── runtime/        initActivation() — lee el manifiesto y activa cada nodo
 │                    según su estrategia (interaction/visible/idle/load/manual)
-├── router/         initRouter()/initPrefetch() — navegación SPA + prefetch
+├── router/         initRouter()/initPrefetch() — navegación SPA + prefetch,
+│                    con contenedor de página estable (data-nexa-slot) si el
+│                    proyecto usa src/layout.tsx
 ├── http/           createApi(), query()/mutation(), connectSSE()/connectSocket()
-│                    (todo sobre @nexa/reactivity)
-├── ui/              CSS fuente (tokens + Button/Input/Card/Dialog) +
-│                    comportamiento accesible del Dialog
+│                    (todo sobre @nexa/reactivity), con reconexión real + backoff
+├── ui/              CSS fuente (tokens con tema oscuro + utilidades de
+│                    layout + Button/Input/Card/Dialog/Drawer) +
+│                    comportamiento accesible (Dialog apilable,
+│                    ui.confirm()/ui.alert(), Drawer)
 ├── forms/          initForms() — validación nativa (Constraint Validation
 │                    API), errores, clases touched/dirty/invalid
 ├── dev-client/     initDevClient() — sondea /__nexa_dev__/version y
 │                    reemplaza el <body> cuando algo bajo src/ cambió
 ├── platform/       platform.isTauri/isCapacitor/isWeb + notify/storage/
-│                    share/capturePhoto — un solo código para los tres
+│                    sessionStorage/cache/db/share/capturePhoto/theme/
+│                    network/lifecycle — un solo código para los tres
 ├── devtools/       initDevtools() — panel de diagnóstico de `nexa dev`
 │                    (clasificación, activación, avisos), nunca en build
 ├── test/           mountChunk() — probar un handler interactivo aislado
@@ -586,8 +738,10 @@ packages/               (TypeScript — lo que corre en el navegador; workspace 
 
 examples/
 └── oweeme-shop/    proyecto de referencia: i18n + load() (backend PHP
-                     real) + seo/schema + forms + ui + platform + stripe +
-                     dos islas interactivas (una a mano, otra con Vue)
+                     real) + seo/schema + <For> + forms + ui + platform +
+                     stripe + marked (vendorizado sin wrapper) + tres islas
+                     interactivas (a mano, con Vue, y con el modelo de
+                     componentes liviano)
 ```
 
 Cada crate/paquete está partido en módulos de una sola responsabilidad —
@@ -603,23 +757,29 @@ imports circulares sin ganar claridad.
   `@nexa/ui` se use con `<button class="nx-btn">` y no `<Button>`.
 - `src/layout.tsx` es único (no hay layouts anidados por directorio, a
   diferencia de frameworks con rutas basadas en archivos que sí los
-  tienen) y no puede tener eventos interactivos ni islas propias — un
-  nav con estado real se maqueta en cada página, no en el layout.
-- `connectSSE`/`connectSocket` no reconectan solos si la conexión se
-  cae — `status` pasa a `"closed"` y se queda ahí; reconectar es
-  responsabilidad del proyecto. Tampoco traen un backoff, ni un canal
-  del lado del servidor: el backend real es quien implementa el
+  tienen) y no puede tener eventos interactivos propios — puede tener
+  islas (sobreviven a la navegación SPA), pero un nav con un `onClick`
+  real se maqueta en cada página, no en el layout.
+- `connectSSE`/`connectSocket` reconectan solos con backoff si se pide
+  explícitamente (`reconnect: true` u opciones), pero no hay ningún
+  canal del lado del servidor: el backend real es quien implementa el
   endpoint SSE/WS, Nexa no trae uno.
 - `load`/`seo`/`schema` son objetos literales estáticos, no funciones —
   sin headers, sin autenticación, sin mutaciones en el servidor.
   Deliberado: Nexa Core no ejecuta JavaScript del desarrollador, solo lo
-  analiza.
+  analiza. Leer cookies de sesión en `load()` está evaluado en un
+  documento de diseño (`docs/DISENO-COOKIES-EN-LOAD.md`) pero todavía no
+  implementado.
 - Una ruta dinámica (`[slug].tsx`) que declara `paths` sí se
   pre-renderiza a HTML estático real con `nexa build` — pero si NO
-  declara `paths`, sigue sirviéndose solo al vuelo vía `nexa preview`,
-  nunca como HTML estático. `paths` enumera valores conocidos de
-  antemano (vía el backend); no hay forma de pre-renderizar rutas cuyos
-  parámetros no se puedan listar así.
+  declara `paths`, sigue sirviéndose solo al vuelo (`nexa preview`/`nexa
+  dev`, o `nexa add nginx` con `proxy_pass` en producción), nunca como
+  HTML estático. `paths` enumera valores conocidos de antemano (vía el
+  backend); no hay forma de pre-renderizar rutas cuyos parámetros no se
+  puedan listar así.
+- `<For>` solo itera `data.x`/`params.x` con un único elemento JSX por
+  callback (sin destructuring del parámetro, sin más de un parámetro,
+  sin anidar un `<For>` dentro de otro) — nunca un `.map()` arbitrario.
 - Un chunk de evento solo tiene código real si el handler es `function
   nombre() {}` o `const nombre = () => {}` en el mismo archivo; si viene
   de un import o de un patrón más complejo, cae a un placeholder
@@ -627,25 +787,24 @@ imports circulares sin ganar claridad.
 - El tree-shaking de `@nexa/ui` solo ve clases `class="..."` estáticas
   (no `class={expr}`), y es a nivel de sitio completo (`nexa build` junta
   todas las páginas), no por página individual.
-- `initRouter` reemplaza `<body>` completo, no un fragmento más fino: no
-  existe todavía un contenedor de página estable. Sí reactiva
-  correctamente eventos, formularios e islas de la página de destino, y
-  limpia los de la página anterior antes de hacerlo.
-- `t(...)` reconoce exactamente un patrón sintáctico: un identificador
-  llamado `t` con un único argumento string literal (`t("clave")`). Ni
-  interpolación (`t("hola {name}")`), ni pluralización, ni una clave
-  dinámica (`t(variable)`) están soportadas todavía.
+- `initRouter` reemplaza solo `[data-nexa-slot]` (un contenedor de
+  página estable) si el proyecto usa `src/layout.tsx`; sin layout,
+  sigue reemplazando `<body>` completo. En ambos casos reactiva
+  correctamente eventos, formularios e islas de la página de destino
+  (incluidas las del layout, que sobreviven intactas), y limpia los de
+  la página anterior antes de hacerlo.
+- `t(...)` reconoce dos patrones sintácticos: `t("clave")`, y
+  `t("clave", { name: data.x })` para interpolación simple. Ni
+  pluralización ni una clave dinámica (`t(variable)`) están soportadas
+  todavía.
 - Las traducciones son un JSON plano por locale, resuelto de la misma
   forma que `data.*` — no hay fallback automático a otro locale si falta
   una clave: se omite el campo (`seo`) o queda el placeholder
   `<!--nexa:t(clave)-->` (cuerpo JSX), nunca se inventa un valor.
 - Una isla nunca se renderiza en el servidor: solo su fallback (los
-  hijos que escribas a mano) es HTML real desde el primer byte — el
-  contenido interno de la isla no existe hasta que el módulo del cliente
-  la monta. Como Nexa no tiene bucles/composición (ver el primer punto de
-  esta lista), tampoco hay forma de generar ese fallback iterando un
-  array (`data.products.map(...)`) — hay que escribirlo a mano, igual que
-  cualquier otro contenido de una página Nexa.
+  hijos que escribas a mano, que sí puede incluir un `<For>` real desde
+  la Fase 30) es HTML real desde el primer byte — el contenido interno
+  de la isla no existe hasta que el módulo del cliente la monta.
 - Las props de una isla (`data-nexa-props={{...}}`) se resuelven una sola
   vez, en el momento del render — no hay canal para que el servidor
   empuje props actualizadas a una isla ya montada, ni para que la isla
@@ -673,7 +832,9 @@ imports circulares sin ganar claridad.
 - `@nexa/platform` no incluye un plugin nativo dedicado para
   notificaciones/share/cámara en Tauri (solo en Capacitor, vía sus
   plugins reales) — usa las Web APIs estándar, que el webview de Tauri
-  soporta directamente.
+  soporta directamente. Se amplía de a un módulo por vez, según
+  necesidad real: `network`/`lifecycle` ya existen; geolocalización,
+  deep links, push real, biometría y haptics todavía no.
 - `nexa add capacitor` solo genera `capacitor.config.json` — el proyecto
   nativo `android/`/`ios/` lo genera `npx @capacitor/cli add android/ios`
   (requiere Node + el SDK de Android o Xcode, ninguno de los dos lo
@@ -697,7 +858,14 @@ imports circulares sin ganar claridad.
   `nexa.toml`, a qué URL/archivo resuelve un nombre. Conseguir que ese
   archivo exista (bundlear tu propio paquete de npm, como hace
   `packages/stripe` con `@stripe/stripe-js`) es responsabilidad del
-  proyecto, no de `nexa-cli`.
+  proyecto, no de `nexa-cli` — ver `docs/VENDORING.md` para el proceso.
+- El modelo de componentes de `@nexa/reactivity` (`Component<P>`,
+  `mountComponent`) es exclusivamente para código dentro de una isla
+  nativa — no lo entiende `nexa-parser`, no tiene ninguna forma de
+  usarse desde un `.tsx` de Nexa. Sin lifecycle hooks complejos, sin
+  context API, sin reconciliación de listas: una lista de componentes
+  se reconstruye entera ante un cambio, igual que el resto de
+  `@nexa/reactivity`.
 - `examples/oweeme-shop` no es un negocio real en producción — es el
   proyecto de referencia que ejercita la integración completa de
   módulos. Un deployment real, con marca y datos propios, queda fuera de
@@ -707,5 +875,9 @@ Todo esto es intencional: cada limitación es una decisión explícita para
 mantener a Nexa Core simple y predecible, no un descuido — ver
 **[docs/REFERENCIA.md](docs/REFERENCIA.md)** para el detalle completo de
 cada mecanismo, **[docs/GUIA-DE-INICIO.md](docs/GUIA-DE-INICIO.md)** para
-empezar desde cero, y `docs/POLITICA-LTS.md` para el versionado del
-framework completo.
+empezar desde cero, **[docs/VENDORING.md](docs/VENDORING.md)** para
+vendorizar un paquete de npm cualquiera, y `docs/POLITICA-LTS.md` para
+el versionado del framework completo. El historial completo de cada
+fase de construcción (qué se decidió, qué bug real se encontró
+verificándolo, qué quedó fuera de alcance a propósito) vive en
+`docs/FASES-DE-CONSTRUCCION.md`.
