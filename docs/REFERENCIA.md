@@ -798,6 +798,9 @@ await users.get(id) / await users.set(id, valor) / await users.delete(id) / awai
 
 platform.theme.get()          // Fase 43 — "dark" | "light" | "system" (default si nunca se guardó nada)
 platform.theme.set("dark")    // persiste con platform.storage() y pone data-theme="dark" en <html>
+
+const status = await platform.network.getStatus()   // Fase 48 — { online: boolean, type: "wifi"|"cellular"|"none"|"unknown" }
+const unsubscribe = platform.network.onChange((status) => { ... })   // suscripción; llamar unsubscribe() para cancelarla
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -819,6 +822,13 @@ guardado apenas se evalúa:
 Cada función lanza un `Error` con mensaje claro (`[nexa/platform] ...`)
 si la capacidad no está disponible en el entorno actual — nunca falla
 en silencio.
+
+`platform.network` (Fase 48, primer plugin del issue #20, incremental):
+Capacitor nativo usa el plugin real `@capacitor/network`; Web/Tauri usan
+`navigator.onLine` + los eventos estándar `online`/`offline`. El
+`type` (`"wifi"`/`"cellular"`) es exclusivo de Capacitor — en Web
+siempre es `"unknown"`, porque no existe un equivalente estándar
+confiable (`navigator.connection` no es parte de ningún spec estable).
 
 ## `@nexa/reactivity`
 

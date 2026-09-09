@@ -2978,6 +2978,63 @@ implementación para cuando/si se decida seguir adelante.
 > siguiente paso explícito, a abrir cuando el usuario confirme la
 > dirección.
 
+## Fase 48 — `platform.network` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #20 — primer plugin de la lista incremental
+sugerida ("estado de red → ciclo de vida → geolocalización → deep
+links → push real → biometría → haptics"). `@nexa/platform` no tenía
+ninguna forma de saber si el dispositivo está online, ni de
+reaccionar a un cambio de conectividad.
+
+**Entregables:**
+
+- `packages/platform/src/network.ts` (nuevo): `getNetworkStatus()`
+  (`{ online, type }`) y `onNetworkChange(callback)` (devuelve una
+  función para cancelar la suscripción — mismo contrato que
+  `connectSSE`/`connectSocket` de `@nexa/http`, Fase 26). Capacitor
+  nativo: el plugin real `@capacitor/network` (`getStatus`/
+  `addListener("networkStatusChange", ...)`/`PluginListenerHandle.remove()`
+  — forma verificada instalando el paquete real y leyendo sus
+  `.d.ts`, no inventada). Web/Tauri: `navigator.onLine` + eventos
+  `online`/`offline` estándar; `type` siempre `"unknown"` en esa rama
+  (`navigator.connection` no es un estándar estable, a diferencia de
+  `onLine`).
+- Expuesto como `platform.network.getStatus`/`platform.network.onChange`
+  en `packages/platform/src/index.ts`.
+- 11 tests nuevos en `packages/platform/test/network.test.ts` (61
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`, junto al resto de
+  `@nexa/platform`.
+
+**Criterio de salida:** las dos ramas (Web + Capacitor) sin inventar la
+forma del plugin nativo; tests; documentado — mismos tres criterios
+que pide el issue para cada plugin agregado.
+
+> **Verificado con conectividad real en Chromium (Playwright), no
+> simulada:** `context.setOffline(true)`/`setOffline(false)` de
+> Playwright dispara los eventos `offline`/`online` reales del
+> navegador — `platform.network.getStatus()` y una suscripción activa
+> de `platform.network.onChange()` reflejaron el cambio real en ambos
+> sentidos, y cancelar la suscripción de verdad dejó de recibir
+> actualizaciones ante un cambio de conectividad posterior.
+>
+> **Bug real encontrado en el propio test, no en la implementación:**
+> el primer intento de E2E guardaba la función de cancelación
+> (`unsubscribe`) en una variable `let` de nivel de módulo compartida
+> entre los tres handlers de la página (`checkStatus`/`watchStatus`/
+> `stopWatching`) — pero Nexa empaqueta cada handler interactivo en su
+> **propio chunk** (Fase 5), así que esa variable nunca era
+> compartida de verdad entre ellos (cada chunk tiene su propia copia).
+> Guardar la referencia en `window` (el único ámbito realmente
+> compartido entre chunks separados) lo arregló. Queda como
+> recordatorio para cualquier ejemplo futuro que necesite estado
+> compartido entre más de un handler de la misma página.
+>
+> **Quedan pendientes, mismo issue, a resolver de a uno:** ciclo de
+> vida (resume/pause), geolocalización, deep links, push real,
+> biometría, haptics — orden sugerido por el propio issue, ajustable
+> según necesidad real.
+
 ---
 
 ## Regla de disciplina para todas las fases

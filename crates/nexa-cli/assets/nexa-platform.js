@@ -217,6 +217,59 @@ var theme = {
 };
 applyTheme(readStoredTheme());
 
+// packages/platform/src/network.ts
+async function getNetworkStatus(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Network");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/network no est\xE1 instalado en esta app.");
+    }
+    const status = await plugin.getStatus();
+    return { online: status.connected, type: status.connectionType };
+  }
+  const nav = deps.navigatorObject ?? (typeof navigator !== "undefined" ? navigator : void 0);
+  if (!nav) {
+    throw new Error("[nexa/platform] `navigator` no est\xE1 disponible en este entorno.");
+  }
+  return { online: nav.onLine, type: "unknown" };
+}
+function onNetworkChange(callback, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Network");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/network no est\xE1 instalado en esta app.");
+    }
+    let cancelled = false;
+    let handle;
+    plugin.addListener("networkStatusChange", (status) => callback({ online: status.connected, type: status.connectionType })).then((h) => {
+      if (cancelled) {
+        void h.remove();
+      } else {
+        handle = h;
+      }
+    });
+    return () => {
+      cancelled = true;
+      void handle?.remove();
+    };
+  }
+  const target = deps.eventTarget ?? (typeof window !== "undefined" ? window : void 0);
+  if (!target) {
+    throw new Error("[nexa/platform] no hay un target de eventos disponible en este entorno.");
+  }
+  const onOnline = () => callback({ online: true, type: "unknown" });
+  const onOffline = () => callback({ online: false, type: "unknown" });
+  target.addEventListener("online", onOnline);
+  target.addEventListener("offline", onOffline);
+  return () => {
+    target.removeEventListener("online", onOnline);
+    target.removeEventListener("offline", onOffline);
+  };
+}
+var network = { getStatus: getNetworkStatus, onChange: onNetworkChange };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -229,7 +282,8 @@ var platform = {
   sessionStorage: createSessionStorage,
   cache: openCache,
   db: openCollection,
-  theme
+  theme,
+  network
 };
 export {
   capacitorPlugin,
@@ -237,10 +291,13 @@ export {
   createSessionStorage,
   createStorage,
   currentGlobal,
+  getNetworkStatus,
   isCapacitor,
   isTauri,
   isWeb,
+  network,
   notify,
+  onNetworkChange,
   openCache,
   openCollection,
   platform,

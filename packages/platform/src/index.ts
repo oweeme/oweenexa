@@ -6,6 +6,7 @@ import { notify } from "./notifications";
 import { share } from "./share";
 import { createSessionStorage, createStorage } from "./storage";
 import { theme } from "./theme";
+import { network } from "./network";
 
 export { isTauri, isCapacitor, isWeb, currentGlobal, capacitorPlugin } from "./environment";
 export type { NexaPlatformGlobal } from "./environment";
@@ -23,6 +24,8 @@ export { openCollection } from "./db";
 export type { Collection } from "./db";
 export { theme } from "./theme";
 export type { Theme } from "./theme";
+export { getNetworkStatus, onNetworkChange, network } from "./network";
+export type { ConnectionStatus, ConnectionType, NetworkDeps, CapacitorNetworkPlugin } from "./network";
 
 /**
  * El objeto que de verdad se usa desde un handler de una página Nexa
@@ -44,4 +47,5 @@ export const platform = {
     cache: openCache,
     db: openCollection,
     theme,
+    network,
 };
