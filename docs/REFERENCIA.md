@@ -801,6 +801,9 @@ platform.theme.set("dark")    // persiste con platform.storage() y pone data-the
 
 const status = await platform.network.getStatus()   // Fase 48 — { online: boolean, type: "wifi"|"cellular"|"none"|"unknown" }
 const unsubscribe = platform.network.onChange((status) => { ... })   // suscripción; llamar unsubscribe() para cancelarla
+
+const state = await platform.lifecycle.getState()    // Fase 49 — { active: boolean }: false mientras la app está en segundo plano
+const stop = platform.lifecycle.onChange((state) => { ... })   // suscripción a resume/pause; llamar stop() para cancelarla
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -829,6 +832,12 @@ Capacitor nativo usa el plugin real `@capacitor/network`; Web/Tauri usan
 `type` (`"wifi"`/`"cellular"`) es exclusivo de Capacitor — en Web
 siempre es `"unknown"`, porque no existe un equivalente estándar
 confiable (`navigator.connection` no es parte de ningún spec estable).
+
+`platform.lifecycle` (Fase 49, segundo plugin del issue #20): Capacitor
+nativo usa `@capacitor/app` (`getState`/`appStateChange`); Web/Tauri
+usan `document.hidden` + el evento estándar `visibilitychange` —
+exactamente la misma señal que la propia documentación de
+`@capacitor/app` dice que usa su rama web, no una aproximación propia.
 
 ## `@nexa/reactivity`
 

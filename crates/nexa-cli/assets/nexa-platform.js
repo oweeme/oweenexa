@@ -270,6 +270,56 @@ function onNetworkChange(callback, deps = {}) {
 }
 var network = { getStatus: getNetworkStatus, onChange: onNetworkChange };
 
+// packages/platform/src/lifecycle.ts
+async function getLifecycleState(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "App");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/app no est\xE1 instalado en esta app.");
+    }
+    const state = await plugin.getState();
+    return { active: state.isActive };
+  }
+  const doc = deps.documentObject ?? (typeof document !== "undefined" ? document : void 0);
+  if (!doc) {
+    throw new Error("[nexa/platform] `document` no est\xE1 disponible en este entorno.");
+  }
+  return { active: !doc.hidden };
+}
+function onLifecycleChange(callback, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "App");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/app no est\xE1 instalado en esta app.");
+    }
+    let cancelled = false;
+    let handle;
+    plugin.addListener("appStateChange", (state) => callback({ active: state.isActive })).then((h) => {
+      if (cancelled) {
+        void h.remove();
+      } else {
+        handle = h;
+      }
+    });
+    return () => {
+      cancelled = true;
+      void handle?.remove();
+    };
+  }
+  const doc = deps.documentObject ?? (typeof document !== "undefined" ? document : void 0);
+  if (!doc) {
+    throw new Error("[nexa/platform] `document` no est\xE1 disponible en este entorno.");
+  }
+  const onVisibilityChange = () => callback({ active: !doc.hidden });
+  doc.addEventListener("visibilitychange", onVisibilityChange);
+  return () => {
+    doc.removeEventListener("visibilitychange", onVisibilityChange);
+  };
+}
+var lifecycle = { getState: getLifecycleState, onChange: onLifecycleChange };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -283,7 +333,8 @@ var platform = {
   cache: openCache,
   db: openCollection,
   theme,
-  network
+  network,
+  lifecycle
 };
 export {
   capacitorPlugin,
@@ -291,12 +342,15 @@ export {
   createSessionStorage,
   createStorage,
   currentGlobal,
+  getLifecycleState,
   getNetworkStatus,
   isCapacitor,
   isTauri,
   isWeb,
+  lifecycle,
   network,
   notify,
+  onLifecycleChange,
   onNetworkChange,
   openCache,
   openCollection,

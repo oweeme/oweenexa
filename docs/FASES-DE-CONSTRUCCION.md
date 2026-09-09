@@ -3035,6 +3035,52 @@ que pide el issue para cada plugin agregado.
 > biometría, haptics — orden sugerido por el propio issue, ajustable
 > según necesidad real.
 
+## Fase 49 — `platform.lifecycle` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #20 — segundo plugin de la lista incremental
+(ciclo de vida resume/pause, siguiente en el orden sugerido tras
+`platform.network`).
+
+**Entregables:**
+
+- `packages/platform/src/lifecycle.ts` (nuevo): `getLifecycleState()`
+  (`{ active: boolean }`) y `onLifecycleChange(callback)` (mismo
+  contrato de cancelación que `platform.network.onChange`, Fase 48).
+  Capacitor nativo: el plugin real `@capacitor/app`
+  (`getState()`/`addListener("appStateChange", ...)` — forma verificada
+  instalando el paquete real y leyendo sus `.d.ts`). Web/Tauri:
+  `document.hidden` + el evento estándar `visibilitychange` — la propia
+  documentación de `@capacitor/app` dice explícitamente que esa es la
+  señal que usa su rama web, así que replicarla directamente es fiel al
+  plugin real, no una aproximación propia.
+- Expuesto como `platform.lifecycle.getState`/`platform.lifecycle.onChange`
+  en `packages/platform/src/index.ts`.
+- 10 tests nuevos en `packages/platform/test/lifecycle.test.ts` (71
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** mismos tres criterios del issue por plugin —
+las dos ramas reales sin inventar la forma del plugin nativo, tests,
+documentado.
+
+> **Límite real encontrado verificando en Chromium headless, documentado
+> en vez de forzado:** no hay ninguna forma real (ni Playwright ni CDP
+> directo — se probaron `bringToFront` entre pestañas y
+> `Page.setWebLifecycleState`) de poner `document.hidden` en `true` sin
+> una ventana real; Chromium headless no tiene ese concepto de foco
+> entre pestañas. La verificación E2E se ajustó a lo que sí es
+> genuinamente real y verificable ahí: `getState()` contra el
+> `document.hidden` real de una página (`false`, correctamente), y que
+> la suscripción de `onChange()` está atada al evento **nativo** real
+> `visibilitychange` del DOM (disparado con `document.dispatchEvent(new
+> Event(...))`, un evento real del navegador, no una llamada mockeada a
+> `addEventListener` como ya cubren los tests de vitest con inyección
+> de dependencias) — incluyendo que cancelar la suscripción de verdad
+> deja de recibir ese evento real.
+>
+> **Quedan pendientes, mismo issue:** geolocalización, deep links, push
+> real, biometría, haptics.
+
 ---
 
 ## Regla de disciplina para todas las fases
