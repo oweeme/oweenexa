@@ -2404,6 +2404,54 @@ vuelve a `"open"` al reconectar; agotado `maxAttempts`, `status` pasa a
 
 ---
 
+## Fase 36 — Texto JSX pegado a una expresión conserva su espacio (Hito 12) — ✅ completada
+
+**Objetivo:** issue #22 — `normalize_jsx_text` le hacía `.trim()` a las
+dos puntas de *cualquier* línea de texto JSX, incluida la única línea
+de un bloque de una sola línea — así que `{a} — {b}` compilaba a
+`"valorA— valorB"` (el espacio pegado a cada expresión, perdido).
+Encontrado dos veces escribiendo ejemplos legítimos en fases anteriores
+(Fase 30, Fase 33), trabajado alrededor con el idiom `{" "}` de React
+en su momento — este issue lo arregla de raíz.
+
+**Diagnóstico real:** JSX de verdad (Babel, `cleanJSXElementLiteralChild`)
+no recorta las dos puntas de toda línea por igual — recorta el espacio
+**inicial** solo si la línea *no* es la primera del bloque, y el
+espacio **final** solo si *no* es la última. Un bloque de una sola
+línea es simultáneamente su primera y su última línea, así que ningún
+borde se toca. `normalize_jsx_text` no distinguía la posición de la
+línea — trataba a todas por igual.
+
+**Entregables:**
+- `crates/nexa-parser/src/text.rs::normalize_jsx_text` reescrita con el
+  mismo algoritmo posicional (recorte por posición de línea, no
+  incondicional). El caso "indentación pura entre hermanos en líneas
+  separadas colapsa a nada" sigue funcionando igual que antes — el fix
+  es aditivo en el sentido de que solo cambia el caso de una sola línea
+  con contenido real.
+- Limpiado el único uso real del workaround `{" "}` que quedaba en el
+  repo (`examples/oweeme-shop`) y el ejemplo correspondiente en
+  `docs/REFERENCIA.md` — ya no hace falta.
+
+**Criterio de salida:** `<p>{a} — {b}</p>` compila con el espacio a
+ambos lados del guion preservado, sin `{" "}`; la indentación real
+entre elementos en líneas separadas se sigue colapsando igual que
+siempre.
+
+> **Verificado con un proyecto real, no solo `cargo test`:** `nexa
+> build` sobre una página con `<p>{"iPhone 17"} — ${"999"}</p>`
+> compiló a `<p>iPhone 17 — $999</p>` — ambos espacios preservados.
+> `examples/oweeme-shop` (con su backend PHP real corriendo) generó
+> `"iPhone 17 — $999"` / `"Pixel 10 — $799"` sin el workaround que
+> tenía antes.
+>
+> Los 295 tests del workspace de Rust (+6 sobre los 289 de la Fase 34:
+> 5 en `nexa-parser::text::tests` cubriendo cada posición de línea por
+> separado, más 1 de integración vía `parse_component`) siguen en
+> verde.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

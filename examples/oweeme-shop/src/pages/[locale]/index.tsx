@@ -53,7 +53,7 @@ export default function Home() {
                         {(product) => (
                             <li>
                                 <a href={`/${params.locale}/products/${product.slug}`}>
-                                    {product.name}{" "}— ${product.price}
+                                    {product.name} — ${product.price}
                                 </a>
                             </li>
                         )}

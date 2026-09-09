@@ -486,7 +486,7 @@ página, mostralo de verdad en vez de un placeholder:
 
 ```tsx
 <div data-nexa-island="commentCount" data-nexa-props={{ articleId: params.slug }}>
-    <span>{data.commentCount}{" "}comentarios</span>   {/* HTML real, no un spinner */}
+    <span>{data.commentCount} comentarios</span>   {/* HTML real, no un spinner */}
 </div>
 ```
 

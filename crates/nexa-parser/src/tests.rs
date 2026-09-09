@@ -506,3 +506,25 @@ export default function Articles() {
 "#;
     assert!(parse_component("articles.tsx", source).is_err());
 }
+
+// Fase 36 — el texto pegado a una expresión conserva su espacio.
+
+#[test]
+fn text_between_two_expressions_on_the_same_line_keeps_its_edge_spaces() {
+    let source = r#"
+export default function Product() {
+    return <p>{data.name} — ${data.price}</p>;
+}
+"#;
+    let component = parse_component("product.tsx", source).expect("should parse");
+    let Node::Element(p) = &component.root else {
+        panic!("expected root element")
+    };
+    // name, " — $", price = 3 hijos; el texto del medio conserva el
+    // espacio antes del guion Y el que sigue después (pegado al "$").
+    assert_eq!(p.children.len(), 3);
+    let Node::Text(middle) = &p.children[1] else {
+        panic!("expected the middle child to be static text, got {:?}", p.children[1])
+    };
+    assert_eq!(middle, " — $");
+}
