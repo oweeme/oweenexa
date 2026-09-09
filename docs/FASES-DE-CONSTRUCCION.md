@@ -2545,6 +2545,49 @@ sin depender de `[pwa]`/service worker.
 
 ---
 
+## Fase 40 — Wrapper mínimo sobre IndexedDB (Hito 12) — ✅ completada
+
+**Objetivo:** issue #16 — sin ningún wrapper, cachear datos
+estructurados grandes offline era 100% código del proyecto contra la
+API nativa de IndexedDB (verbosa, basada en callbacks/eventos).
+
+**Entregables:** `packages/platform/src/db.ts::openCollection(name,
+backend?)`, expuesto como `platform.db("nombre")` — contrato
+`get`/`set`/`delete`/`list` basado en promesas, sin ningún concepto de
+ORM/schema/índices. Cada nombre de colección abre su **propia** base
+IndexedDB (`nexa-db-<nombre>`) con un único object store fijo adentro
+— evita el problema real de que IndexedDB exige declarar de antemano
+todos los object stores de una base al crearla/subirle de versión, algo
+que no tiene sentido pedirle a una función que se llama dinámicamente
+con cualquier nombre. Tauri/Capacitor: sin rama nativa distinta, mismo
+criterio que `platform.storage()` — el IndexedDB del propio webview
+alcanza.
+
+**Criterio de salida:** `platform.db("x").set/get/delete/list()`
+funcionan contra IndexedDB real en un navegador real.
+
+> **Decisión de testing, explícita:** en vez de una fake hecha a mano
+> (arriesgado — la semántica async/transaccional de IndexedDB es
+> notoriamente fácil de simular mal), se sumó `fake-indexeddb` como
+> dependencia de desarrollo — implementa el mismo motor que un
+> navegador real, no una aproximación. A propósito sin
+> `fake-indexeddb/auto` (que inyectaría un `indexedDB` global): cada
+> test pasa su propia instancia explícita, así el test de "IndexedDB no
+> disponible" sigue siendo real (el entorno de test genuinamente no
+> tiene ningún `indexedDB` global — mismo hallazgo que ya sirvió para
+> verificar el caso "no disponible" de `platform.cache()`, Fase 39).
+>
+> **Verificado además con un navegador real (Playwright), no solo
+> `fake-indexeddb`:** un handler que hace `platform.db("users").set()`
+> y relee con `.get()`/`.list()` — en Chromium real, confirmado con
+> `indexedDB.open()` directo del navegador (no el propio wrapper) que
+> el dato quedó en la base IndexedDB real, con el nombre y el object
+> store correctos.
+>
+> 7 tests nuevos en `packages/platform` (43 total, todos en verde).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

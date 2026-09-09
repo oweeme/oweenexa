@@ -682,6 +682,11 @@ session.get(key) / session.set(key, value) / session.remove(key)
 const cache = await platform.cache("nombre-de-cache")   // Fase 39 — Cache API directa, sin [pwa]
 await cache.match(url) / await cache.put(url, response) / await cache.delete(url)
 // Independiente de [pwa.cache] (que vive en el service worker) — para cachear algo puntual desde código normal.
+
+const users = platform.db("users")   // Fase 40 — wrapper mínimo sobre IndexedDB, no un ORM
+await users.get(id) / await users.set(id, valor) / await users.delete(id) / await users.list()
+// Cada nombre de colección es su propia base IndexedDB — sin declarar nada de antemano.
+// Web: IndexedDB real. Tauri/Capacitor: el IndexedDB del propio webview, sin rama nativa distinta.
 ```
 
 Cada función lanza un `Error` con mensaje claro (`[nexa/platform] ...`)
