@@ -34,6 +34,16 @@ fn using_the_button_includes_tokens_and_button_css_only() {
 }
 
 #[test]
+fn using_the_drawer_includes_tokens_and_drawer_css_only() {
+    let root = element("div", vec![static_class("nx-drawer")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-drawer {"));
+    assert!(!css.contains(".nx-dialog {"), "drawer y dialog son familias distintas");
+    assert!(!css.contains(".nx-btn {"));
+}
+
+#[test]
 fn using_two_components_includes_both_and_nothing_else() {
     let root = element(
         "div",
@@ -83,6 +93,7 @@ fn full_source_includes_tokens_and_every_component_regardless_of_usage() {
     assert!(css.contains(".nx-input {"));
     assert!(css.contains(".nx-card {"));
     assert!(css.contains(".nx-dialog {"));
+    assert!(css.contains(".nx-drawer {"));
 }
 
 #[test]

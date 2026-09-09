@@ -1,7 +1,9 @@
 import { closeDialog, openDialog } from "./dialog";
+import { closeDrawer, openDrawer } from "./drawer";
 import { notify } from "./toast";
 
 export { closeDialog, openDialog } from "./dialog";
+export { closeDrawer, openDrawer } from "./drawer";
 export { notify } from "./toast";
 export type { ToastHandle, ToastOptions, ToastVariant } from "./toast";
 
@@ -12,4 +14,4 @@ export type { ToastHandle, ToastOptions, ToastVariant } from "./toast";
  * bare (`openDialog(...)`) — así que la única forma realmente utilizable
  * desde una página es a través de este objeto.
  */
-export const ui = { openDialog, closeDialog, notify };
+export const ui = { openDialog, closeDialog, openDrawer, closeDrawer, notify };

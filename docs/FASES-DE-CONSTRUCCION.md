@@ -2586,6 +2586,60 @@ funcionan contra IndexedDB real en un navegador real.
 >
 > 7 tests nuevos en `packages/platform` (43 total, todos en verde).
 
+## Fase 41 — `ui.openDrawer`/`ui.closeDrawer` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #9 — `@nexa/ui` ya tenía `Dialog` con comportamiento
+real (Fase 9: foco atrapado, Escape, devolución de foco), pero cualquier
+sidebar/drawer de un proyecto se escribía a mano contra `@nexa/reactivity`
+sin nada de eso — inconsistente entre proyectos y sin accesibilidad real.
+
+**Entregables:**
+
+- `packages/ui/src/focus-trap.ts` (nuevo): la lógica de focus trap de
+  `Dialog` (selector de elementos enfocables, atrapar `Tab`) extraída a
+  un módulo compartido — un drawer es, en accesibilidad, el mismo
+  contrato que un diálogo modal (`role="dialog"`, `aria-modal="true"`,
+  foco atrapado, Escape, devolver el foco), solo cambia el CSS. `dialog.ts`
+  se refactorizó para usarlo, sin cambiar su comportamiento observable
+  (sus 6 tests existentes siguen pasando sin tocarlos).
+- `packages/ui/src/drawer.ts`: `openDrawer(el)`/`closeDrawer(el)`, mismo
+  contrato que `openDialog`/`closeDialog`.
+- `packages/ui/src/drawer.css` (familia `nx-drawer`, registrada en
+  `crates/nexa-ui/src/registry.rs` junto a `nx-btn`/`nx-input`/`nx-card`/
+  `nx-dialog` — solo se envía si el proyecto usa la clase de verdad,
+  Fase 25).
+- `ui.openDrawer`/`ui.closeDrawer` expuestos en el objeto agrupado
+  `packages/ui/src/index.ts` (mismo mecanismo de detección textual que ya
+  usan `platform`/`stripe`/`ui.openDialog`).
+- 8 tests nuevos en `packages/ui/test/drawer.test.ts` (22 tests totales
+  en el paquete, todos en verde) + 2 tests nuevos en
+  `crates/nexa-ui/src/tests.rs` (familia `nx-drawer` aislada del resto).
+- Documentado en `docs/REFERENCIA.md`, sección `@nexa/ui`.
+
+**Criterio de salida:** `ui.openDrawer(el)` atrapa el foco de verdad
+(Tab real repetido no escapa del drawer), Escape cierra y devuelve el
+foco, `role`/`aria-*` correctos — verificado con Playwright/Chromium
+real, no solo unitario.
+
+> **Navegación SPA (el punto explícito del issue):** el estado de un
+> drawer vive en dos `WeakMap` clavadas por su propio nodo DOM, nunca en
+> una variable global — el mismo diseño que ya tenía `Dialog` desde la
+> Fase 9. Si el drawer está dentro del `[data-nexa-slot]` que
+> `initRouter` reemplaza (Fase 32), el nodo viejo y sus entradas en los
+> `WeakMap` se descartan juntos con la navegación, sin fuga ni listener
+> huérfano. Si vive en `src/layout.tsx` (fuera del slot, el caso típico
+> de un menú lateral persistente, Fase 31), sobrevive intacto entre
+> páginas — comportamiento correcto para un drawer de navegación. Se
+> sumó un test explícito (`closeDrawer` sobre un nodo ya desconectado
+> del DOM) para dejar esto verificado, no solo argumentado.
+>
+> **Verificado con Chromium real (Playwright), no solo `vitest`:**
+> `ui.openDrawer`/`ui.closeDrawer` invocados desde un handler real
+> activado por Fase 5 (import dinámico del chunk al hacer click) contra
+> un `<div class="nx-drawer">` real — ARIA correcto, foco inicial en el
+> primer elemento enfocable, `Tab` repetido reconfirmado sin escapar del
+> drawer, `Escape` cierra y devuelve el foco al botón que lo abrió.
+
 ---
 
 ## Regla de disciplina para todas las fases

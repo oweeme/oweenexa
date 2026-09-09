@@ -1,7 +1,25 @@
+// packages/ui/src/focus-trap.ts
+var FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
+function getFocusableElements(container2) {
+  return Array.from(container2.querySelectorAll(FOCUSABLE_SELECTOR));
+}
+function trapFocus(container2, event) {
+  const focusable = getFocusableElements(container2);
+  if (focusable.length === 0) return;
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && document.activeElement === last) {
+    event.preventDefault();
+    first.focus();
+  }
+}
+
 // packages/ui/src/dialog.ts
 var previouslyFocused = /* @__PURE__ */ new WeakMap();
 var keydownListeners = /* @__PURE__ */ new WeakMap();
-var FOCUSABLE_SELECTOR = 'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 function openDialog(dialog) {
   previouslyFocused.set(dialog, document.activeElement);
   dialog.removeAttribute("hidden");
@@ -33,21 +51,40 @@ function handleKeydown(dialog, event) {
     trapFocus(dialog, event);
   }
 }
-function trapFocus(dialog, event) {
-  const focusable = getFocusableElements(dialog);
-  if (focusable.length === 0) return;
-  const first = focusable[0];
-  const last = focusable[focusable.length - 1];
-  if (event.shiftKey && document.activeElement === first) {
-    event.preventDefault();
-    last.focus();
-  } else if (!event.shiftKey && document.activeElement === last) {
-    event.preventDefault();
-    first.focus();
-  }
+
+// packages/ui/src/drawer.ts
+var previouslyFocused2 = /* @__PURE__ */ new WeakMap();
+var keydownListeners2 = /* @__PURE__ */ new WeakMap();
+function openDrawer(drawer) {
+  previouslyFocused2.set(drawer, document.activeElement);
+  drawer.removeAttribute("hidden");
+  drawer.setAttribute("role", "dialog");
+  drawer.setAttribute("aria-modal", "true");
+  const focusable = getFocusableElements(drawer);
+  (focusable[0] ?? drawer).focus();
+  const onKeydown = (event) => handleKeydown2(drawer, event);
+  keydownListeners2.set(drawer, onKeydown);
+  drawer.addEventListener("keydown", onKeydown);
 }
-function getFocusableElements(container2) {
-  return Array.from(container2.querySelectorAll(FOCUSABLE_SELECTOR));
+function closeDrawer(drawer) {
+  drawer.setAttribute("hidden", "");
+  const listener = keydownListeners2.get(drawer);
+  if (listener) {
+    drawer.removeEventListener("keydown", listener);
+    keydownListeners2.delete(drawer);
+  }
+  const toRestore = previouslyFocused2.get(drawer);
+  previouslyFocused2.delete(drawer);
+  toRestore?.focus();
+}
+function handleKeydown2(drawer, event) {
+  if (event.key === "Escape") {
+    closeDrawer(drawer);
+    return;
+  }
+  if (event.key === "Tab") {
+    trapFocus(drawer, event);
+  }
 }
 
 // packages/ui/src/toast.ts
@@ -153,10 +190,12 @@ var TOAST_CSS = `
 `;
 
 // packages/ui/src/index.ts
-var ui = { openDialog, closeDialog, notify };
+var ui = { openDialog, closeDialog, openDrawer, closeDrawer, notify };
 export {
   closeDialog,
+  closeDrawer,
   notify,
   openDialog,
+  openDrawer,
   ui
 };

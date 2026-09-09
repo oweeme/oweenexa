@@ -8,6 +8,7 @@ pub(crate) const COMPONENTS: &[(&str, &str)] = &[
     ("nx-input", include_str!("../assets/input.css")),
     ("nx-card", include_str!("../assets/card.css")),
     ("nx-dialog", include_str!("../assets/dialog.css")),
+    ("nx-drawer", include_str!("../assets/drawer.css")),
 ];
 
 pub(crate) fn matches_family(family: &str, used_class: &str) -> bool {

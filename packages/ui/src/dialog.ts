@@ -11,11 +11,10 @@
  * principio de Progressive Activation que usa el resto del framework.
  */
 
+import { getFocusableElements, trapFocus } from "./focus-trap";
+
 const previouslyFocused = new WeakMap<HTMLElement, HTMLElement | null>();
 const keydownListeners = new WeakMap<HTMLElement, (event: KeyboardEvent) => void>();
-
-const FOCUSABLE_SELECTOR =
-    'a[href], button:not([disabled]), textarea:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
 export function openDialog(dialog: HTMLElement): void {
     previouslyFocused.set(dialog, document.activeElement as HTMLElement | null);
@@ -54,24 +53,4 @@ function handleKeydown(dialog: HTMLElement, event: KeyboardEvent): void {
     if (event.key === "Tab") {
         trapFocus(dialog, event);
     }
-}
-
-function trapFocus(dialog: HTMLElement, event: KeyboardEvent): void {
-    const focusable = getFocusableElements(dialog);
-    if (focusable.length === 0) return;
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-
-    if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-    }
-}
-
-function getFocusableElements(container: HTMLElement): HTMLElement[] {
-    return Array.from(container.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
 }

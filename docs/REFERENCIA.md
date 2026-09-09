@@ -589,6 +589,30 @@ con `Escape`, y devuelve el foco al elemento anterior al cerrar.
 `ui` está disponible siempre (no hace falta declararlo en
 `[imports]`), igual que `platform`.
 
+**Drawer** (Fase 41) — mismo contrato de accesibilidad que Dialog (foco
+atrapado, Escape, devolución de foco), pensado para sidebars/menús
+laterales en vez de una caja centrada:
+
+```tsx
+function openMenu() { ui.openDrawer(document.querySelector(".nx-drawer")); }
+function closeMenu() { ui.closeDrawer(document.querySelector(".nx-drawer")); }
+```
+
+```tsx
+<button onClick={openMenu}>Menú</button>
+<div class="nx-drawer" hidden>
+    <a href="/">Inicio</a>
+    <a href="/productos">Productos</a>
+    <button onClick={closeMenu}>Cerrar</button>
+</div>
+```
+
+Un drawer dentro de `src/layout.tsx` (Fase 25) sobrevive abierto entre
+navegaciones SPA (`initRouter` no toca el layout); uno dentro del
+contenido de una página se descarta junto con el resto del slot al
+navegar — en ambos casos `closeDrawer` es seguro de llamar dos veces o
+sobre un nodo ya fuera del DOM.
+
 **Toast / snackbar** (Fase 28) — no confundir con `platform.notify()`
 (notificación real del sistema operativo): `ui.notify()` es una
 notificación efímera *dentro* de la página, para dashboards y SPAs.
