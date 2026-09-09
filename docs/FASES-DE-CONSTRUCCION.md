@@ -2264,6 +2264,87 @@ subrutas; funciona igual en `layout.tsx` que en una página.
 
 ---
 
+## Fase 34 — Rutas dinámicas sin `paths` en producción, de verdad (Hito 12) — ✅ completada
+
+**Objetivo:** issue #3 del backlog — un sitio con contenido creado en
+vivo (un perfil nuevo, un artículo recién publicado) no puede enumerar
+todos sus valores posibles en `paths` en tiempo de build. La única
+salida documentada era `nexa preview` corriendo detrás de nginx, pero
+el `proxy_pass` del `nginx.conf` generado estaba comentado, con un
+ejemplo genérico (`/products/`) nunca verificado contra un nginx real.
+
+**Lo que se encontró antes de llegar al objetivo real:** validando el
+`deploy/nginx.conf` que ya generaba `nexa add nginx` (Fase 20/23) con
+un nginx de verdad (no solo leyendo el texto), `nginx -t` falló:
+`unknown directive "8}\.(js|css)$"`. La regex del `location` para
+assets con hash de contenido (`^/assets/.+\.[0-9a-f]{8}\.(js|css)$`)
+estaba sin comillas — nginx tokeniza `{`/`}` como delimitadores de
+bloque de su propio archivo de configuración **siempre**, sin importar
+que estén dentro de una regex, así que el `{8}` del cuantificador
+rompía el parseo. Bug real, pre-existente desde la Fase 23, nunca
+atrapado porque las verificaciones anteriores de ese archivo revisaban
+contenido de texto (`cargo test`) pero no habían corrido `nginx -t` con
+esta regla específica contra un nginx real. Arreglado envolviendo la
+regex completa entre comillas dobles — eso alcanza para esconderle las
+llaves al tokenizer de nginx.
+
+**Entregables:**
+- El bug de arriba, corregido en `nginx_scaffold.rs::TEMPLATE`.
+- `nexa add nginx` ahora escanea `src/pages` (misma función que usa
+  `nexa build`, `find_paths_declaration`) y lista, por nombre real,
+  qué rutas dinámicas de *este proyecto* no declaran `paths` — en vez
+  de un ejemplo genérico sin relación con el proyecto real. El bloque
+  `proxy_pass` sigue comentado (sigue siendo una decisión del
+  desarrollador ajustarlo a su estructura real), pero ahora trae el
+  prefijo correcto pre-completado para la primera ruta detectada.
+- Si el patrón detectado no tiene ningún segmento fijo antes del primer
+  parámetro (ej. `/:locale/articles/:slug`, un proyecto con `[locale]`
+  como primer segmento), el archivo generado lo marca explícitamente
+  (`CAMBIAR-ESTE-PREFIJO`) en vez de inventar un prefijo que sería
+  incorrecto con certeza.
+- Si el proyecto no tiene ninguna ruta dinámica sin `paths`, el archivo
+  lo dice explícitamente y no incluye ningún `proxy_pass` en absoluto.
+
+**Criterio de salida:** un flujo real, probado con curl contra un
+nginx real, sirviendo una ruta dinámica sin `paths` reenviada a un
+`nexa preview` corriendo detrás — verificado, no solo documentado.
+
+> **Ajuste de alcance, decidido explícitamente:** de las dos
+> propuestas del issue, solo se construyó la primera (documentar y
+> verificar el flujo con `nexa preview` detrás de nginx). La segunda
+> (`nexa build --path <ruta>`, rebuild incremental de una sola ruta) se
+> deja fuera a propósito — tiene una tensión real con el diseño de
+> `nexa-ui.css` de la Fase 23: ese archivo es el hash del CSS de *todo
+> el sitio junto*, conocido recién después de compilar todas las
+> páginas (`commands::build::write_ui_stylesheet`). Un rebuild
+> incremental de una sola ruta que introduce una clase `nx-*` nueva no
+> podría recalcular ese hash sin tocar (o al menos releer) el resto del
+> sitio ya compilado — resolverlo bien es una fase en sí misma, no un
+> agregado chico a esta. El issue original ya marcaba esta segunda
+> parte como condicional ("si se implementa"), así que no bloquea el
+> criterio de salida real.
+>
+> **Verificado con un proyecto real, un nginx real (no solo `nginx
+> -t`) y un `nexa preview` real corriendo detrás, no solo `cargo
+> test`:** un proyecto con una página estática y una ruta
+> `/articles/[slug]` con `load()` real contra un backend HTTP real (sin
+> `paths`). `nexa add nginx` detectó y listó `/articles/:slug` por su
+> nombre real. Con el bloque `proxy_pass` descomentado y nginx corriendo
+> de verdad (`podman run ... nginx:alpine`, `--network=host`): la ruta
+> estática (`/`) la sirvió nginx directo desde `dist/`, sin tocar el
+> proceso de Nexa; `/articles/recien-publicado` (un slug que nunca
+> existió en ningún build anterior) la reenvió de verdad a `nexa
+> preview`, devolviendo el título real de un archivo JSON creado
+> *después* del build; el `location` con hash de contenido devolvió
+> `Cache-Control: immutable` de verdad sobre un asset real generado por
+> el mismo build — la prueba de que el fix de la regex no solo pasa
+> `nginx -t`, sirve tráfico real correctamente.
+>
+> Los 289 tests del workspace de Rust (+6 sobre los 283 de la Fase 33,
+> todos en `nexa-cli::nginx_scaffold`) siguen en verde.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

@@ -59,7 +59,7 @@ server {
     # chunks de activación, nexa-ui.<hash>.css — ver el comentario del módulo
     # que genera este archivo) pueden cachearse "immutable" por un año: si el
     # contenido cambia, el nombre cambia con él.
-    location ~* ^/assets/.+\.[0-9a-f]{8}\.(js|css)$ {
+    location ~* "^/assets/.+\.[0-9a-f]{8}\.(js|css)$" {
         add_header Cache-Control "public, max-age=31536000, immutable";
     }
 
@@ -72,24 +72,103 @@ server {
     location / {
         try_files $uri $uri/ $uri/index.html =404;
     }
-
-    # Si tu proyecto tiene rutas dinámicas SIN `paths` declarado (Fase
-    # 17), `try_files` de arriba nunca las va a encontrar como archivo
-    # — necesitás un `nexa preview` corriendo detrás y reenviarle esas
-    # rutas. Ejemplo (ajustá el puerto y las rutas):
-    #
-    # location /products/ {
-    #     try_files $uri $uri/index.html @nexa_preview;
-    # }
-    # location @nexa_preview {
-    #     proxy_pass http://127.0.0.1:4321;
-    #     proxy_set_header Host $host;
-    # }
-}
 "#;
 
-pub fn render(project_name: &str) -> String {
-    TEMPLATE.replace("{{NAME}}", &sanitize_name(project_name))
+/// Fase 34: en vez de un placeholder genérico (`/products/`) que nadie
+/// verificó contra el proyecto real, esto lista las rutas dinámicas SIN
+/// `paths` que el proyecto tiene *de verdad* — descubiertas escaneando
+/// `src/pages` exactamente igual que `nexa build` (misma función,
+/// `find_paths_declaration`). Sigue comentado a propósito: un prefijo
+/// mal adivinado (ej. un proyecto con `[locale]/[slug]`, donde no hay
+/// ningún segmento fijo antes del primer parámetro) sería peor que no
+/// tener nada — rompería la política de "nunca adivinar" del resto de
+/// Nexa. El desarrollador ajusta el prefijo real a su propia estructura
+/// de rutas; lo que esto ya no deja a mano es *cuáles* rutas necesitan
+/// el bloque.
+fn dynamic_routes_section(patterns: &[String]) -> String {
+    if patterns.is_empty() {
+        return "\n    # No se encontraron rutas dinámicas sin `paths` en este proyecto —\n    \
+                 # no hace falta nada de lo que sigue. Si más adelante agregás una\n    \
+                 # (`src/pages/algo/[slug].tsx` sin `export const paths`), volvé a correr\n    \
+                 # `nexa add nginx` (o agregá el bloque a mano) para que quede cubierta.\n"
+            .to_string();
+    }
+
+    let mut out = String::from(
+        "\n    # Rutas dinámicas SIN `paths` declarado, detectadas en este proyecto —\n    \
+         # `try_files` de la regla `location /` de arriba nunca las va a encontrar\n    \
+         # como archivo (Fase 17). Necesitás un `nexa preview` corriendo detrás y\n    \
+         # reenviarle exactamente estas rutas. Descomentá y ajustá el prefijo si no\n    \
+         # coincide con tu propia estructura (ej. un proyecto con `[locale]` como\n    \
+         # primer segmento no tiene un prefijo fijo posible acá):\n    #\n",
+    );
+    for pattern in patterns {
+        out.push_str(&format!("    #   {pattern}\n"));
+    }
+    out.push_str("    #\n");
+
+    if let Some(first) = patterns.first() {
+        let prefix = route_prefix(first);
+        out.push_str(&format!(
+            "    # location {prefix} {{\n    \
+             #     try_files $uri $uri/index.html @nexa_preview;\n    \
+             # }}\n    \
+             # location @nexa_preview {{\n    \
+             #     proxy_pass http://127.0.0.1:4321;\n    \
+             #     proxy_set_header Host $host;\n    \
+             # }}\n"
+        ));
+    }
+    out
+}
+
+/// El prefijo fijo antes del primer segmento dinámico de un patrón de
+/// ruta (`/products/:slug` -> `/products/`). Si no hay ningún segmento
+/// fijo (`/:locale/...`), devuelve `None` — no hay un prefijo seguro
+/// que ofrecer sin adivinar.
+fn route_prefix(pattern: &str) -> String {
+    let mut segments = Vec::new();
+    for segment in pattern.split('/') {
+        if segment.starts_with(':') {
+            break;
+        }
+        segments.push(segment);
+    }
+    let mut prefix = segments.join("/");
+    if prefix.is_empty() || prefix == "/" {
+        return "/CAMBIAR-ESTE-PREFIJO/".to_string();
+    }
+    if !prefix.ends_with('/') {
+        prefix.push('/');
+    }
+    prefix
+}
+
+pub fn render(project_name: &str, dynamic_patterns: &[String]) -> String {
+    let mut out = TEMPLATE.replace("{{NAME}}", &sanitize_name(project_name));
+    out.push_str(&dynamic_routes_section(dynamic_patterns));
+    out.push_str("}\n");
+    out
+}
+
+/// Rutas dinámicas (`[slug].tsx`, etc.) que no declaran `export const
+/// paths` — mismo criterio exacto que usa `nexa build` para decidir qué
+/// queda como HTML estático vs. qué necesita `nexa preview` corriendo
+/// al vuelo (Fase 17). Reutilizado acá para que `nexa add nginx` sepa
+/// de verdad qué rutas de este proyecto necesitan el `proxy_pass`, en
+/// vez de un ejemplo genérico sin relación con el proyecto real.
+fn discover_dynamic_routes_without_paths(pages_dir: &Path) -> Result<Vec<String>> {
+    if !pages_dir.is_dir() {
+        return Ok(Vec::new());
+    }
+    let routes = nexa_router::scan_pages(pages_dir).context("escaneando src/pages")?;
+    let mut patterns = Vec::new();
+    for route in &routes {
+        if route.is_dynamic() && crate::pipeline::find_paths_declaration(&route.file)?.is_none() {
+            patterns.push(route.pattern.clone());
+        }
+    }
+    Ok(patterns)
 }
 
 /// Genera `<project_root>/deploy/nginx.conf`. Falla si ya existe — igual
@@ -102,8 +181,11 @@ pub fn scaffold(project_root: &Path, project_name: &str) -> Result<()> {
         bail!("{} ya existe — bórralo primero si quieres regenerarlo", out_path.display());
     }
 
+    let dynamic_patterns = discover_dynamic_routes_without_paths(&project_root.join("src/pages"))?;
+
     fs::create_dir_all(&deploy_dir)?;
-    fs::write(&out_path, render(project_name)).with_context(|| format!("escribiendo {}", out_path.display()))
+    fs::write(&out_path, render(project_name, &dynamic_patterns))
+        .with_context(|| format!("escribiendo {}", out_path.display()))
 }
 
 fn sanitize_name(name: &str) -> String {
@@ -133,20 +215,20 @@ mod tests {
 
     #[test]
     fn render_substitutes_the_project_name_into_the_root_path() {
-        let conf = render("mi-tienda");
+        let conf = render("mi-tienda", &[]);
         assert!(conf.contains("root /var/www/mi-tienda/dist;"));
         assert!(!conf.contains("{{NAME}}"), "no debe quedar ningún placeholder sin sustituir");
     }
 
     #[test]
     fn render_sanitizes_a_name_with_spaces_and_uppercase() {
-        let conf = render("Mi Tienda Real");
+        let conf = render("Mi Tienda Real", &[]);
         assert!(conf.contains("root /var/www/Mi-Tienda-Real/dist;"));
     }
 
     #[test]
     fn render_includes_the_same_security_headers_that_serve_rs_applies() {
-        let conf = render("app");
+        let conf = render("app", &[]);
         assert!(conf.contains(r#"add_header X-Content-Type-Options "nosniff" always;"#));
         assert!(conf.contains(r#"add_header X-Frame-Options "SAMEORIGIN" always;"#));
         assert!(conf.contains(r#"add_header Referrer-Policy "strict-origin-when-cross-origin" always;"#));
@@ -158,7 +240,7 @@ mod tests {
         // (`nginx -t`): nginx ya comprime text/html siempre que `gzip
         // on` está activo — declararlo de nuevo en `gzip_types` dispara
         // "duplicate MIME type" como warning de sintaxis real.
-        let conf = render("app");
+        let conf = render("app", &[]);
         let gzip_line = conf.lines().find(|line| line.trim_start().starts_with("gzip_types")).unwrap();
         let continuation = conf.lines().skip_while(|l| !l.contains("gzip_types")).nth(1).unwrap_or("");
         assert!(!gzip_line.contains("text/html"));
@@ -171,7 +253,7 @@ mod tests {
         // de contenido en el nombre — "immutable" es seguro de verdad
         // para ESOS, pero no para cualquier cosa bajo /assets/ (ej. un
         // archivo copiado a mano en public/assets/, sin hash).
-        let conf = render("app");
+        let conf = render("app", &[]);
 
         let hashed_location = conf
             .lines()
@@ -196,6 +278,26 @@ mod tests {
     }
 
     #[test]
+    fn the_hashed_asset_regex_is_quoted_so_nginx_does_not_choke_on_the_braces() {
+        // Bug real (Fase 34), encontrado validando este archivo con un
+        // nginx real (`nginx -t` vía podman): nginx tokeniza `{`/`}`
+        // como delimitadores de bloque SIEMPRE, sin importar que estén
+        // dentro de una regex — un `{8}` sin comillas rompe el parseo
+        // con "unknown directive". Comillas alrededor de todo el patrón
+        // se lo esconden al tokenizer de nginx.
+        let conf = render("app", &[]);
+        let hashed_location = conf
+            .lines()
+            .find(|line| line.trim_start().starts_with("location ~"))
+            .expect("se espera un location con regex para los assets con hash");
+        assert!(
+            hashed_location.contains(r#""^/assets/"#),
+            "la regex debe empezar entre comillas, línea real: {hashed_location:?}"
+        );
+        assert!(hashed_location.trim_end().ends_with("\" {"), "la regex debe cerrar la comilla antes de `{{`");
+    }
+
+    #[test]
     fn scaffold_writes_a_real_file_under_deploy() {
         let dir = scratch_dir();
         scaffold(&dir, "app").unwrap();
@@ -207,5 +309,74 @@ mod tests {
         let dir = scratch_dir();
         scaffold(&dir, "app").unwrap();
         assert!(scaffold(&dir, "app").is_err());
+    }
+
+    #[test]
+    fn render_says_so_explicitly_when_there_are_no_dynamic_routes_without_paths() {
+        let conf = render("app", &[]);
+        assert!(conf.contains("No se encontraron rutas dinámicas sin `paths`"));
+        assert!(!conf.contains("proxy_pass"));
+    }
+
+    #[test]
+    fn render_lists_the_real_patterns_found_instead_of_a_generic_placeholder() {
+        let patterns = vec!["/articles/:slug".to_string(), "/profiles/:username".to_string()];
+        let conf = render("app", &patterns);
+
+        assert!(conf.contains("/articles/:slug"));
+        assert!(conf.contains("/profiles/:username"));
+        // El ejemplo concreto usa el prefijo derivado del PRIMER patrón
+        // real, no un placeholder genérico como "/products/".
+        assert!(conf.contains("# location /articles/ {"));
+        assert!(!conf.contains("/products/"));
+    }
+
+    #[test]
+    fn render_flags_a_pattern_with_no_fixed_prefix_instead_of_guessing() {
+        // `[locale]/[slug].tsx`: no hay ningún segmento fijo antes del
+        // primer parámetro — nunca se debe inventar un prefijo acá.
+        let patterns = vec!["/:locale/articles/:slug".to_string()];
+        let conf = render("app", &patterns);
+
+        assert!(conf.contains("/:locale/articles/:slug"));
+        assert!(conf.contains("CAMBIAR-ESTE-PREFIJO"));
+    }
+
+    #[test]
+    fn scaffold_discovers_the_projects_real_dynamic_routes_without_paths() {
+        let dir = scratch_dir();
+        let pages = dir.join("src/pages");
+        fs::create_dir_all(pages.join("articles")).unwrap();
+        fs::write(
+            pages.join("articles").join("[slug].tsx"),
+            "export const load = { url: \"/articles/:slug\" };\n\
+             export default function Article() { return <main>{data.title}</main>; }\n",
+        )
+        .unwrap();
+        fs::write(
+            pages.join("index.tsx"),
+            "export default function Home() { return <main>Hola</main>; }\n",
+        )
+        .unwrap();
+
+        scaffold(&dir, "app").unwrap();
+        let conf = fs::read_to_string(dir.join("deploy/nginx.conf")).unwrap();
+
+        assert!(conf.contains("/articles/:slug"));
+        assert!(conf.contains("# location /articles/ {"));
+    }
+
+    #[test]
+    fn scaffold_reports_no_dynamic_routes_for_a_fully_static_project() {
+        let dir = scratch_dir();
+        let pages = dir.join("src/pages");
+        fs::create_dir_all(&pages).unwrap();
+        fs::write(pages.join("index.tsx"), "export default function Home() { return <main>Hola</main>; }\n")
+            .unwrap();
+
+        scaffold(&dir, "app").unwrap();
+        let conf = fs::read_to_string(dir.join("deploy/nginx.conf")).unwrap();
+
+        assert!(conf.contains("No se encontraron rutas dinámicas sin `paths`"));
     }
 }

@@ -921,8 +921,26 @@ seguridad que `nexa preview`/`nexa dev` ya mandan
 (`X-Content-Type-Options: nosniff`, `X-Frame-Options: SAMEORIGIN`,
 `Referrer-Policy: strict-origin-when-cross-origin`), y un `try_files`
 que sirve cualquier ruta estática (incluidas las pre-renderizadas por
-`paths`). Trae un bloque comentado de `proxy_pass` para rutas dinámicas
-sin `paths`, que necesitan un `nexa preview` corriendo detrás.
+`paths`).
+
+**Rutas dinámicas sin `paths` en producción (Fase 34):** `nexa add
+nginx` escanea `src/pages` (mismo criterio que `nexa build`) y lista,
+por nombre real, cuáles de tus rutas dinámicas no declaran `paths` —
+esas son las que `try_files` nunca va a encontrar como archivo. El
+archivo generado incluye un bloque `proxy_pass` concreto (con el
+prefijo real de la primera ruta detectada, no un placeholder genérico)
+apuntando a un `nexa preview` corriendo detrás — comentado a propósito,
+porque un prefijo mal adivinado sería peor que ninguno (ej. un proyecto
+con `[locale]` como primer segmento no tiene un prefijo fijo posible;
+en ese caso el archivo lo marca explícitamente en vez de inventar uno).
+Verificado de punta a punta con un nginx real: ruta estática servida
+directo desde `dist/`, ruta dinámica sin `paths` reenviada de verdad a
+un `nexa preview` corriendo detrás, con datos que nunca existieron en
+ningún build anterior.
+
+Si tu proyecto no tiene ninguna ruta dinámica sin `paths`, el archivo
+lo dice explícitamente y no incluye ningún `proxy_pass` — no hay nada
+que decidir a mano en ese caso.
 
 El cacheo de `/assets/` tiene dos reglas: los archivos que `nexa build`
 genera con hash de contenido en el nombre (`nexa-runtime.<hash>.js`,
