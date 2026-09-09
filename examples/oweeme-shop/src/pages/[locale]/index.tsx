@@ -21,10 +21,10 @@ function shareStore() {
 
 export default function Home() {
     return (
-        <main>
+        <main class="nx-stack">
             <h1>{t("home.title")}</h1>
             <p>{t("home.subtitle")}</p>
-            <nav>
+            <nav class="nx-flex nx-gap-3">
                 <a href="/es">Español</a>
                 <a href="/en">English</a>
             </nav>
@@ -34,8 +34,10 @@ export default function Home() {
                     {t("home.cta")}
                 </a>
             </div>
-            <button class="nx-btn" onClick={shareStore}>{t("home.share")}</button>
-            <a class="nx-btn" href={`/${params.locale}/contact`}>{t("home.contact")}</a>
+            <div class="nx-flex nx-gap-2">
+                <button class="nx-btn" onClick={shareStore}>{t("home.share")}</button>
+                <a class="nx-btn" href={`/${params.locale}/contact`}>{t("home.contact")}</a>
+            </div>
 
             {/*
               Isla interactiva (Fase 16) + iteración real (Fase 30): el
@@ -48,7 +50,7 @@ export default function Home() {
             */}
             <section class="nx-card" data-nexa-island="productFilter" data-nexa-props={{ products: data.products }}>
                 <h2 class="nx-card-title">{t("home.catalog")}</h2>
-                <ul>
+                <ul class="nx-grid nx-grid-cols-2">
                     <For each={data.products}>
                         {(product) => (
                             <li>

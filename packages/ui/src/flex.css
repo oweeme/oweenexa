@@ -1,0 +1,11 @@
+.nx-flex {
+    display: flex;
+}
+
+.nx-flex-col {
+    flex-direction: column;
+}
+
+.nx-flex-wrap {
+    flex-wrap: wrap;
+}

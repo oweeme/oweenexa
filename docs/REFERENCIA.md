@@ -620,6 +620,30 @@ como cancelar (resuelve `false`); en `alert()`, como aceptar. Llamado
 desde dentro de otro `Dialog` ya abierto, se apila sobre él sin romper
 ninguno de los dos.
 
+**Utilidades de layout** (Fase 44) — un set chico y deliberado, no un
+sistema de utilidades completo tipo Tailwind (`@nexa/ui` sigue siendo
+`Button`/`Input`/`Card`/`Dialog`/`Drawer` + esto, no un kit completo):
+
+```tsx
+<nav class="nx-flex nx-gap-3">...</nav>
+<ul class="nx-grid nx-grid-cols-3">...</ul>
+<main class="nx-stack">...</main>
+```
+
+| Clase | Efecto |
+| --- | --- |
+| `.nx-flex` | `display: flex` |
+| `.nx-flex-col` | `flex-direction: column` |
+| `.nx-flex-wrap` | `flex-wrap: wrap` |
+| `.nx-gap-1` .. `.nx-gap-4` | `gap` — mapea a `--nx-space-1`..`--nx-space-4`. Se combina con `.nx-flex` o `.nx-grid`, ambos aceptan `gap`. |
+| `.nx-grid` | `display: grid` con `gap: var(--nx-space-4)` por defecto |
+| `.nx-grid-cols-2` / `-3` / `-4` | columnas iguales; colapsan a 1 columna sola bajo 640px (responsivo, sin nada que declarar) |
+| `.nx-stack` | espaciado vertical consistente entre hijos directos (`--nx-space-4`) |
+| `.nx-stack-1` .. `.nx-stack-3` | mismo espaciado, con `--nx-space-1`..`--nx-space-3` |
+
+Se tree-shakean igual que el resto de `@nexa/ui` (Fase 23): una página
+que no usa ninguna clase de layout no paga nada de este CSS.
+
 **Drawer** (Fase 41) — mismo contrato de accesibilidad que Dialog (foco
 atrapado, Escape, devolución de foco), pensado para sidebars/menús
 laterales en vez de una caja centrada:

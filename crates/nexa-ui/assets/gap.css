@@ -1,0 +1,21 @@
+/**
+ * Modificador de `gap` independiente de `.nx-flex`/`.nx-grid` — se
+ * combina con cualquiera de los dos (`gap` es una propiedad válida en
+ * ambos), así que se tree-shakea como familia propia en vez de
+ * duplicarse dentro de cada una.
+ */
+.nx-gap-1 {
+    gap: var(--nx-space-1);
+}
+
+.nx-gap-2 {
+    gap: var(--nx-space-2);
+}
+
+.nx-gap-3 {
+    gap: var(--nx-space-3);
+}
+
+.nx-gap-4 {
+    gap: var(--nx-space-4);
+}

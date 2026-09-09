@@ -44,6 +44,38 @@ fn using_the_drawer_includes_tokens_and_drawer_css_only() {
 }
 
 #[test]
+fn using_a_layout_utility_class_includes_only_its_own_family() {
+    let root = element("div", vec![static_class("nx-flex nx-flex-col nx-gap-2")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-flex {"));
+    assert!(css.contains(".nx-flex-col {"));
+    assert!(css.contains(".nx-gap-2 {"));
+    assert!(!css.contains(".nx-grid {"), "grid es una familia distinta de flex/gap");
+    assert!(!css.contains(".nx-stack "), "stack es una familia distinta de flex/gap");
+    assert!(!css.contains(".nx-btn {"));
+}
+
+#[test]
+fn using_grid_or_stack_alone_does_not_pull_in_flex_or_gap() {
+    let root = element(
+        "div",
+        vec![],
+        vec![
+            element("div", vec![static_class("nx-grid nx-grid-cols-3")], vec![]),
+            element("div", vec![static_class("nx-stack")], vec![]),
+        ],
+    );
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-grid {"));
+    assert!(css.contains(".nx-grid-cols-3 {"));
+    assert!(css.contains(".nx-stack > * + * {"));
+    assert!(!css.contains(".nx-flex {"));
+    assert!(!css.contains(".nx-gap-1 {"));
+}
+
+#[test]
 fn using_two_components_includes_both_and_nothing_else() {
     let root = element(
         "div",
@@ -94,6 +126,10 @@ fn full_source_includes_tokens_and_every_component_regardless_of_usage() {
     assert!(css.contains(".nx-card {"));
     assert!(css.contains(".nx-dialog {"));
     assert!(css.contains(".nx-drawer {"));
+    assert!(css.contains(".nx-flex {"));
+    assert!(css.contains(".nx-gap-1 {"));
+    assert!(css.contains(".nx-grid {"));
+    assert!(css.contains(".nx-stack > * + * {"));
 }
 
 #[test]

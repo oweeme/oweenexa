@@ -9,6 +9,10 @@ pub(crate) const COMPONENTS: &[(&str, &str)] = &[
     ("nx-card", include_str!("../assets/card.css")),
     ("nx-dialog", include_str!("../assets/dialog.css")),
     ("nx-drawer", include_str!("../assets/drawer.css")),
+    ("nx-flex", include_str!("../assets/flex.css")),
+    ("nx-gap", include_str!("../assets/gap.css")),
+    ("nx-grid", include_str!("../assets/grid.css")),
+    ("nx-stack", include_str!("../assets/stack.css")),
 ];
 
 pub(crate) fn matches_family(family: &str, used_class: &str) -> bool {

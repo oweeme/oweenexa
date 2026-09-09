@@ -2765,6 +2765,63 @@ CSS fuente).
 > cambiar a `"light"` le gana al `prefers-color-scheme` del sistema, y
 > `"system"` quita el atributo y vuelve a ceder el control al sistema.
 
+## Fase 44 — Utilidades de layout flex/grid/stack (Hito 12) — ✅ completada
+
+**Objetivo:** issue #12 — `@nexa/ui` no tenía ninguna utilidad de
+layout; todo proyecto real (incluido `tutorial-nexa`, ver
+`public/static/site.css`) terminaba escribiendo su propio CSS de flex/
+grid/spacing desde cero, duplicando el mismo trabajo en cada proyecto.
+
+**Entregables:**
+
+- 4 archivos CSS nuevos en `packages/ui/src/` (`flex.css`, `gap.css`,
+  `grid.css`, `stack.css`), cada uno su propia familia en
+  `crates/nexa-ui/src/registry.rs` — mismo tree-shaking granular que
+  ya tienen `Button`/`Card`/`Dialog`/`Drawer`: `.nx-gap-*` es una
+  familia separada de `.nx-flex`/`.nx-grid` a propósito (`gap` es
+  válido en ambos, así no se duplica).
+  - `.nx-flex` / `.nx-flex-col` / `.nx-flex-wrap`.
+  - `.nx-gap-1`..`.nx-gap-4` (mapeados a los tokens `--nx-space-*`
+    existentes).
+  - `.nx-grid` + `.nx-grid-cols-2/3/4`, con colapso responsivo a 1
+    columna bajo 640px.
+  - `.nx-stack` (+ `.nx-stack-1/2/3`): espaciado vertical consistente
+    entre hijos directos, vía `> * + *` (sin margin duplicado contra
+    el borde del contenedor).
+- 4 tests nuevos en `crates/nexa-ui/src/tests.rs` (18 totales en el
+  crate) verificando que cada familia nueva se incluye/excluye de forma
+  independiente, igual que el resto.
+- Uso real en `examples/oweeme-shop/src/pages/[locale]/index.tsx`:
+  `nx-stack` en el contenedor de la página, `nx-flex nx-gap-3`/`nx-gap-2`
+  en la navegación y la fila de botones, `nx-grid nx-grid-cols-2` en la
+  grilla de productos del catálogo.
+- Documentado en `docs/REFERENCIA.md`, con la tabla completa de clases.
+
+**Criterio de salida:** las nuevas clases se tree-shakean igual que
+`nx-btn`/`nx-card` — verificado tanto en Rust (`build_stylesheet`) como
+con un `nexa build` real; documentadas con tabla completa; uso real en
+`examples/`.
+
+> **Bug real encontrado durante la propia verificación E2E — binario
+> desactualizado, no la implementación:** el primer `nexa build` de
+> prueba no incluyó ninguna clase de layout en el CSS generado (solo
+> `.nx-card`), a pesar de que `cargo test` ya pasaba en verde. Causa:
+> se había corrido `cargo build --release` pero no se había reinstalado
+> el binario en `~/.local/bin/nexa` con la nueva versión — el CLI
+> instalado todavía era el de la Fase 43, sin las 4 familias nuevas en
+> el registro. Reinstalar el binario lo arregló al instante. Queda
+> como recordatorio explícito de por qué la disciplina de este proyecto
+> exige reinstalar el CLI antes de cada verificación E2E, no solo
+> compilar y confiar en los tests unitarios.
+>
+> **Verificado con Chromium real (Playwright), no solo el CSS fuente:**
+> con viewport ancho, `nav` es `display: flex` de verdad con
+> `column-gap: 12px` (`.nx-gap-3` = `--nx-space-3`), el grid tiene 3
+> columnas computadas, y el segundo hijo de `.nx-stack` tiene
+> `margin-top: 16px` computado (`--nx-space-4`). Con viewport angosto
+> (375px), el mismo grid de 3 columnas colapsa a 1 sola — el
+> `@media (max-width: 640px)` funciona de verdad, no solo está escrito.
+
 ---
 
 ## Regla de disciplina para todas las fases

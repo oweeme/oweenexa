@@ -1,0 +1,20 @@
+/**
+ * Espaciado vertical consistente entre hijos directos — sin margin en
+ * el primero (evita el "double margin" clásico contra el borde del
+ * contenedor padre).
+ */
+.nx-stack > * + * {
+    margin-top: var(--nx-space-4);
+}
+
+.nx-stack-1 > * + * {
+    margin-top: var(--nx-space-1);
+}
+
+.nx-stack-2 > * + * {
+    margin-top: var(--nx-space-2);
+}
+
+.nx-stack-3 > * + * {
+    margin-top: var(--nx-space-3);
+}
