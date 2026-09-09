@@ -1,4 +1,4 @@
-use crate::Expr;
+use crate::{Expr, Translate};
 
 /// Un fragmento de una plantilla de texto: literal, o una referencia
 /// simbólica (`data.name`, `params.slug`) a resolver más tarde. Se usa
@@ -12,8 +12,9 @@ use crate::Expr;
 pub enum TemplatePart {
     Text(String),
     Expr(Expr),
-    /// `t("home.title")` (Fase 10): la clave de traducción, sin resolver.
-    Translate(String),
+    /// `t("home.title")` (Fase 10, interpolación en la Fase 45): la
+    /// clave y los argumentos de traducción, sin resolver.
+    Translate(Translate),
 }
 
 /// Una secuencia de fragmentos que, concatenados, forman el valor final

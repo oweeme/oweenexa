@@ -68,15 +68,15 @@ fn template_literal_to_parts(tpl: &TemplateLiteral) -> Vec<TemplatePart> {
 }
 
 fn interpolation_part(expr: &Expression) -> Option<TemplatePart> {
-    if let Some(key) = translate::from_expression(expr) {
-        return Some(TemplatePart::Translate(key));
+    if let Some(translate) = translate::from_expression(expr) {
+        return Some(TemplatePart::Translate(translate));
     }
     from_expression(expr).map(TemplatePart::Expr)
 }
 
 fn jsx_interpolation_part(expr: &JSXExpression) -> Option<TemplatePart> {
-    if let Some(key) = translate::from_jsx_expression(expr) {
-        return Some(TemplatePart::Translate(key));
+    if let Some(translate) = translate::from_jsx_expression(expr) {
+        return Some(TemplatePart::Translate(translate));
     }
     from_jsx_expression(expr).map(TemplatePart::Expr)
 }

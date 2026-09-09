@@ -247,8 +247,8 @@ fn convert_expression_child(container: &JSXExpressionContainer) -> Option<Node> 
     if let Some(text) = expression_container_to_string(container) {
         return Some(Node::Text(text));
     }
-    if let Some(key) = translate::from_jsx_expression(&container.expression) {
-        return Some(Node::Translate(key));
+    if let Some(translate) = translate::from_jsx_expression(&container.expression) {
+        return Some(Node::Translate(translate));
     }
     from_jsx_expression(&container.expression).map(Node::Expression)
 }

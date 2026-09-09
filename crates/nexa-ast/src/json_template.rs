@@ -1,4 +1,4 @@
-use crate::{Expr, Template};
+use crate::{Expr, Template, Translate};
 
 /// Un valor JSON donde cualquier posición puede ser, en vez de un literal,
 /// una referencia simbólica (`data.price`) a resolver contra los datos
@@ -15,8 +15,9 @@ pub enum JsonTemplate {
     String(String),
     /// `data.price`, `params.slug`... resuelto en tiempo de render.
     Expr(Expr),
-    /// `t("product.name")`: la clave de traducción, sin resolver.
-    Translate(String),
+    /// `t("product.name")` (interpolación en la Fase 45): la clave y los
+    /// argumentos de traducción, sin resolver.
+    Translate(Translate),
     /// `` `https://.../${params.slug}` `` — texto y referencias
     /// mezclados, igual que un campo de `seo`. Se resuelve siempre a un
     /// string JSON.

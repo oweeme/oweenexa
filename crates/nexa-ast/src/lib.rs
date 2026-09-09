@@ -12,6 +12,7 @@ mod loader;
 mod node;
 mod seo;
 mod template;
+mod translate;
 
 pub use component::Component;
 pub use expr::Expr;
@@ -20,3 +21,4 @@ pub use loader::Loader;
 pub use node::{Attr, AttrValue, Element, Event, ForLoop, Island, Node};
 pub use seo::SeoConfig;
 pub use template::{Template, TemplatePart};
+pub use translate::Translate;

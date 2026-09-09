@@ -166,6 +166,24 @@ pub fn compile_page(
 
     let ir = nexa_analyzer::analyze(&component);
 
+    // Fase 45: `t("clave", { name: data.x })` con un `{placeholder}` en
+    // el diccionario que no tiene su variable correspondiente (o al
+    // revés) es casi siempre un error del desarrollador, no algo que
+    // "degradar con gracia" tenga sentido — mejor un build roto y
+    // explícito que un `<!--nexa:...-->` o un `{name}` literal en
+    // producción que nadie nota hasta que un usuario lo ve. Se valida
+    // acá, antes de renderizar, y solo si esta página tiene diccionario
+    // (`translations`) — sin locale, `t()` ya degrada de la forma
+    // habitual (Fase 10), no hay nada nuevo que validar.
+    if let Some(translations) = translations.as_ref() {
+        if let Err(message) = validate_translate_calls(&ir.root, translations) {
+            return Err(PageError::Other(anyhow::anyhow!(
+                "{}: {message}",
+                file.display()
+            )));
+        }
+    }
+
     // Fase 33: la ruta real de esta página, con sus segmentos dinámicos
     // ya resueltos (`/es/products/iphone-17`, no `/:locale/products/:slug`)
     // — mismo `resolve_url` que ya usa `nexa-i18n` para `hreflang`. Nunca
@@ -371,6 +389,74 @@ pub(crate) fn island_specifiers(root: &nexa_ir::IrNode) -> BTreeSet<String> {
     out
 }
 
+/// `t("clave", { name: data.x })` (Fase 45): la clave del diccionario
+/// puede tener `{placeholder}` que no correspondan con `args`, o al
+/// revés — cualquiera de los dos casos casi siempre es un error del
+/// desarrollador (una variable que se olvidó de pasar, o una que sobra
+/// porque cambió el texto y no el código). Solo valida `{t(...)}` del
+/// cuerpo JSX (`IrNodeKind::Translate`, alcanzable con `IrNode::walk`);
+/// un `t(...)` dentro de `seo`/`schema`/`head` sigue interpolando bien
+/// en tiempo de render (mismo `resolve_translation` compartido), pero
+/// esta validación de build no lo cubre todavía — ajuste de alcance
+/// explícito, documentado en la Fase 45.
+fn validate_translate_calls(root: &nexa_ir::IrNode, translations: &serde_json::Value) -> Result<(), String> {
+    use nexa_ir::IrNodeKind;
+
+    let mut errors = Vec::new();
+    root.walk(&mut |node| {
+        let IrNodeKind::Translate(translate) = &node.kind else { return };
+        let Some(raw) = lookup_translation_string(translations, &translate.key) else { return };
+
+        let placeholders: BTreeSet<&str> = extract_placeholders(&raw);
+        let arg_names: BTreeSet<&str> = translate.args.iter().map(|(name, _)| name.as_str()).collect();
+
+        for missing in placeholders.difference(&arg_names) {
+            errors.push(format!(
+                "t(\"{}\", ...) usa \"{{{missing}}}\" pero no se pasó esa variable — la clave dice: \"{raw}\"",
+                translate.key
+            ));
+        }
+        for extra in arg_names.difference(&placeholders) {
+            errors.push(format!(
+                "t(\"{}\", {{ {extra}: ... }}) pasa \"{extra}\" pero la clave no tiene ningún \"{{{extra}}}\" — la clave dice: \"{raw}\"",
+                translate.key
+            ));
+        }
+    });
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors.join("\n"))
+    }
+}
+
+fn lookup_translation_string(translations: &serde_json::Value, key: &str) -> Option<String> {
+    let mut value = translations;
+    for segment in key.split('.') {
+        value = value.get(segment)?;
+    }
+    value.as_str().map(str::to_string)
+}
+
+/// Extrae los nombres entre `{}` de un texto (`"Apoyar a {name}"` ->
+/// `["name"]`) — sin regex, un escaneo manual alcanza para algo tan
+/// simple, y evita sumar una dependencia nueva solo para esto.
+fn extract_placeholders(text: &str) -> BTreeSet<&str> {
+    let mut names = BTreeSet::new();
+    let mut rest = text;
+    while let Some(start) = rest.find('{') {
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('}') else { break };
+        let candidate = &after[..end];
+        if !candidate.is_empty() && candidate.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+            names.insert(candidate);
+        }
+        rest = &after[end + 1..];
+    }
+    names
+}
+
 /// `<link rel="alternate" hreflang="...">` por cada locale disponible —
 /// vacío si esta ruta no vive bajo `[locale]`, o si no hay ningún
 /// `src/locales/*.json`.
@@ -394,5 +480,103 @@ fn join_head_fragments(a: &str, b: &str) -> String {
         (false, true) => a.to_string(),
         (true, false) => b.to_string(),
         (false, false) => format!("{a}\n{b}"),
+    }
+}
+
+#[cfg(test)]
+mod translate_validation_tests {
+    use super::*;
+    use nexa_ast::{Expr, Translate};
+    use nexa_ir::{Classification, IrNode, IrNodeKind};
+    use serde_json::json;
+
+    fn translate_node(key: &str, args: Vec<(&str, Expr)>) -> IrNode {
+        IrNode {
+            id: 0,
+            classification: Classification::Dynamic,
+            kind: IrNodeKind::Translate(Translate {
+                key: key.to_string(),
+                args: args.into_iter().map(|(name, expr)| (name.to_string(), expr)).collect(),
+            }),
+        }
+    }
+
+    fn data_dot(name: &str) -> Expr {
+        Expr::Member { object: Box::new(Expr::Identifier("data".into())), property: name.into() }
+    }
+
+    #[test]
+    fn extracts_a_single_placeholder() {
+        assert_eq!(extract_placeholders("Apoyar a {name}"), BTreeSet::from(["name"]));
+    }
+
+    #[test]
+    fn extracts_several_placeholders() {
+        assert_eq!(extract_placeholders("{count} de {total}"), BTreeSet::from(["count", "total"]));
+    }
+
+    #[test]
+    fn a_string_without_placeholders_extracts_nothing() {
+        assert!(extract_placeholders("Bienvenido").is_empty());
+    }
+
+    #[test]
+    fn a_key_and_args_that_match_exactly_is_valid() {
+        let root = translate_node("profile.donateTo", vec![("name", data_dot("creatorName"))]);
+        let dictionary = json!({ "profile": { "donateTo": "Apoyar a {name}" } });
+        assert!(validate_translate_calls(&root, &dictionary).is_ok());
+    }
+
+    #[test]
+    fn t_without_any_args_on_a_key_without_placeholders_is_valid() {
+        let root = translate_node("home.title", vec![]);
+        let dictionary = json!({ "home": { "title": "Bienvenido" } });
+        assert!(validate_translate_calls(&root, &dictionary).is_ok());
+    }
+
+    #[test]
+    fn a_placeholder_in_the_dictionary_with_no_matching_arg_is_a_clear_error() {
+        let root = translate_node("profile.donateTo", vec![]);
+        let dictionary = json!({ "profile": { "donateTo": "Apoyar a {name}" } });
+        let err = validate_translate_calls(&root, &dictionary).unwrap_err();
+        assert!(err.contains("{name}"), "el error debería mencionar el placeholder sin cubrir: {err}");
+        assert!(err.contains("profile.donateTo"));
+    }
+
+    #[test]
+    fn an_extra_arg_with_no_matching_placeholder_is_a_clear_error() {
+        let root = translate_node("home.title", vec![("name", data_dot("x"))]);
+        let dictionary = json!({ "home": { "title": "Bienvenido" } });
+        let err = validate_translate_calls(&root, &dictionary).unwrap_err();
+        assert!(err.contains("name"), "el error debería mencionar el argumento que sobra: {err}");
+    }
+
+    #[test]
+    fn a_missing_translation_key_is_not_a_validation_error_here() {
+        // La clave ausente ya degrada del modo habitual al renderizar
+        // (comentario inerte, Fase 10) — no es responsabilidad de esta
+        // validación, que solo compara placeholders contra args cuando
+        // la clave sí resuelve a un string real.
+        let root = translate_node("nope.nope", vec![("name", data_dot("x"))]);
+        let dictionary = json!({ "home": { "title": "Bienvenido" } });
+        assert!(validate_translate_calls(&root, &dictionary).is_ok());
+    }
+
+    #[test]
+    fn walks_into_element_children_to_find_translate_nodes() {
+        let child = translate_node("profile.donateTo", vec![]);
+        let root = IrNode {
+            id: 1,
+            classification: Classification::Static,
+            kind: IrNodeKind::Element {
+                tag: "p".into(),
+                attrs: vec![],
+                events: vec![],
+                island: None,
+                children: vec![child],
+            },
+        };
+        let dictionary = json!({ "profile": { "donateTo": "Apoyar a {name}" } });
+        assert!(validate_translate_calls(&root, &dictionary).is_err());
     }
 }

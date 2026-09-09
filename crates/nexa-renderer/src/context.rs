@@ -13,7 +13,7 @@
 
 use std::collections::BTreeMap;
 
-use nexa_ast::{Expr, JsonTemplate, Template, TemplatePart};
+use nexa_ast::{Expr, JsonTemplate, Template, TemplatePart, Translate};
 
 /// Todo lo que el renderer tiene disponible para resolver expresiones
 /// dinámicas al renderizar una página concreta.
@@ -88,17 +88,36 @@ pub(crate) fn resolve_template(template: &Template, ctx: &RenderContext) -> Opti
         match part {
             TemplatePart::Text(text) => out.push_str(text),
             TemplatePart::Expr(expr) => out.push_str(&resolve(expr, ctx)?),
-            TemplatePart::Translate(key) => out.push_str(&resolve_translation(key, ctx)?),
+            TemplatePart::Translate(translate) => out.push_str(&resolve_translation(translate, ctx)?),
         }
     }
     Some(out)
 }
 
-/// `t("home.title")`: la clave se parte por `.` y se camina el JSON del
-/// diccionario, igual que `data.price.amount`.
-pub(crate) fn resolve_translation(key: &str, ctx: &RenderContext) -> Option<String> {
-    let path: Vec<&str> = key.split('.').collect();
-    resolve_by_path(ctx.translations, &path)
+/// `t("home.title")` / `t("home.greet", { name: data.x })` (Fase 45): la
+/// clave se parte por `.` y se camina el JSON del diccionario, igual que
+/// `data.price.amount`; si hay argumentos, cada `{nombre}` literal del
+/// texto resuelto se reemplaza por el valor de la `Expr` correspondiente.
+/// Un argumento que no se puede resolver (dato faltante) deja el
+/// `{placeholder}` tal cual en el texto — igual que el resto del
+/// renderer, nunca inventa un valor; `nexa build` ya validó por
+/// adelantado que las claves y los argumentos se correspondan (ver
+/// `nexa-cli::pipeline::validate_translate_calls`), así que este caso
+/// solo se alcanza si a esa validación le faltó `translations` (sin
+/// locale) — degradar sin romper el render sigue siendo lo correcto acá.
+pub(crate) fn resolve_translation(translate: &Translate, ctx: &RenderContext) -> Option<String> {
+    let path: Vec<&str> = translate.key.split('.').collect();
+    let raw = resolve_by_path(ctx.translations, &path)?;
+    Some(interpolate(raw, &translate.args, ctx))
+}
+
+fn interpolate(mut text: String, args: &[(String, Expr)], ctx: &RenderContext) -> String {
+    for (name, expr) in args {
+        if let Some(value) = resolve(expr, ctx) {
+            text = text.replace(&format!("{{{name}}}"), &value);
+        }
+    }
+    text
 }
 
 fn resolve_by_path(root: Option<&serde_json::Value>, path: &[&str]) -> Option<String> {
@@ -146,9 +165,13 @@ fn resolve_expr_json(expr: &Expr, ctx: &RenderContext) -> Option<serde_json::Val
     }
 }
 
-fn resolve_translation_json(key: &str, ctx: &RenderContext) -> Option<serde_json::Value> {
-    let path: Vec<&str> = key.split('.').collect();
-    resolve_json_by_path(ctx.translations, &path)
+fn resolve_translation_json(translate: &Translate, ctx: &RenderContext) -> Option<serde_json::Value> {
+    let path: Vec<&str> = translate.key.split('.').collect();
+    let raw = resolve_json_by_path(ctx.translations, &path)?;
+    Some(match raw {
+        serde_json::Value::String(text) => serde_json::Value::String(interpolate(text, &translate.args, ctx)),
+        other => other,
+    })
 }
 
 fn resolve_json_by_path(root: Option<&serde_json::Value>, path: &[&str]) -> Option<serde_json::Value> {
@@ -171,7 +194,7 @@ pub(crate) fn resolve_json_template(template: &JsonTemplate, ctx: &RenderContext
         JsonTemplate::Number(n) => json_number(*n),
         JsonTemplate::String(s) => serde_json::Value::String(s.clone()),
         JsonTemplate::Expr(expr) => resolve_expr_json(expr, ctx).unwrap_or(serde_json::Value::Null),
-        JsonTemplate::Translate(key) => resolve_translation_json(key, ctx).unwrap_or(serde_json::Value::Null),
+        JsonTemplate::Translate(translate) => resolve_translation_json(translate, ctx).unwrap_or(serde_json::Value::Null),
         JsonTemplate::TextTemplate(tpl) => resolve_template(tpl, ctx)
             .map(serde_json::Value::String)
             .unwrap_or(serde_json::Value::Null),

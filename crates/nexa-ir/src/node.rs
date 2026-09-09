@@ -1,4 +1,4 @@
-use nexa_ast::{Attr, Event, Expr, Island};
+use nexa_ast::{Attr, Event, Expr, Island, Translate};
 
 use crate::classification::{Classification, ClassificationCounts};
 
@@ -32,8 +32,9 @@ pub enum IrNodeKind {
     },
     Text(String),
     Expression(Expr),
-    /// `t("home.title")` (Fase 10): la clave de traducción, sin resolver.
-    Translate(String),
+    /// `t("home.title")` (Fase 10, interpolación en la Fase 45): la
+    /// clave y los argumentos de traducción, sin resolver.
+    Translate(Translate),
     /// `<For each={data.items}>{(item) => (...)}</For>` (Fase 30): `body`
     /// se clasifica una sola vez (es una plantilla, no N copias) — el
     /// renderer es quien produce una copia de su HTML por cada elemento

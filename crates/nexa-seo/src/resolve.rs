@@ -6,7 +6,7 @@
 use std::collections::BTreeMap;
 use std::sync::OnceLock;
 
-use nexa_ast::{Expr, JsonTemplate, Template, TemplatePart};
+use nexa_ast::{Expr, JsonTemplate, Template, TemplatePart, Translate};
 
 pub struct SeoContext<'a> {
     pub data: Option<&'a serde_json::Value>,
@@ -44,9 +44,22 @@ fn resolve_expr(expr: &Expr, ctx: &SeoContext) -> Option<serde_json::Value> {
     }
 }
 
-fn resolve_translation(key: &str, ctx: &SeoContext) -> Option<serde_json::Value> {
-    let path: Vec<&str> = key.split('.').collect();
-    resolve_path(ctx.translations, &path)
+fn resolve_translation(translate: &Translate, ctx: &SeoContext) -> Option<serde_json::Value> {
+    let path: Vec<&str> = translate.key.split('.').collect();
+    let raw = resolve_path(ctx.translations, &path)?;
+    Some(match raw {
+        serde_json::Value::String(text) => serde_json::Value::String(interpolate(text, &translate.args, ctx)),
+        other => other,
+    })
+}
+
+fn interpolate(mut text: String, args: &[(String, Expr)], ctx: &SeoContext) -> String {
+    for (name, expr) in args {
+        if let Some(value) = resolve_expr(expr, ctx) {
+            text = text.replace(&format!("{{{name}}}"), &json_to_text(&value));
+        }
+    }
+    text
 }
 
 fn resolve_path(root: Option<&serde_json::Value>, path: &[&str]) -> Option<serde_json::Value> {
@@ -67,7 +80,7 @@ pub(crate) fn resolve_template(template: &Template, ctx: &SeoContext) -> Option<
         match part {
             TemplatePart::Text(text) => out.push_str(text),
             TemplatePart::Expr(expr) => out.push_str(&json_to_text(&resolve_expr(expr, ctx)?)),
-            TemplatePart::Translate(key) => out.push_str(&json_to_text(&resolve_translation(key, ctx)?)),
+            TemplatePart::Translate(translate) => out.push_str(&json_to_text(&resolve_translation(translate, ctx)?)),
         }
     }
     Some(out)
@@ -80,7 +93,7 @@ pub(crate) fn resolve_json_template(template: &JsonTemplate, ctx: &SeoContext) -
         JsonTemplate::Number(n) => json_number(*n),
         JsonTemplate::String(s) => serde_json::Value::String(s.clone()),
         JsonTemplate::Expr(expr) => resolve_expr(expr, ctx).unwrap_or(serde_json::Value::Null),
-        JsonTemplate::Translate(key) => resolve_translation(key, ctx).unwrap_or(serde_json::Value::Null),
+        JsonTemplate::Translate(translate) => resolve_translation(translate, ctx).unwrap_or(serde_json::Value::Null),
         JsonTemplate::TextTemplate(tpl) => resolve_template(tpl, ctx)
             .map(serde_json::Value::String)
             .unwrap_or(serde_json::Value::Null),

@@ -528,3 +528,120 @@ export default function Product() {
     };
     assert_eq!(middle, " — $");
 }
+
+// Fase 45 — interpolación en t("clave", { name: data.x }).
+
+#[test]
+fn parses_t_with_an_interpolation_argument() {
+    let source = r#"
+export default function Profile() {
+    return <p>{t("profile.donateTo", { name: data.creatorName })}</p>;
+}
+"#;
+    let component = parse_component("profile.tsx", source).expect("should parse");
+    let Node::Element(p) = &component.root else {
+        panic!("expected root element")
+    };
+    let Node::Translate(translate) = &p.children[0] else {
+        panic!("expected a Translate node, got {:?}", p.children[0])
+    };
+    assert_eq!(translate.key, "profile.donateTo");
+    assert_eq!(translate.args.len(), 1);
+    assert_eq!(translate.args[0].0, "name");
+    assert_eq!(translate.args[0].1.path(), "data.creatorName");
+}
+
+#[test]
+fn parses_t_with_several_interpolation_arguments() {
+    let source = r#"
+export default function Profile() {
+    return <p>{t("cart.summary", { count: data.count, slug: params.slug })}</p>;
+}
+"#;
+    let component = parse_component("profile.tsx", source).expect("should parse");
+    let Node::Element(p) = &component.root else {
+        panic!("expected root element")
+    };
+    let Node::Translate(translate) = &p.children[0] else {
+        panic!("expected a Translate node, got {:?}", p.children[0])
+    };
+    assert_eq!(translate.args.len(), 2);
+    assert_eq!(translate.args[0], ("count".to_string(), Expr::Member { object: Box::new(Expr::Identifier("data".into())), property: "count".into() }));
+    assert_eq!(translate.args[1].1.path(), "params.slug");
+}
+
+#[test]
+fn t_without_a_second_argument_still_parses_with_no_args() {
+    let source = r#"
+export default function Home() {
+    return <h1>{t("home.title")}</h1>;
+}
+"#;
+    let component = parse_component("home.tsx", source).expect("should parse");
+    let Node::Element(h1) = &component.root else {
+        panic!("expected root element")
+    };
+    let Node::Translate(translate) = &h1.children[0] else {
+        panic!("expected a Translate node, got {:?}", h1.children[0])
+    };
+    assert_eq!(translate.key, "home.title");
+    assert!(translate.args.is_empty());
+}
+
+#[test]
+fn t_with_a_literal_value_in_the_interpolation_object_is_not_recognized_as_translate() {
+    // El segundo argumento solo acepta referencias (`data.x`/`params.x`),
+    // igual que cualquier otra posición dinámica de Nexa — un literal
+    // (`name: "Ada"`) no es una `Expr`, así que el `t(...)` entero no se
+    // reconoce. Una llamada (`CallExpression`) tampoco es un `Expr`
+    // genérico válido en ningún otro lado de Nexa, así que el nodo entero
+    // se descarta — ni crashea el build, ni inventa contenido.
+    let source = r#"
+export default function Profile() {
+    return <p>{t("profile.donateTo", { name: "Ada" })}</p>;
+}
+"#;
+    let component = parse_component("profile.tsx", source).expect("should parse");
+    let Node::Element(p) = &component.root else {
+        panic!("expected root element")
+    };
+    assert!(p.children.is_empty(), "expected the unrecognized t() call to be dropped, got {:?}", p.children);
+}
+
+#[test]
+fn t_with_more_than_two_arguments_is_not_recognized_as_translate() {
+    let source = r#"
+export default function Home() {
+    return <h1>{t("home.title", { name: data.x }, "extra")}</h1>;
+}
+"#;
+    let component = parse_component("home.tsx", source).expect("should parse");
+    let Node::Element(h1) = &component.root else {
+        panic!("expected root element")
+    };
+    assert!(h1.children.is_empty(), "expected the unrecognized t() call to be dropped, got {:?}", h1.children);
+}
+
+#[test]
+fn t_in_seo_title_supports_interpolation_too() {
+    let source = r#"
+export const seo = {
+    title: t("product.title", { name: data.name }),
+    description: "d",
+    canonical: "/",
+};
+
+export default function Product() {
+    return <h1>{data.name}</h1>;
+}
+"#;
+    let component = parse_component("product.tsx", source).expect("should parse");
+    let seo = component.seo.expect("expected seo");
+    let title = seo.title.expect("expected seo.title");
+    assert_eq!(title.0.len(), 1);
+    let TemplatePart::Translate(translate) = &title.0[0] else {
+        panic!("expected seo.title to be a single Translate part, got {:?}", title.0[0])
+    };
+    assert_eq!(translate.key, "product.title");
+    assert_eq!(translate.args[0].1.path(), "data.name");
+}

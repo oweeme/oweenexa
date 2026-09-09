@@ -2822,6 +2822,80 @@ con un `nexa build` real; documentadas con tabla completa; uso real en
 > (375px), el mismo grid de 3 columnas colapsa a 1 sola — el
 > `@media (max-width: 640px)` funciona de verdad, no solo está escrito.
 
+## Fase 45 — Interpolación en `t("clave", { name })` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #14 — `t(...)` solo reconocía un identificador con
+un único argumento string literal; cualquier texto con una variable
+(`"Apoyar a {name}"`, `"{count} artículos"`) había que partirlo a mano
+en piezas separadas en cada idioma.
+
+**Entregables:**
+
+- `nexa-ast`: nuevo `struct Translate { key: String, args: Vec<(String, Expr)> }`
+  (`crates/nexa-ast/src/translate.rs`), reemplaza el `String` suelto que
+  usaban `Node::Translate`, `TemplatePart::Translate` y
+  `JsonTemplate::Translate` — aditivo en la práctica (`args` vacío es
+  exactamente `t("clave")` de siempre).
+- `nexa-parser/src/translate.rs`: reconoce un segundo argumento objeto
+  (`{ name: data.x }`) cuyos valores son la misma `Expr` limitada que ya
+  acepta cualquier otra posición dinámica de Nexa — un literal, una
+  llamada, o cualquier otra cosa en esa posición hace que el `t(...)`
+  entero no se reconozca (mismo criterio "todo o nada" que el resto del
+  parser). 6 tests nuevos, incluyendo que `seo.title = t("...", {...})`
+  también funciona (comparten `from_call`, ver el comentario del
+  archivo).
+- `nexa-renderer`/`nexa-seo`: `resolve_translation` ahora sustituye cada
+  `{nombre}` del texto resuelto por el valor de su `Expr` — si un
+  argumento no se puede resolver, el `{placeholder}` literal queda tal
+  cual (nunca inventa un valor, mismo criterio que el resto del
+  renderer). 5 tests nuevos en `nexa-renderer` (42 totales).
+- `nexa-cli::pipeline::validate_translate_calls` (nuevo): antes de
+  renderizar, camina el IR (`IrNode::walk`, ya existente) buscando
+  nodos `Translate`, compara los `{placeholder}` del diccionario contra
+  los argumentos dados, y si no coinciden hace fallar `compile_page`
+  con `PageError::Other` — el mismo canal de error que ya usa esa
+  función para `LoaderError`/errores de layout, así que tanto `nexa
+  build` como `nexa lint`/`nexa preview` lo heredan gratis. 9 tests
+  nuevos.
+- Documentado en `docs/REFERENCIA.md`, sección de i18n.
+
+**Criterio de salida:** `t("clave", { name: data.x })` compila a HTML
+real con el valor sustituido; `nexa build` falla con un error claro
+ante un `{placeholder}` sin variable correspondiente (o al revés);
+`t("clave")` sin segundo argumento sigue funcionando igual que antes —
+verificado con `nexa build`/`nexa lint` reales, no solo `cargo test`.
+
+> **Ajuste de alcance, explícito:** la validación de build solo cubre
+> `t(...)` en el cuerpo JSX (`IrNodeKind::Translate`, alcanzable con
+> `IrNode::walk`) — un `t(...)` con interpolación dentro de `seo`/
+> `schema`/`head` **sí** interpola correctamente en tiempo de render
+> (comparte el mismo `resolve_translation`/`resolve_translation_json`),
+> pero su validación de build queda pendiente. Se documentó así en vez
+> de ampliar el walk a `SeoConfig`/`JsonTemplate` (que hubiera hecho
+> falta para cubrir esos tres casos), para mantener el tamaño M que
+> pedía el propio issue.
+>
+> **Por qué un placeholder sin argumento correspondiente rompe el build
+> en vez de degradar con gracia** (a diferencia del resto del
+> renderer, que siempre produce algo): un dato faltante (`data.name`
+> ausente) es normal — el JSON del `load()` puede legítimamente no
+> traer todo. Un `{placeholder}` sin argumento es distinto: es una
+> combinación código+diccionario que nunca puede tener sentido en
+> ningún request — o el desarrollador se olvidó de pasar la variable, o
+> el texto cambió y el código no. Dejarlo pasar solo pospone el error
+> hasta que alguien lo vea en producción como un `{name}` literal.
+>
+> **Verificado con `nexa build`/`nexa lint` reales** (proyecto scratch,
+> `src/locales/es.json` con `"greeting": "Hola desde {locale}"` y
+> `"broken": "Hola {name}"`): `t("greeting", { locale: params.locale })`
+> compiló a `<p>Hola desde es</p>` real en `dist/index.html`;
+> `t("broken")` (sin el argumento `name`) hizo fallar tanto `nexa lint`
+> como `nexa build` con exit code 1 y el mensaje `t("broken", ...) usa
+> "{name}" pero no se pasó esa variable — la clave dice: "Hola
+> {name}"`; un argumento de sobra (`t("home.title", { unused: ... })`
+> contra una clave sin ningún `{unused}`) también falló con un mensaje
+> igual de claro.
+
 ---
 
 ## Regla de disciplina para todas las fases

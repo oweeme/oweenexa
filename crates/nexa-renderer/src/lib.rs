@@ -51,9 +51,9 @@ pub fn render_node(node: &IrNode, ctx: &RenderContext) -> String {
             Some(resolved) => html::escape_html(&resolved),
             None => format!("<!--nexa:{}-->", expr.path()),
         },
-        IrNodeKind::Translate(key) => match context::resolve_translation(key, ctx) {
+        IrNodeKind::Translate(translate) => match context::resolve_translation(translate, ctx) {
             Some(resolved) => html::escape_html(&resolved),
-            None => format!("<!--nexa:t({key})-->"),
+            None => format!("<!--nexa:t({})-->", translate.key),
         },
         IrNodeKind::Element { .. } => html::render_element(node, ctx),
         IrNodeKind::For { each, item_name, body } => render_for(each, item_name, body, ctx),

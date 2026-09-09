@@ -23,13 +23,16 @@ pub(crate) fn classify_node(
             }
         }
 
-        Node::Translate(key) => {
+        Node::Translate(translate) => {
             let id = alloc_id(next_id);
             dependencies.add("t", id);
+            for (_, expr) in &translate.args {
+                dependencies.add(expr.root_identifier(), id);
+            }
             IrNode {
                 id,
                 classification: Classification::Dynamic,
-                kind: IrNodeKind::Translate(key.clone()),
+                kind: IrNodeKind::Translate(translate.clone()),
             }
         }
 

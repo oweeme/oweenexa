@@ -356,10 +356,39 @@ estáticas compiladas.
   página vive bajo `[locale]`). Sin fallback a otro idioma: una clave
   ausente se omite (en `seo`) o queda un placeholder inerte en el
   cuerpo — nunca se inventa un valor.
-- `t(...)` reconoce exactamente un patrón: un identificador llamado
-  `t` con un único argumento string literal. Sin interpolación
-  (`t("hola {name}")`), sin pluralización, sin clave dinámica
-  (`t(variable)`).
+- `t(...)` reconoce dos formas: `t("clave")`, y desde la Fase 45,
+  `t("clave", { variable: data.x })` — interpolación simple de
+  `{variable}` dentro del texto del diccionario:
+
+  ```json
+  // src/locales/es.json
+  { "profile": { "donateTo": "Apoyar a {name}" } }
+  ```
+
+  ```tsx
+  <p>{t("profile.donateTo", { name: data.creatorName })}</p>
+  ```
+
+  Cada valor del segundo argumento es la misma referencia limitada que
+  ya acepta cualquier otra posición dinámica de Nexa (`data.x`,
+  `params.x`) — nunca una expresión arbitraria; un literal
+  (`{ name: "Ada" }`) o una llamada no se reconocen, y el `t(...)`
+  entero queda sin efecto. `t("clave")` sin segundo argumento sigue
+  funcionando exactamente igual que antes. Sin pluralización, sin
+  clave dinámica (`t(variable)`) — quedan fuera de alcance.
+
+  `nexa build`/`nexa lint` fallan con un error claro si una clave tiene
+  un `{placeholder}` sin su variable correspondiente, o si sobra una
+  variable que la clave no usa:
+
+  ```
+  Error: src/pages/index.tsx: t("profile.donateTo", ...) usa "{name}"
+  pero no se pasó esa variable — la clave dice: "Apoyar a {name}"
+  ```
+
+  Esta validación cubre `t(...)` en el cuerpo JSX; en `seo`/`schema`/
+  `head` la interpolación se resuelve igual de bien en tiempo de render,
+  pero todavía no se valida en build — ajuste de alcance explícito.
 - `<html lang="...">` usa el locale real de la página (`"es"` si no
   vive bajo `[locale]`).
 - `<link rel="alternate" hreflang="...">` se genera solo si la ruta

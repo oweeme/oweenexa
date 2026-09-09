@@ -1,4 +1,4 @@
-use crate::{Expr, JsonTemplate, Template};
+use crate::{Expr, JsonTemplate, Template, Translate};
 
 /// Un nodo del árbol de renderizado.
 #[derive(Debug, Clone, PartialEq)]
@@ -9,10 +9,10 @@ pub enum Node {
     /// Contenido dinámico (`{product.name}`): depende de datos que todavía
     /// no existen (Fase 7). El analyzer lo clasifica como `Dynamic`.
     Expression(Expr),
-    /// `{t("home.title")}` (Fase 10): la clave de traducción, sin
-    /// resolver todavía — se guarda tal cual el string literal que el
-    /// desarrollador escribió como único argumento de `t(...)`.
-    Translate(String),
+    /// `{t("home.title")}` / `{t("profile.donateTo", { name: data.x })}`
+    /// (Fase 10, interpolación en la Fase 45): la clave y los argumentos
+    /// de traducción, sin resolver todavía.
+    Translate(Translate),
     /// `<For each={data.items}>{(item) => (...)}</For>` (Fase 30):
     /// iteración literal, resuelta por el compilador igual que `t()` o
     /// `data.*` — nunca un `.map()` ni código arbitrario del

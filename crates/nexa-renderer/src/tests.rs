@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
 use super::*;
-use nexa_ast::{Attr, AttrValue, Event, Expr, Island, JsonTemplate, Template, TemplatePart};
+use nexa_ast::{Attr, AttrValue, Event, Expr, Island, JsonTemplate, Template, TemplatePart, Translate};
 use nexa_ir::{Classification, DependencyGraph};
 use serde_json::json;
 
@@ -22,10 +22,14 @@ fn expression(id: usize, expr: Expr) -> IrNode {
 }
 
 fn translate(id: usize, key: &str) -> IrNode {
+    translate_with_args(id, key, vec![])
+}
+
+fn translate_with_args(id: usize, key: &str, args: Vec<(String, Expr)>) -> IrNode {
     IrNode {
         id,
         classification: Classification::Dynamic,
-        kind: IrNodeKind::Translate(key.to_string()),
+        kind: IrNodeKind::Translate(Translate { key: key.to_string(), args }),
     }
 }
 
@@ -260,6 +264,73 @@ fn escapes_resolved_translations() {
         render_node(&node, &ctx_with_translations(&dictionary)),
         "&lt;script&gt;alert(1)&lt;/script&gt;"
     );
+}
+
+#[test]
+fn interpolates_a_variable_from_data_into_the_translated_string() {
+    let node = translate_with_args(0, "profile.donateTo", vec![("name".into(), dotted("data", "creatorName"))]);
+    let dictionary = json!({ "profile": { "donateTo": "Apoyar a {name}" } });
+    let data = json!({ "creatorName": "Ada" });
+
+    let ctx = RenderContext {
+        data: Some(&data),
+        params: empty_params(),
+        translations: Some(&dictionary),
+        loop_binding: None,
+        current_path: None,
+    };
+    assert_eq!(render_node(&node, &ctx), "Apoyar a Ada");
+}
+
+#[test]
+fn interpolates_a_route_param_into_the_translated_string() {
+    let node = translate_with_args(0, "greeting", vec![("slug".into(), dotted("params", "slug"))]);
+    let dictionary = json!({ "greeting": "Viendo {slug}" });
+    let mut params = BTreeMap::new();
+    params.insert("slug".to_string(), "iphone-17".to_string());
+
+    let ctx = RenderContext {
+        data: None,
+        params: &params,
+        translations: Some(&dictionary),
+        loop_binding: None,
+        current_path: None,
+    };
+    assert_eq!(render_node(&node, &ctx), "Viendo iphone-17");
+}
+
+#[test]
+fn a_placeholder_whose_argument_cannot_resolve_is_left_literal_instead_of_inventing_a_value() {
+    let node = translate_with_args(0, "profile.donateTo", vec![("name".into(), dotted("data", "creatorName"))]);
+    let dictionary = json!({ "profile": { "donateTo": "Apoyar a {name}" } });
+    // Sin `data` en absoluto: la interpolación no tiene nada que resolver.
+    assert_eq!(render_node(&node, &ctx_with_translations(&dictionary)), "Apoyar a {name}");
+}
+
+#[test]
+fn a_translation_without_any_placeholder_ignores_extra_args_at_render_time() {
+    // `nexa build` ya falla antes de llegar acá si sobra un argumento
+    // (ver la validación en nexa-cli) — el renderer en sí sigue siendo
+    // permisivo, mismo criterio de "nunca romper el render" del resto.
+    let node = translate_with_args(0, "home.title", vec![("name".into(), dotted("data", "creatorName"))]);
+    let dictionary = json!({ "home": { "title": "Bienvenido" } });
+    assert_eq!(render_node(&node, &ctx_with_translations(&dictionary)), "Bienvenido");
+}
+
+#[test]
+fn escapes_the_interpolated_value_along_with_the_rest_of_the_string() {
+    let node = translate_with_args(0, "greet", vec![("name".into(), dotted("data", "name"))]);
+    let dictionary = json!({ "greet": "Hola {name}" });
+    let data = json!({ "name": "<b>Ada</b>" });
+
+    let ctx = RenderContext {
+        data: Some(&data),
+        params: empty_params(),
+        translations: Some(&dictionary),
+        loop_binding: None,
+        current_path: None,
+    };
+    assert_eq!(render_node(&node, &ctx), "Hola &lt;b&gt;Ada&lt;/b&gt;");
 }
 
 #[test]
