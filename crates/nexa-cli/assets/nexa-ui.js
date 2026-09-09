@@ -20,8 +20,16 @@ function trapFocus(container2, event) {
 // packages/ui/src/dialog.ts
 var previouslyFocused = /* @__PURE__ */ new WeakMap();
 var keydownListeners = /* @__PURE__ */ new WeakMap();
+var closeCallbacks = /* @__PURE__ */ new WeakMap();
+var dialogStack = [];
+var BASE_Z_INDEX = 1e3;
+var Z_INDEX_STEP = 10;
 function openDialog(dialog) {
   previouslyFocused.set(dialog, document.activeElement);
+  const below = dialogStack[dialogStack.length - 1];
+  below?.setAttribute("aria-hidden", "true");
+  dialog.style.zIndex = String(BASE_Z_INDEX + dialogStack.length * Z_INDEX_STEP);
+  dialogStack.push(dialog);
   dialog.removeAttribute("hidden");
   dialog.setAttribute("role", "dialog");
   dialog.setAttribute("aria-modal", "true");
@@ -32,15 +40,27 @@ function openDialog(dialog) {
   dialog.addEventListener("keydown", onKeydown);
 }
 function closeDialog(dialog) {
+  const stackIndex = dialogStack.indexOf(dialog);
+  if (stackIndex !== -1) {
+    dialogStack.splice(stackIndex, 1);
+  }
+  dialog.style.removeProperty("z-index");
+  dialogStack[dialogStack.length - 1]?.removeAttribute("aria-hidden");
   dialog.setAttribute("hidden", "");
   const listener = keydownListeners.get(dialog);
   if (listener) {
     dialog.removeEventListener("keydown", listener);
     keydownListeners.delete(dialog);
   }
+  const onClose = closeCallbacks.get(dialog);
+  closeCallbacks.delete(dialog);
   const toRestore = previouslyFocused.get(dialog);
   previouslyFocused.delete(dialog);
   toRestore?.focus();
+  onClose?.();
+}
+function onDialogClose(dialog, callback) {
+  closeCallbacks.set(dialog, callback);
 }
 function handleKeydown(dialog, event) {
   if (event.key === "Escape") {
@@ -50,6 +70,64 @@ function handleKeydown(dialog, event) {
   if (event.key === "Tab") {
     trapFocus(dialog, event);
   }
+}
+
+// packages/ui/src/confirm-dialog.ts
+function confirm(message, options = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let outcome = false;
+    const dialog = document.createElement("div");
+    dialog.className = "nx-dialog";
+    dialog.setAttribute("hidden", "");
+    const text = document.createElement("p");
+    text.textContent = message;
+    const cancelButton = document.createElement("button");
+    cancelButton.textContent = options.cancelLabel ?? "Cancelar";
+    cancelButton.addEventListener("click", () => {
+      outcome = false;
+      closeDialog(dialog);
+    });
+    const confirmButton = document.createElement("button");
+    confirmButton.textContent = options.confirmLabel ?? "Aceptar";
+    confirmButton.addEventListener("click", () => {
+      outcome = true;
+      closeDialog(dialog);
+    });
+    dialog.append(text, cancelButton, confirmButton);
+    document.body.appendChild(dialog);
+    onDialogClose(dialog, () => {
+      if (settled) return;
+      settled = true;
+      dialog.remove();
+      resolve(outcome);
+    });
+    openDialog(dialog);
+    dialog.setAttribute("role", "alertdialog");
+  });
+}
+function alert(message, options = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const dialog = document.createElement("div");
+    dialog.className = "nx-dialog";
+    dialog.setAttribute("hidden", "");
+    const text = document.createElement("p");
+    text.textContent = message;
+    const okButton = document.createElement("button");
+    okButton.textContent = options.okLabel ?? "Aceptar";
+    okButton.addEventListener("click", () => closeDialog(dialog));
+    dialog.append(text, okButton);
+    document.body.appendChild(dialog);
+    onDialogClose(dialog, () => {
+      if (settled) return;
+      settled = true;
+      dialog.remove();
+      resolve();
+    });
+    openDialog(dialog);
+    dialog.setAttribute("role", "alertdialog");
+  });
 }
 
 // packages/ui/src/drawer.ts
@@ -190,10 +268,12 @@ var TOAST_CSS = `
 `;
 
 // packages/ui/src/index.ts
-var ui = { openDialog, closeDialog, openDrawer, closeDrawer, notify };
+var ui = { openDialog, closeDialog, confirm, alert, openDrawer, closeDrawer, notify };
 export {
+  alert,
   closeDialog,
   closeDrawer,
+  confirm,
   notify,
   openDialog,
   openDrawer,

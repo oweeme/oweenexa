@@ -589,6 +589,37 @@ con `Escape`, y devuelve el foco al elemento anterior al cerrar.
 `ui` está disponible siempre (no hace falta declararlo en
 `[imports]`), igual que `platform`.
 
+**Apilamiento** (Fase 42) — abrir un `Dialog` mientras otro ya está
+abierto lo apila encima (z-index correcto, sin depender del orden en el
+DOM) y oculta el de abajo de lectores de pantalla (`aria-hidden`)
+mientras esté cubierto; cerrar el de arriba devuelve el foco al
+elemento del diálogo de abajo que lo abrió, no a `document.body`. El
+focus trap de cada diálogo ya estaba aislado por elemento desde la
+Fase 9, así que dos diálogos abiertos a la vez nunca compiten por el
+mismo `Tab`.
+
+**`ui.confirm()` / `ui.alert()`** (Fase 42) — el caso común de
+confirmar antes de una acción destructiva, o avisar que algo se guardó,
+sin escribir el `<div class="nx-dialog">` a mano:
+
+```ts
+const ok = await ui.confirm("¿Seguro que querés borrar esto?");
+if (ok) { /* borrar */ }
+
+await ui.alert("Guardado con éxito");
+```
+
+```ts
+ui.confirm(message: string, options?: { confirmLabel?: string; cancelLabel?: string }): Promise<boolean>
+ui.alert(message: string, options?: { okLabel?: string }): Promise<void>
+```
+
+El HTML se crea en el momento y se descarta al resolver (igual que
+`ui.notify()`) — `role="alertdialog"`. Escape en `confirm()` cuenta
+como cancelar (resuelve `false`); en `alert()`, como aceptar. Llamado
+desde dentro de otro `Dialog` ya abierto, se apila sobre él sin romper
+ninguno de los dos.
+
 **Drawer** (Fase 41) — mismo contrato de accesibilidad que Dialog (foco
 atrapado, Escape, devolución de foco), pensado para sidebars/menús
 laterales en vez de una caja centrada:

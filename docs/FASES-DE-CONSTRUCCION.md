@@ -2640,6 +2640,71 @@ real, no solo unitario.
 > primer elemento enfocable, `Tab` repetido reconfirmado sin escapar del
 > drawer, `Escape` cierra y devuelve el foco al botón que lo abrió.
 
+## Fase 42 — Apilamiento de Dialog + `ui.confirm()`/`ui.alert()` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #10 — `Dialog` (Fase 9) no contemplaba abrir un
+segundo diálogo sobre uno ya abierto (z-index/foco indefinidos), y
+confirmar una acción destructiva requería cablear `openDialog`/
+`closeDialog` a mano con callbacks en vez de `await ui.confirm(...)`.
+
+**Entregables:**
+
+- `packages/ui/src/dialog.ts`: `dialogStack` (array a nivel de módulo).
+  `openDialog()` fija `dialog.style.zIndex` según la profundidad de la
+  pila (independiente del orden de inserción en el DOM) y pone
+  `aria-hidden="true"` en el diálogo justo debajo, mientras esté
+  cubierto; `closeDialog()` deshace ambas cosas al desapilar. El focus
+  trap en sí **ya estaba aislado por diálogo desde la Fase 9** (cada
+  `trapFocus(dialog, ...)` solo mira dentro de su propio elemento, y un
+  `keydown` dentro de B nunca burbujea a través de A porque no son
+  ancestro/descendiente) — no hizo falta tocar esa parte.
+  También se agregó `onDialogClose(dialog, cb)`, un punto de extensión
+  interno (no exportado desde `index.ts`) para que `confirm()`/`alert()`
+  se enteren de que un diálogo se cerró sin importar la vía (botón o
+  Escape).
+- `packages/ui/src/confirm-dialog.ts` (nuevo): `ui.confirm(mensaje,
+  opciones?)` y `ui.alert(mensaje, opciones?)`, devuelven una `Promise`
+  real. El HTML del diálogo se crea en el momento y se descarta al
+  resolver — mismo principio que `ui.notify()` (Fase 28): el
+  desarrollador no lo escribe a mano. `role="alertdialog"` (no
+  `"dialog"`) para distinguirlos de un `Dialog` de contenido normal.
+  Escape en `confirm()` cuenta como cancelar (resuelve `false`), igual
+  que clickear "Cancelar".
+- `ui.confirm`/`ui.alert` sumados al objeto agrupado `ui` en
+  `packages/ui/src/index.ts`.
+- 4 tests nuevos de apilamiento en `packages/ui/test/dialog.test.ts` +
+  9 tests nuevos en `packages/ui/test/confirm-dialog.test.ts` (33 tests
+  totales en el paquete, todos en verde).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** abrir un segundo diálogo no rompe el focus trap
+de ninguno de los dos; cerrar el de arriba devuelve el foco al de
+abajo (no a `document.body`); `ui.confirm()`/`ui.alert()` resuelven de
+verdad ante Aceptar/Cancelar/Escape — verificado con Playwright/
+Chromium real.
+
+> **Bug real encontrado en el propio test E2E, no en la implementación:**
+> el primer intento de verificación asumía que cerrar cualquier diálogo
+> lo saca del DOM, y esperaba `document.querySelectorAll(".nx-dialog").length
+> === 0` tras cerrar A con Escape. Eso nunca se cumple para un diálogo
+> que escribió el desarrollador (`closeDialog()` solo le pone `hidden`,
+> nunca lo remueve) — a diferencia de `confirm()`/`alert()`, que sí se
+> autoeliminan del DOM al resolver por diseño (no tiene sentido dejar
+> húerfano un `<div>` que nadie más va a reabrir). El test se corrigió
+> para comprobar `hidden`/`:not([hidden])` según corresponda; quedó
+> como recordatorio de no asumir el mismo ciclo de vida de DOM para un
+> elemento estático del desarrollador y uno efímero creado en runtime.
+>
+> **Verificado con Chromium real (Playwright):** abrir A, disparar
+> `ui.confirm()` desde un botón dentro de A (queda apilado con
+> `z-index` mayor y A con `aria-hidden`), `Tab` real repetido
+> confirmado sin escapar del diálogo de confirm hacia A, click en
+> "Aceptar" resuelve `true` y devuelve el foco al botón de A (con su
+> `aria-hidden` restaurado), un segundo `confirm()` cancelado con
+> `Escape` resuelve `false`, Escape sobre A lo oculta (sigue en el DOM),
+> y `ui.alert()` independiente se abre, resuelve y se remueve del DOM
+> al aceptar.
+
 ---
 
 ## Regla de disciplina para todas las fases

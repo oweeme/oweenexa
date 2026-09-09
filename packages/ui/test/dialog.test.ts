@@ -83,3 +83,75 @@ describe("openDialog / closeDialog", () => {
         expect(document.activeElement).toBe(last);
     });
 });
+
+function setupNestedDialog(opener: HTMLElement): { dialog: HTMLDivElement; first: HTMLButtonElement; last: HTMLButtonElement } {
+    const dialog = document.createElement("div");
+    dialog.className = "nx-dialog";
+    dialog.setAttribute("hidden", "");
+    document.body.appendChild(dialog);
+
+    const first = document.createElement("button");
+    first.textContent = "B-primero";
+    const last = document.createElement("button");
+    last.textContent = "B-último";
+    dialog.append(first, last);
+
+    opener.focus();
+    return { dialog, first, last };
+}
+
+describe("apilamiento de diálogos (Fase 42)", () => {
+    it("abrir un segundo diálogo no rompe el focus trap del primero: Tab en B no escapa a A", () => {
+        const { dialog: dialogA, last: lastA } = setupDialog();
+        openDialog(dialogA);
+
+        const { dialog: dialogB, first: firstB, last: lastB } = setupNestedDialog(lastA);
+        openDialog(dialogB);
+
+        expect(document.activeElement).toBe(firstB);
+
+        lastB.focus();
+        const event = new KeyboardEvent("keydown", { key: "Tab", bubbles: true, cancelable: true });
+        dialogB.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(true);
+        expect(document.activeElement).toBe(firstB);
+    });
+
+    it("cerrar el diálogo superior devuelve el foco al elemento del diálogo inferior que lo abrió, no a document.body", () => {
+        const { dialog: dialogA, last: lastA } = setupDialog();
+        openDialog(dialogA);
+
+        const { dialog: dialogB } = setupNestedDialog(lastA);
+        openDialog(dialogB);
+
+        closeDialog(dialogB);
+
+        expect(dialogB.hasAttribute("hidden")).toBe(true);
+        expect(dialogA.hasAttribute("hidden")).toBe(false);
+        expect(document.activeElement).toBe(lastA);
+    });
+
+    it("el diálogo de abajo queda con aria-hidden mientras el de arriba está abierto, y se restaura al cerrarlo", () => {
+        const { dialog: dialogA, last: lastA } = setupDialog();
+        openDialog(dialogA);
+        expect(dialogA.hasAttribute("aria-hidden")).toBe(false);
+
+        const { dialog: dialogB } = setupNestedDialog(lastA);
+        openDialog(dialogB);
+        expect(dialogA.getAttribute("aria-hidden")).toBe("true");
+
+        closeDialog(dialogB);
+        expect(dialogA.hasAttribute("aria-hidden")).toBe(false);
+    });
+
+    it("el diálogo apilado encima tiene mayor z-index que el de abajo", () => {
+        const { dialog: dialogA, last: lastA } = setupDialog();
+        openDialog(dialogA);
+
+        const { dialog: dialogB } = setupNestedDialog(lastA);
+        openDialog(dialogB);
+
+        expect(Number(dialogB.style.zIndex)).toBeGreaterThan(Number(dialogA.style.zIndex));
+    });
+});
