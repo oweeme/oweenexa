@@ -2101,6 +2101,94 @@ sigue fallando con un mensaje explícito.
 
 ---
 
+## Fase 32 — Contenedor de página estable en `initRouter` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #7 del backlog — complemento directo de la Fase 31.
+`initRouter` (Fase 22) ya daba navegación SPA real, pero reemplazaba
+`<body>` completo en cada click interno — una isla montada en
+`src/layout.tsx` (Fase 31) se remontaba en cada navegación, perdiendo
+cualquier estado que hubiera acumulado (un tema elegido, un dropdown
+abierto). Confirmado con mi propia verificación de la Fase 31: el tema
+volvía a "claro" al navegar a otra página.
+
+**Diseño:** `initRouter` distingue el HTML que viene de `layout.tsx`
+del que viene de `data-nexa-slot` — en una navegación de cliente, si
+tanto el documento actual como el de destino tienen el mismo
+`data-nexa-slot`, solo se reemplaza *su* contenido (`slot.innerHTML =
+...`), nunca `<body>` entero. Sin layout (o si la página de destino no
+trae el mismo slot, caso borde), cae al comportamiento de siempre.
+
+**Entregables:**
+- `packages/router/src/navigate.ts::applyPage` devuelve el contenedor
+  real que cambió (el slot, o `document` si no hay slot) — antes no
+  devolvía nada, `onNavigate` siempre recibía `document`.
+- `InitRouterOptions.onNavigate` cambia de `(root: Document) => void` a
+  `(root: ParentNode) => void` — `Document` y `Element` ya comparten
+  esa interfaz, así que `initActivation`/`initForms`/`initIslands`
+  (todos tipados `root?: ParentNode` desde que existen) no necesitaron
+  ningún cambio: ya aceptaban un contenedor más chico que el documento
+  completo, solo que nadie se los pasaba todavía.
+- `syncManifestScript`: el `<script data-nexa-manifest>` (Fase 5) vive
+  siempre al final de `<body>`, fuera de cualquier slot — un swap
+  acotado al slot no lo toca, así que hay que actualizarlo a mano al de
+  la página de destino (o insertarlo/quitarlo si una de las dos páginas
+  no tiene contenido interactivo propio).
+- `crates/nexa-cli/src/bootstrap.rs::reactivate_fn`: `reactivate(root)`
+  ahora busca el manifiesto siempre en `document` (nunca en `root` —
+  si `root` es el slot, el manifiesto no vive ahí adentro) pero escanea
+  activación/formularios/islas dentro de `root`. Los eventos y
+  formularios no tienen este problema (estructuralmente no pueden vivir
+  en el layout, Fase 31), pero las islas sí: `reactivate` gestiona su
+  propia `disposeSlotIslands`, **separada** de la `disposeIslands` de la
+  carga inicial — así la primera navegación nunca desmonta lo que la
+  carga inicial montó fuera del slot.
+
+**Criterio de salida:** navegar entre dos páginas no desmonta ni
+remonta una isla del layout; el contenido del slot se actualiza
+correctamente con sus propios eventos/formularios/islas reactivados; el
+scroll de lo que vive fuera del slot no se ve afectado.
+
+> **Bug real encontrado por un navegador real, no por `cargo test`:**
+> al renombrar la variable de disposición de islas dentro de
+> `reactivate()` a `disposeSlotIslands`, la línea de la carga inicial
+> (`disposeIslands = initIslands();`, fuera de `reactivate`) quedó
+> asignando a una variable que ya no se declaraba en ningún lado —
+> `ReferenceError: disposeIslands is not defined` en un `<script
+> type="module">` real (los módulos ES son siempre modo estricto,
+> donde asignar a una variable no declarada lanza en vez de crear una
+> global silenciosa). Invisible en `cargo test`/`vitest` porque ninguno
+> ejecuta el script generado completo en un navegador real — solo
+> apareció al abrir la página en Chromium. Corregido declarando
+> `disposeIslands` como una variable separada, nunca reasignada desde
+> `reactivate`.
+>
+> **Verificado con un proyecto real y Chromium real:** una isla de
+> header con un contador de montajes (`window.__mountCount`) y un
+> toggle de tema real, dos páginas navegables entre sí por un `<a>`
+> real interceptado por `initRouter`. Después de dos navegaciones
+> (ida y vuelta): `__mountCount` siguió en `1`, el nodo DOM del header
+> siguió siendo el mismo (marcado con un atributo propio antes de
+> navegar, verificado que sobrevivió), el tema elegido antes de navegar
+> siguió activo después, y el header siguió respondiendo a clicks
+> (togglear el tema de nuevo funcionó) — no solo "no se rompió", sino
+> que el estado real de la isla persistió de punta a punta. El scroll
+> de un contenedor fuera del slot, con contenido interno, se preservó
+> exacto (1500px antes y después) cuando el link de navegación vivía
+> fuera de ese contenedor — un primer intento con el link *adentro* del
+> área con scroll dio un falso negativo (Playwright hace
+> scroll-into-view del elemento antes de clickearlo, un artefacto del
+> test, no un bug real; confirmado moviendo el link fuera).
+>
+> Los 274 tests del workspace de Rust (+1 sobre los 273 de la Fase 31,
+> en `nexa-cli::bootstrap::tests`) siguen en verde, más 17 tests en
+> `packages/router` (+4 sobre los 13 de antes: swap acotado al slot con
+> el resto de `<body>` intacto, `onNavigate` recibe el slot no el
+> documento, el manifiesto se sincroniza al de la página de destino, y
+> el caso sin layout sigue cayendo al reemplazo de `<body>` completo de
+> siempre).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

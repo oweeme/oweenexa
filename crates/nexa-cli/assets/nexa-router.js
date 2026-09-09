@@ -2,6 +2,8 @@
 var defaultFetcher = (path) => fetch(path).then((res) => res.text());
 
 // packages/router/src/navigate.ts
+var SLOT_SELECTOR = "[data-nexa-slot]";
+var MANIFEST_SELECTOR = "script[data-nexa-manifest]";
 function initRouter(options = {}) {
   const root = options.root ?? document;
   const fetchPage = options.fetchPage ?? defaultFetcher;
@@ -23,8 +25,8 @@ function initRouter(options = {}) {
     const path = new URL(url, location.href).pathname;
     const html = cache.get(path) ?? await fetchPage(path);
     cache.delete(path);
-    applyPage(root, html);
-    onNavigate?.(root);
+    const reactivationRoot = applyPage(root, html);
+    onNavigate?.(reactivationRoot);
     if (push) {
       history.pushState({}, "", url);
     }
@@ -46,7 +48,28 @@ function isInternalNavigableLink(anchor) {
 function applyPage(root, html) {
   const parsed = new DOMParser().parseFromString(html, "text/html");
   root.title = parsed.title;
+  const currentSlot = root.querySelector(SLOT_SELECTOR);
+  const incomingSlot = parsed.querySelector(SLOT_SELECTOR);
+  if (currentSlot && incomingSlot) {
+    currentSlot.innerHTML = incomingSlot.innerHTML;
+    syncManifestScript(root, parsed);
+    return currentSlot;
+  }
   root.body.innerHTML = parsed.body.innerHTML;
+  return root;
+}
+function syncManifestScript(root, parsed) {
+  const current = root.querySelector(MANIFEST_SELECTOR);
+  const incoming = parsed.querySelector(MANIFEST_SELECTOR);
+  if (incoming) {
+    if (current) {
+      current.textContent = incoming.textContent;
+    } else {
+      root.body.appendChild(incoming.cloneNode(true));
+    }
+  } else {
+    current?.remove();
+  }
 }
 
 // packages/router/src/prefetch.ts

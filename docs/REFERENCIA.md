@@ -188,6 +188,14 @@ de esa isla (no en la propia isla montada del lado del cliente, sino en
 el HTML que el servidor renderiza) sigue sin soportarse, por la misma
 razón de ids colisionados.
 
+**Esta isla sobrevive la navegación SPA, sin remount (Fase 32):**
+`initRouter` (Fase 22) sabe distinguir el HTML que viene del layout del
+que viene de `data-nexa-slot` — en cada navegación de cliente, solo se
+reemplaza el contenido del slot. El header (con la isla ya montada, su
+estado incluido) nunca se toca. Verificable con un `console.log` dentro
+del `mount()` de la isla: se ejecuta una sola vez, sin importar cuántas
+páginas se visiten después.
+
 Tampoco hay layouts anidados por directorio (un solo `src/layout.tsx`
 para todo el proyecto, no uno por carpeta de `src/pages/`).
 
@@ -942,10 +950,14 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
   cae a un placeholder explícito.
 - El tree-shaking de `@nexa/ui` es a nivel de sitio completo, no por
   página individual.
-- `initRouter` reemplaza `<body>` completo en cada navegación — no hay
-  contenedor de página más fino. Sí reactiva correctamente eventos,
-  formularios e islas de la página de destino (Fase 22), y limpia los
-  de la página anterior antes de hacerlo.
+- `initRouter` reemplaza solo `data-nexa-slot` cuando el proyecto usa
+  `src/layout.tsx` (Fase 32) — el header/footer del layout, y cualquier
+  isla que tengan montada, sobreviven la navegación sin remount. Sin
+  layout (o si la página de destino no trae el mismo slot), sigue
+  reemplazando `<body>` completo, igual que antes de la Fase 32. Sí
+  reactiva correctamente eventos, formularios e islas de la página de
+  destino (Fase 22), y limpia los de la página anterior antes de
+  hacerlo — todo esto acotado al contenedor real que cambió.
 - `t(...)` no soporta interpolación, pluralización, ni clave dinámica —
   y no hay fallback automático a otro locale si falta una clave.
 - `@nexa/forms` valida solo con la Constraint Validation API nativa —

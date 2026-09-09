@@ -130,6 +130,86 @@ describe("initRouter — Fase 6, criterio de salida", () => {
         expect(onNavigate).toHaveBeenCalledTimes(1);
     });
 
+    it("con un layout (data-nexa-slot), solo se reemplaza el slot — el resto del <body> queda intacto", async () => {
+        // Fase 32: el header del layout, con lo que sea que tenga
+        // montado (una isla, Fase 31), no debe tocarse en absoluto.
+        document.body.innerHTML =
+            '<header data-marker="original">Nav</header><div data-nexa-slot><p>Página 1</p></div>';
+        const fetchPage = vi
+            .fn<PageFetcher>()
+            .mockResolvedValue(
+                pageHtml(
+                    "Otra",
+                    '<header data-marker="original">Nav</header><div data-nexa-slot><p>Página 2</p></div>',
+                ),
+            );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        const header = document.querySelector("header");
+        expect(header).not.toBeNull();
+        // El header original nunca se destruyó — sigue siendo el MISMO
+        // nodo del DOM, no una copia nueva con el mismo HTML.
+        expect(header?.getAttribute("data-marker")).toBe("original");
+        expect(document.querySelector("[data-nexa-slot]")?.innerHTML).toBe("<p>Página 2</p>");
+    });
+
+    it("onNavigate recibe el elemento del slot (no todo el documento) cuando el proyecto usa layout", async () => {
+        document.body.innerHTML = '<header>Nav</header><div data-nexa-slot><p>1</p></div>';
+        const fetchPage = vi
+            .fn<PageFetcher>()
+            .mockResolvedValue(pageHtml("Otra", '<header>Nav</header><div data-nexa-slot><button>x</button></div>'));
+        const onNavigate = vi.fn();
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage, onNavigate });
+
+        click(a);
+        await vi.waitFor(() => expect(onNavigate).toHaveBeenCalledTimes(1));
+
+        const [receivedRoot] = onNavigate.mock.calls[0] as [ParentNode];
+        expect(receivedRoot).toBe(document.querySelector("[data-nexa-slot]"));
+        expect(receivedRoot).not.toBe(document);
+    });
+
+    it("el manifiesto de activación (fuera del slot) se actualiza al de la página de destino", async () => {
+        document.body.innerHTML =
+            '<div data-nexa-slot><p>1</p></div>' +
+            '<script type="application/json" data-nexa-manifest>{"3":{"event":"click"}}</script>';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtml(
+                "Otra",
+                '<div data-nexa-slot><button>x</button></div>' +
+                    '<script type="application/json" data-nexa-manifest>{"7":{"event":"click"}}</script>',
+            ),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        const manifestEl = document.querySelector('script[data-nexa-manifest]');
+        expect(manifestEl?.textContent).toBe('{"7":{"event":"click"}}');
+    });
+
+    it("sin data-nexa-slot en el destino, cae al reemplazo de <body> completo de siempre", async () => {
+        // Retrocompatibilidad explícita: un proyecto sin layout (o cuya
+        // página de destino no trae el mismo slot) sigue funcionando
+        // exactamente como antes de la Fase 32.
+        document.body.innerHTML = "<p>Página 1</p>";
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(pageHtml("Otra", "<h1>Página 2</h1>"));
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.body.innerHTML).toContain("<h1>Página 2</h1>");
+    });
+
     it("dispose() deja de interceptar clics", async () => {
         const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(pageHtml("X", "<p>x</p>"));
         const a = link("/about");

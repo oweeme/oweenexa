@@ -25,13 +25,13 @@ use crate::assets;
 /// navegador.
 ///
 /// **Reactivación en navegación SPA (bug real, encontrado con un
-/// navegador real):** `initRouter` reemplaza `<body>` vía `innerHTML` —
-/// eso nunca ejecuta el `<script>` de la página de destino (es
-/// comportamiento estándar del navegador, no algo que se pueda evitar
-/// desde `packages/router`). Sin nada más, cualquier página a la que se
-/// navega por un link interno queda con el HTML correcto pero CERO JS
-/// activado: ni botones, ni formularios, ni islas. Por eso el manifiesto
-/// se embebe también como datos inertes (`<script
+/// navegador real):** `initRouter` reemplaza el contenido del contenedor
+/// de página vía `innerHTML` — eso nunca ejecuta el `<script>` de la
+/// página de destino (es comportamiento estándar del navegador, no algo
+/// que se pueda evitar desde `packages/router`). Sin nada más, cualquier
+/// página a la que se navega por un link interno queda con el HTML
+/// correcto pero CERO JS activado: ni botones, ni formularios, ni islas.
+/// Por eso el manifiesto se embebe también como datos inertes (`<script
 /// type="application/json" data-nexa-manifest>`, que sí sobrevive el
 /// reemplazo, a diferencia de una llamada dentro de un `<script
 /// type="module">`), y **toda página** — tenga o no contenido
@@ -39,6 +39,17 @@ use crate::assets;
 /// `initRouter` llama después de cada navegación: relee ese manifiesto
 /// del DOM ya reemplazado, y carga (con `import()` dinámico — recién
 /// ahí, nunca antes) lo que la página de destino necesite.
+///
+/// **Contenedor de página estable (Fase 32):** desde que
+/// `packages/router` reemplaza solo `data-nexa-slot` en vez de `<body>`
+/// entero (cuando el proyecto usa `src/layout.tsx`), `reactivate(root)`
+/// recibe ese slot como `root`, no el documento completo — así una isla
+/// montada en el layout (Fase 31) nunca se re-escanea ni se vuelve a
+/// montar en una navegación. Por eso hay dos variables de disposición
+/// para islas: `disposeIslands` (más abajo, de la carga inicial —
+/// cubre todo el documento la primera vez) y `disposeSlotIslands`
+/// (dentro de `reactivate`, solo se ocupa de lo que cambia en cada
+/// navegación) — nunca se mezclan.
 pub fn inject(
     html: &str,
     manifest: &ActivationManifest,
@@ -129,15 +140,31 @@ fn reactivate_fn() -> String {
         r#"
 let disposeActivation = () => {{}};
 let disposeForms = () => {{}};
+// Distinta de `disposeIslands` (más abajo, la de la carga inicial):
+// esta es la que usa `reactivate` en cada navegación (Fase 32), y solo
+// se ocupa de lo que vive dentro de `root` (el `data-nexa-slot` si el
+// proyecto usa `src/layout.tsx`, o `document` si no). Una isla montada
+// en `src/layout.tsx` (Fase 31) queda fuera de `root` a partir de la
+// primera navegación — su `dispose`/`mount` nunca vuelven a llamarse
+// desde acá, es cosa de la carga inicial de abajo.
+let disposeSlotIslands = () => {{}};
+// La de la carga inicial (más abajo, fuera de esta función) — separada
+// a propósito de `disposeSlotIslands`, nunca se reasigna desde acá.
 let disposeIslands = () => {{}};
 
 async function reactivate(root) {{
     disposeActivation();
     disposeForms();
-    disposeIslands();
-    disposeActivation = disposeForms = disposeIslands = () => {{}};
+    disposeSlotIslands();
+    disposeActivation = disposeForms = disposeSlotIslands = () => {{}};
 
-    const manifestEl = root.querySelector("script[data-nexa-manifest]");
+    // El manifiesto de activación (Fase 5) vive siempre al final de
+    // `<body>`, fuera de cualquier slot — `packages/router` lo
+    // actualiza a mano en cada navegación (`syncManifestScript`,
+    // Fase 32) para que siga siendo el de la página actual. Por eso se
+    // busca en `document`, nunca en `root`: si `root` es el slot, el
+    // manifiesto no vive ahí adentro.
+    const manifestEl = document.querySelector("script[data-nexa-manifest]");
     if (manifestEl) {{
         const {{ initActivation }} = await import("/assets/{runtime}");
         disposeActivation = initActivation(JSON.parse(manifestEl.textContent), {{ root }});
@@ -148,7 +175,7 @@ async function reactivate(root) {{
     }}
     if (root.querySelector("[data-nexa-island]")) {{
         const {{ initIslands }} = await import("/assets/{islands}");
-        disposeIslands = initIslands({{ root }});
+        disposeSlotIslands = initIslands({{ root }});
     }}
 }}
 "#,
@@ -310,6 +337,25 @@ mod tests {
 
         assert!(out.contains(&format!("/assets/{}", assets::nexa_islands_filename())));
         assert!(out.contains("initIslands();"));
+    }
+
+    #[test]
+    fn reactivate_uses_a_separate_dispose_variable_for_islands_than_the_initial_load() {
+        // Fase 32: una isla montada en `src/layout.tsx` (Fase 31) no debe
+        // desmontarse en una navegación SPA — `reactivate()` solo puede
+        // tocar lo que vive dentro de `root` (el slot). Si `reactivate`
+        // reusara la misma `disposeIslands` de la carga inicial (que
+        // cubre todo el documento la primera vez), la primera navegación
+        // desmontaría también la isla del layout.
+        let html = "<html><body><div data-nexa-island=\"x\"></div></body></html>";
+        let out = inject(html, &ActivationManifest::new(), false, true, false, None);
+
+        assert!(out.contains("let disposeSlotIslands"));
+        assert!(out.contains("disposeSlotIslands = initIslands({ root });"));
+        // La carga inicial usa su propia variable, nunca tocada por
+        // `reactivate` — confirmado por el test de arriba
+        // (`initIslands();` sin `{ root }`, la llamada inicial real).
+        assert!(!out.contains("disposeSlotIslands = initIslands();"));
     }
 
     #[test]
