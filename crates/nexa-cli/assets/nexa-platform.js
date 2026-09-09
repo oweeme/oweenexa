@@ -525,6 +525,106 @@ function urlBase64ToUint8Array(base64String) {
 }
 var push = { register, onReceived, onActionPerformed };
 
+// packages/platform/src/biometrics.ts
+var STORAGE_KEY2 = "nexa-biometrics-credential-id";
+function mapCapacitorBiometryType(value) {
+  switch (value) {
+    case 1:
+      return "touchId";
+    case 2:
+      return "faceId";
+    case 3:
+      return "fingerprint";
+    case 4:
+      return "face";
+    case 5:
+      return "iris";
+    default:
+      return "none";
+  }
+}
+async function isAvailable(deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "BiometricAuth");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @aparajita/capacitor-biometric-auth no est\xE1 instalado en esta app.");
+    }
+    const result = await plugin.checkBiometry();
+    return { isAvailable: result.isAvailable, biometryType: mapCapacitorBiometryType(result.biometryType) };
+  }
+  const win = deps.windowObject ?? (typeof window !== "undefined" ? window : void 0);
+  const ctor = win?.PublicKeyCredential;
+  if (!ctor?.isUserVerifyingPlatformAuthenticatorAvailable) {
+    return { isAvailable: false, biometryType: "none" };
+  }
+  const available = await ctor.isUserVerifyingPlatformAuthenticatorAvailable();
+  return { isAvailable: available, biometryType: available ? "platform" : "none" };
+}
+async function authenticate(options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "BiometricAuth");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @aparajita/capacitor-biometric-auth no est\xE1 instalado en esta app.");
+    }
+    await plugin.authenticate({ reason: options.reason });
+    return;
+  }
+  const nav = deps.navigatorObject ?? (typeof navigator !== "undefined" ? navigator : void 0);
+  if (!nav?.credentials) {
+    throw new Error("[nexa/platform] WebAuthn no est\xE1 disponible en este entorno.");
+  }
+  const storage = deps.storage ?? createStorage();
+  const storedId = storage.get(STORAGE_KEY2);
+  if (!storedId) {
+    const credential = await nav.credentials.create({
+      publicKey: {
+        challenge: randomChallenge(),
+        rp: { name: "Nexa" },
+        user: { id: randomChallenge(), name: "local", displayName: "local" },
+        pubKeyCredParams: [{ type: "public-key", alg: -7 }],
+        authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required" },
+        timeout: 6e4
+      }
+    });
+    const publicKeyCredential = credential;
+    if (!publicKeyCredential) {
+      throw new Error("[nexa/platform] no se pudo crear la credencial biom\xE9trica.");
+    }
+    storage.set(STORAGE_KEY2, bufferToBase64(publicKeyCredential.rawId));
+    return;
+  }
+  const assertion = await nav.credentials.get({
+    publicKey: {
+      challenge: randomChallenge(),
+      allowCredentials: [{ id: base64ToBuffer(storedId), type: "public-key" }],
+      userVerification: "required",
+      timeout: 6e4
+    }
+  });
+  if (!assertion) {
+    throw new Error("[nexa/platform] la autenticaci\xF3n biom\xE9trica fall\xF3.");
+  }
+}
+function randomChallenge() {
+  const challenge = new Uint8Array(new ArrayBuffer(32));
+  crypto.getRandomValues(challenge);
+  return challenge;
+}
+function bufferToBase64(buffer) {
+  return btoa(String.fromCharCode(...new Uint8Array(buffer)));
+}
+function base64ToBuffer(base64) {
+  const binary = atob(base64);
+  const bytes = new Uint8Array(new ArrayBuffer(binary.length));
+  for (let i = 0; i < binary.length; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return bytes;
+}
+var biometrics = { isAvailable, authenticate };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -542,9 +642,12 @@ var platform = {
   lifecycle,
   geolocation,
   deepLinks,
-  push
+  push,
+  biometrics
 };
 export {
+  authenticate,
+  biometrics,
   capacitorPlugin,
   capturePhoto,
   createSessionStorage,
@@ -556,6 +659,7 @@ export {
   getLaunchUrl,
   getLifecycleState,
   getNetworkStatus,
+  isAvailable,
   isCapacitor,
   isTauri,
   isWeb,

@@ -3336,6 +3336,68 @@ de este issue.
 >
 > **Quedan pendientes, mismo issue:** biometría, haptics.
 
+## Fase 54 — `platform.biometrics` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #20 — sexto plugin de la lista incremental
+(biometría, siguiente en el orden sugerido tras push real).
+
+**Entregables:**
+
+- `packages/platform/src/biometrics.ts` (nuevo): `isAvailable()`
+  (`{ isAvailable, biometryType }`) y `authenticate(options?)`.
+  Capacitor nativo: el plugin real `@aparajita/capacitor-biometric-auth`
+  (`checkBiometry`/`authenticate` — es el paquete comunitario más
+  activo para esto; no existe un `@capacitor/biometric` oficial del
+  equipo de Capacitor). Web/Tauri: WebAuthn real — 
+  `PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()`
+  para `isAvailable()`, y un ciclo completo real de
+  `navigator.credentials.create()` (primera vez, crea una credencial
+  de plataforma real) / `.get()` (siguientes veces, reautentica contra
+  esa misma credencial) para `authenticate()` — sin backend, un gate
+  local del dispositivo. El id de la credencial se guarda con
+  `platform.storage()` (Fase 38, reutilizado tal cual).
+- Expuesto como `platform.biometrics.isAvailable`/`authenticate` en
+  `packages/platform/src/index.ts`.
+- 12 tests nuevos en `packages/platform/test/biometrics.test.ts` (114
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** las dos ramas reales sin inventar la forma del
+plugin nativo, tests, documentado.
+
+> **El hallazgo real de esta fase, antes de escribir una sola línea de
+> código:** leyendo el código fuente real de
+> `@aparajita/capacitor-biometric-auth` (el paso de verificación que
+> ya es obligatorio para cualquier plugin de este issue) se descubrió
+> que su propia rama web **no es real** — es una simulación deliberada
+> para tests, con un `confirm()` del navegador y un estado falso que
+> se pone a mano con `setBiometryType()`/`setBiometryIsEnrolled()`, sin
+> ninguna relación con hardware biométrico real. Replicar esa
+> simulación (como sí tenía sentido para `network`/`lifecycle`/
+> `geolocation`, donde la rama web de Capacitor SÍ es real) hubiera
+> sido menos fiel al propio principio de "verificado contra algo real,
+> nunca inventado" que rige el resto de `@nexa/platform`. Se usó en su
+> lugar WebAuthn — un estándar real del navegador, verificable por su
+> propia especificación, que sí dispara el prompt biométrico genuino
+> del sistema operativo (Face ID/Touch ID/Windows Hello/huella).
+>
+> **Verificado con un autenticador WebAuthn virtual real de Chrome
+> DevTools Protocol (`WebAuthn.addVirtualAuthenticator`), no un mock a
+> nivel de JavaScript:** es el propio motor de WebAuthn de Chromium,
+> con un autenticador de plataforma virtual que aprueba el gesto
+> biométrico — equivalente real a un Face ID/huella exitosos, sin
+> depender de hardware biométrico real en esta VM. Con eso:
+> `isAvailable()` devolvió disponibilidad real de plataforma; la
+> primera llamada a `authenticate()` creó una credencial de plataforma
+> real (`navigator.credentials.create`) y guardó su id real en
+> `localStorage`; la segunda llamada reautenticó contra esa misma
+> credencial (`navigator.credentials.get`) en vez de crear una nueva —
+> el ciclo completo de enrolamiento + reautenticación, de punta a
+> punta, contra código real de WebAuthn.
+>
+> **Quedan pendientes, mismo issue:** haptics — el último de la lista
+> sugerida por el propio issue.
+
 ---
 
 ## Regla de disciplina para todas las fases

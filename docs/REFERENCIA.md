@@ -814,6 +814,9 @@ const stopOpen = platform.deepLinks.onOpen((event) => { ... })   // suscripción
 const registration = await platform.push.register({ vapidPublicKey })   // Fase 53 — { platform: "capacitor", token } | { platform: "web", subscription }
 platform.push.onReceived((n) => { ... })          // solo Capacitor — en Web lanza, hay que escuchar "push" en tu Service Worker
 platform.push.onActionPerformed((a) => { ... })   // solo Capacitor — en Web lanza, hay que escuchar "notificationclick" en tu Service Worker
+
+const status = await platform.biometrics.isAvailable()   // Fase 54 — { isAvailable, biometryType }
+await platform.biometrics.authenticate({ reason: "Desbloquear" })   // dispara el prompt biométrico real; rechaza si falla/cancela
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -880,6 +883,20 @@ Fase 18) y una `vapidPublicKey` real de tu backend. `onReceived()`/
 push siempre llega al Service Worker (`self.addEventListener("push",
 ...)`), nunca a la página; llamar a estas funciones ahí lanza un error
 explícito con la solución, en vez de no hacer nada en silencio.
+
+`platform.biometrics` (Fase 54, sexto plugin del issue #20): Capacitor
+nativo usa el plugin real `@aparajita/capacitor-biometric-auth`
+(`checkBiometry`/`authenticate`). Web/Tauri usan WebAuthn real
+(`PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()`
+para `isAvailable()`; un ciclo completo de `navigator.credentials.create`/
+`.get()` contra un autenticador de plataforma para `authenticate()` —
+sin backend, un gate local del dispositivo). **No** se replicó la
+propia rama web de `@aparajita/capacitor-biometric-auth`: leyendo su
+código fuente, esa rama es una simulación deliberada para tests (un
+`confirm()` con estado falso puesto a mano) — usar WebAuthn real es más
+fiel a la disciplina de "verificado contra algo real, nunca inventado"
+que copiar esa simulación. El id de la credencial creada la primera
+vez se guarda con `platform.storage()` (Fase 38, reutilizado tal cual).
 
 ## `@nexa/reactivity`
 
