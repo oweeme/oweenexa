@@ -422,6 +422,45 @@ lo renderiza como HTML real una vez por cada elemento del array que
 - Sin anidar: un `<For>` dentro de otro `<For>` no está soportado
   todavía.
 
+## Link activo automático (`aria-current`)
+
+```tsx
+<nav>
+    <a href="/">Inicio</a>
+    <a href="/dashboard" data-nexa-match="prefix">Panel</a>
+</nav>
+```
+
+Nexa sabe qué ruta está renderizando en el momento de armar cada
+página — lo resuelve él mismo, igual que `seo`/`schema`, sin que el
+desarrollador escriba ningún condicional (una página/layout de Nexa no
+admite lógica propia, así que ni siquiera sería posible escribirlo a
+mano). Un `<a href="...">` cuyo `href` coincide con la ruta actual
+recibe `aria-current="page"` automáticamente:
+
+- Coincidencia **exacta** por defecto — `href="/"` nunca marca activo
+  en `/dashboard`, ni en ninguna otra ruta que no sea `/` misma.
+- `data-nexa-match="prefix"` la vuelve por prefijo, con límite de
+  segmento: `/dashboard` matchea `/dashboard/settings` pero no
+  `/dashboard-old`; `href="/"` en modo prefijo sigue matcheando *solo*
+  `/` exacto (el límite de segmento lo evita, no es un caso especial
+  aparte).
+- El estilo es cosa del proyecto — Nexa nunca agrega una clase, solo el
+  atributo semánticamente correcto: `a[aria-current="page"] { ... }`.
+- Funciona igual dentro de `src/layout.tsx` que dentro de una página
+  individual — mismo mecanismo, sin distinción.
+
+**Con `src/layout.tsx` + navegación SPA:** un nav dentro del layout no
+se vuelve a renderizar del lado del servidor en cada click (Fase 32,
+el contenedor de página estable) — `packages/router` recalcula
+`aria-current` del lado del cliente después de cada navegación, con el
+mismo criterio de coincidencia (por eso `data-nexa-match`, a diferencia
+de otros atributos de control de Nexa, sí queda en el HTML final: el
+cliente lo necesita para releer el modo). Un nav dentro de
+`data-nexa-slot` no necesita este recálculo — llega ya resuelto en el
+HTML fresco de cada navegación, como cualquier otro contenido de
+página.
+
 ## Islas interactivas
 
 ```tsx

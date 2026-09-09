@@ -69,6 +69,7 @@ pub fn render_for_page(
     body: &str,
     params: &BTreeMap<String, String>,
     translations: Option<&serde_json::Value>,
+    current_path: Option<&str>,
 ) -> Result<RenderedLayout> {
     let source = fs::read_to_string(layout_file).with_context(|| format!("leyendo {}", layout_file.display()))?;
     let component = nexa_parser::parse_component(layout_file.to_str().unwrap_or("layout.tsx"), &source)
@@ -78,7 +79,7 @@ pub fn render_for_page(
     let ir = nexa_analyzer::analyze(&component);
     validate(&ir.root)?;
 
-    let render_ctx = RenderContext { data: None, params, translations, loop_binding: None };
+    let render_ctx = RenderContext { data: None, params, translations, loop_binding: None, current_path };
     let layout_html = nexa_renderer::render_node(&ir.root, &render_ctx);
     let html = splice_slot(&layout_html, body)?;
     let ui_used_classes = nexa_ui::collect_used_classes(&ir.root);

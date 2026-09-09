@@ -166,8 +166,21 @@ pub fn compile_page(
 
     let ir = nexa_analyzer::analyze(&component);
 
-    let render_ctx =
-        RenderContext { data: data.as_ref(), params, translations: translations.as_ref(), loop_binding: None };
+    // Fase 33: la ruta real de esta página, con sus segmentos dinámicos
+    // ya resueltos (`/es/products/iphone-17`, no `/:locale/products/:slug`)
+    // — mismo `resolve_url` que ya usa `nexa-i18n` para `hreflang`. Nunca
+    // bloquea el render si no se puede resolver (no debería pasar nunca
+    // en un uso normal, pero un link activo que no aparece es mucho
+    // menos grave que un build roto).
+    let current_path = nexa_loader::resolve_url(route_pattern, params).ok();
+
+    let render_ctx = RenderContext {
+        data: data.as_ref(),
+        params,
+        translations: translations.as_ref(),
+        loop_binding: None,
+        current_path: current_path.as_deref(),
+    };
     let body = nexa_renderer::render_node(&ir.root, &render_ctx);
 
     // `src/layout.tsx` (Fase 25), opcional: envuelve el HTML que la
@@ -178,7 +191,13 @@ pub fn compile_page(
     let mut layout_island_specifiers = std::collections::BTreeSet::new();
     let body = match crate::layout::find() {
         Some(layout_file) => {
-            let rendered = crate::layout::render_for_page(&layout_file, &body, params, translations.as_ref())?;
+            let rendered = crate::layout::render_for_page(
+                &layout_file,
+                &body,
+                params,
+                translations.as_ref(),
+                current_path.as_deref(),
+            )?;
             layout_ui_used_classes = rendered.ui_used_classes;
             layout_head_html = rendered.head_html;
             layout_island_specifiers = rendered.island_specifiers;

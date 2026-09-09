@@ -1,3 +1,21 @@
+// packages/router/src/active-links.ts
+function updateActiveLinks(root, currentPath) {
+  for (const anchor of Array.from(root.querySelectorAll("a[href]"))) {
+    const href = anchor.getAttribute("href");
+    if (href === null) continue;
+    const mode = anchor.getAttribute("data-nexa-match");
+    const isActive = mode === "prefix" ? isPrefixMatch(href, currentPath) : href === currentPath;
+    if (isActive) {
+      anchor.setAttribute("aria-current", "page");
+    } else {
+      anchor.removeAttribute("aria-current");
+    }
+  }
+}
+function isPrefixMatch(href, currentPath) {
+  return currentPath === href || currentPath.startsWith(href) && currentPath.slice(href.length).startsWith("/");
+}
+
 // packages/router/src/fetcher.ts
 var defaultFetcher = (path) => fetch(path).then((res) => res.text());
 
@@ -26,6 +44,7 @@ function initRouter(options = {}) {
     const html = cache.get(path) ?? await fetchPage(path);
     cache.delete(path);
     const reactivationRoot = applyPage(root, html);
+    updateActiveLinks(root, path);
     onNavigate?.(reactivationRoot);
     if (push) {
       history.pushState({}, "", url);

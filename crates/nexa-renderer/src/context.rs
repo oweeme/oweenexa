@@ -31,6 +31,11 @@ pub struct RenderContext<'a> {
     /// Un solo nivel a propósito: `<For>` anidado queda fuera de alcance
     /// (ver `nexa-parser`), así que no hace falta una pila.
     pub loop_binding: Option<(&'a str, &'a serde_json::Value)>,
+    /// La ruta real que se está renderizando (`/es/products/iphone-17`,
+    /// ya con los segmentos dinámicos resueltos) — Fase 33, usada para
+    /// marcar `aria-current="page"` en el `<a>` cuyo `href` coincide.
+    /// `None` si no se pudo resolver (nunca bloquea el render).
+    pub current_path: Option<&'a str>,
 }
 
 impl RenderContext<'_> {
@@ -43,6 +48,7 @@ impl RenderContext<'_> {
             params: &NO_PARAMS,
             translations: None,
             loop_binding: None,
+            current_path: None,
         }
     }
 }

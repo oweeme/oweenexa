@@ -90,15 +90,26 @@ fn ctx_with_data(data: &serde_json::Value) -> RenderContext<'_> {
         params: empty_params(),
         translations: None,
         loop_binding: None,
+        current_path: None,
     }
 }
 
 fn ctx_with_params(params: &BTreeMap<String, String>) -> RenderContext<'_> {
-    RenderContext { data: None, params, translations: None, loop_binding: None }
+    RenderContext { data: None, params, translations: None, loop_binding: None, current_path: None }
 }
 
 fn ctx_with_translations(translations: &serde_json::Value) -> RenderContext<'_> {
-    RenderContext { data: None, params: empty_params(), translations: Some(translations), loop_binding: None }
+    RenderContext {
+        data: None,
+        params: empty_params(),
+        translations: Some(translations),
+        loop_binding: None,
+        current_path: None,
+    }
+}
+
+fn ctx_with_path<'a>(current_path: &'a str, params: &'a BTreeMap<String, String>) -> RenderContext<'a> {
+    RenderContext { data: None, params, translations: None, loop_binding: None, current_path: Some(current_path) }
 }
 
 fn empty_params() -> &'static BTreeMap<String, String> {
@@ -491,4 +502,107 @@ fn a_for_loop_can_iterate_params_too() {
     // `<For each={params.x}>` siempre itera cero veces hoy. Documentado
     // acá como comportamiento explícito, no como caso soportado de verdad.
     assert_eq!(render_node(&node, &ctx_with_params(&params)), "");
+}
+
+// Fase 33 — link activo automático (`aria-current="page"`).
+
+fn link(href: &str, extra_attrs: Vec<Attr>) -> IrNode {
+    let mut attrs = vec![Attr { name: "href".into(), value: Some(AttrValue::Static(href.into())) }];
+    attrs.extend(extra_attrs);
+    element(0, Classification::Static, "a", attrs, vec![], vec![])
+}
+
+fn no_params() -> BTreeMap<String, String> {
+    BTreeMap::new()
+}
+
+#[test]
+fn marks_a_link_active_on_an_exact_match() {
+    let params = no_params();
+    let html = render_node(&link("/services", vec![]), &ctx_with_path("/services", &params));
+    assert!(html.contains("aria-current=\"page\""));
+}
+
+#[test]
+fn does_not_mark_a_link_active_on_a_different_path() {
+    let params = no_params();
+    let html = render_node(&link("/services", vec![]), &ctx_with_path("/contact", &params));
+    assert!(!html.contains("aria-current"));
+}
+
+#[test]
+fn a_link_to_root_does_not_match_a_deeper_path() {
+    let params = no_params();
+    let html = render_node(&link("/", vec![]), &ctx_with_path("/services", &params));
+    assert!(!html.contains("aria-current"));
+}
+
+#[test]
+fn without_a_current_path_no_link_is_ever_marked_active() {
+    // `RenderContext::empty()`/sin `current_path` — comportamiento
+    // explícito, nunca "adivina" cuál sería la ruta activa.
+    let html = render_node(&link("/", vec![]), &RenderContext::empty());
+    assert!(!html.contains("aria-current"));
+}
+
+#[test]
+fn data_nexa_match_prefix_marks_a_deeper_path_active() {
+    let params = no_params();
+    let attrs = vec![Attr { name: "data-nexa-match".into(), value: Some(AttrValue::Static("prefix".into())) }];
+    let html = render_node(&link("/dashboard", attrs), &ctx_with_path("/dashboard/settings", &params));
+    assert!(html.contains("aria-current=\"page\""));
+}
+
+#[test]
+fn data_nexa_match_prefix_does_not_match_a_sibling_with_a_shared_prefix_string() {
+    // Límite de segmento: `/dashboard` no debe matchear `/dashboard-old`
+    // solo porque la substring coincide.
+    let params = no_params();
+    let attrs = vec![Attr { name: "data-nexa-match".into(), value: Some(AttrValue::Static("prefix".into())) }];
+    let html = render_node(&link("/dashboard", attrs), &ctx_with_path("/dashboard-old", &params));
+    assert!(!html.contains("aria-current"));
+}
+
+#[test]
+fn data_nexa_match_prefix_on_root_only_matches_root_exactly() {
+    // El caso que preocupaba en el issue: `href="/"` en modo prefijo NO
+    // debe matchear "toda ruta empieza con /".
+    let params = no_params();
+    let attrs = vec![Attr { name: "data-nexa-match".into(), value: Some(AttrValue::Static("prefix".into())) }];
+    let html = render_node(&link("/", attrs), &ctx_with_path("/services", &params));
+    assert!(!html.contains("aria-current"));
+}
+
+#[test]
+fn data_nexa_match_stays_in_the_html_for_the_client_side_router_to_reread() {
+    // A diferencia de `data-nexa-strategy` para eventos, esto SÍ queda
+    // en el HTML: `packages/router` lo necesita para recalcular el link
+    // activo después de una navegación SPA, ya que el layout (Fase 32)
+    // no se vuelve a renderizar en el servidor en cada click.
+    let params = no_params();
+    let attrs = vec![Attr { name: "data-nexa-match".into(), value: Some(AttrValue::Static("prefix".into())) }];
+    let html = render_node(&link("/dashboard", attrs), &ctx_with_path("/dashboard/settings", &params));
+    assert!(html.contains("data-nexa-match=\"prefix\""));
+}
+
+#[test]
+fn active_link_works_inside_the_layout_the_same_way_as_a_page() {
+    // Fase 33 depende de la Fase 31 (islas en layout) para el caso de
+    // uso real, pero el mecanismo en sí no distingue layout de página —
+    // ambos pasan por el mismo `render_node`/`RenderContext`.
+    let params = no_params();
+    let nav = element(
+        0,
+        Classification::Static,
+        "nav",
+        vec![],
+        vec![],
+        vec![link("/", vec![]), link("/services", vec![])],
+    );
+    let html = render_node(&nav, &ctx_with_path("/services", &params));
+
+    let hrefs_with_active: Vec<&str> =
+        html.split("<a ").filter(|part| part.contains("aria-current")).collect();
+    assert_eq!(hrefs_with_active.len(), 1);
+    assert!(hrefs_with_active[0].starts_with("href=\"/services\""));
 }

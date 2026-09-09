@@ -195,6 +195,32 @@ describe("initRouter — Fase 6, criterio de salida", () => {
         expect(manifestEl?.textContent).toBe('{"7":{"event":"click"}}');
     });
 
+    it("un nav fuera del slot (en el layout) actualiza aria-current después de una navegación SPA", async () => {
+        // Fase 33 + Fase 32 juntas: el layout nunca se vuelve a
+        // renderizar del lado del servidor en una navegación de
+        // cliente — sin este recálculo, este nav se quedaría marcando
+        // para siempre la página con la que cargó el sitio.
+        document.body.innerHTML =
+            '<nav><a href="/" aria-current="page">Inicio</a><a href="/otra">Otra</a></nav>' +
+            '<div data-nexa-slot><p>1</p></div>';
+        const fetchPage = vi
+            .fn<PageFetcher>()
+            .mockResolvedValue(
+                pageHtml(
+                    "Otra",
+                    '<nav><a href="/">Inicio</a><a href="/otra">Otra</a></nav><div data-nexa-slot><p>2</p></div>',
+                ),
+            );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.querySelector('nav a[href="/"]')?.hasAttribute("aria-current")).toBe(false);
+        expect(document.querySelector('nav a[href="/otra"]')?.getAttribute("aria-current")).toBe("page");
+    });
+
     it("sin data-nexa-slot en el destino, cae al reemplazo de <body> completo de siempre", async () => {
         // Retrocompatibilidad explícita: un proyecto sin layout (o cuya
         // página de destino no trae el mismo slot) sigue funcionando

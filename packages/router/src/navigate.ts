@@ -1,3 +1,4 @@
+import { updateActiveLinks } from "./active-links";
 import { defaultFetcher, type PageFetcher } from "./fetcher";
 
 const SLOT_SELECTOR = "[data-nexa-slot]";
@@ -72,6 +73,10 @@ export function initRouter(options: InitRouterOptions = {}): () => void {
         cache.delete(path);
 
         const reactivationRoot = applyPage(root, html);
+        // Todo el documento, no solo `reactivationRoot`: un nav dentro
+        // del layout (fuera del slot) también necesita esto, y es
+        // justamente el caso que el slot-only swap deja sin cubrir.
+        updateActiveLinks(root, path);
         onNavigate?.(reactivationRoot);
         if (push) {
             history.pushState({}, "", url);

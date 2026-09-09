@@ -77,6 +77,7 @@ fn render_for(each: &nexa_ast::Expr, item_name: &str, body: &IrNode, ctx: &Rende
                 params: ctx.params,
                 translations: ctx.translations,
                 loop_binding: Some((item_name, item)),
+                current_path: ctx.current_path,
             };
             render_node(body, &item_ctx)
         })

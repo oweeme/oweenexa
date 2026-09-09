@@ -2189,6 +2189,81 @@ scroll de lo que vive fuera del slot no se ve afectado.
 
 ---
 
+## Fase 33 — Link activo automático (`aria-current`) (Hito 12) — ✅ completada
+
+**Objetivo:** issue #8 del backlog, el último del trío de nav/layout
+(#6 islas en layout, #7 contenedor estable, #8 este). Sin composición
+ni condicionales en el cuerpo de una página/layout, ni siquiera era
+posible escribir a mano `class={path === href ? 'activo' : ''}` — el
+mismo bug que hay que arreglar a mano en cualquier router de verdad
+(un link "Inicio" marcado activo en cualquier página) no tenía forma de
+corregirse en Nexa.
+
+**Diseño:** resolución determinística en el renderer, mismo espíritu
+que `seo`/`schema` — Rust ya sabe qué ruta está renderizando
+(`route_pattern` + `params`, reconstruidos a la ruta real con
+`nexa_loader::resolve_url`, la misma función que ya usa `nexa-i18n`
+para `hreflang`). Un `<a href="...">` cuyo `href` resuelto coincide con
+esa ruta recibe `aria-current="page"`; `data-nexa-match="prefix"` lo
+vuelve por prefijo con límite de segmento.
+
+**Entregables:**
+- `RenderContext` gana `current_path: Option<&str>`, calculado una vez
+  en `pipeline::compile_page` y pasado tanto al render de la página
+  como al de `src/layout.tsx` (mismo mecanismo en ambos, sin
+  distinción).
+- `nexa-renderer::html::active_link_attr` — compara el `href` ya
+  resuelto (reutilizando la resolución de `AttrValue::Static`/`Dynamic`
+  que `render_attr` ya hacía, ahora extraída a `resolve_attr_string`
+  para no duplicarla) contra `current_path`.
+- `is_prefix_match` con límite de segmento: `current_path == href` o
+  (`current_path` empieza con `href` **y** el siguiente carácter es
+  `/`) — esto resuelve gratis el caso que preocupaba en el issue
+  (`href="/"` en modo prefijo no matchea "toda ruta empieza con /",
+  porque ninguna ruta real empieza con `//`).
+
+**Criterio de salida:** un `<a href="/x">` recibe `aria-current="page"`
+solo al renderizar `/x`; `data-nexa-match="prefix"` marca también las
+subrutas; funciona igual en `layout.tsx` que en una página.
+
+> **Ajuste de alcance, encontrado a mitad de la fase, no al planearla:**
+> el diseño original asumía que resolver esto en el servidor alcanzaba
+> — pero la Fase 32 (contenedor de página estable) significa que un nav
+> dentro de `src/layout.tsx` **nunca se vuelve a renderizar del lado
+> del servidor** en una navegación SPA. Verificado con Chromium real
+> *antes* de dar la fase por terminada: después de un click interno, el
+> nav seguía marcando la página con la que había cargado el sitio la
+> primera vez — exactamente el mismo bug de Vue Router que esta fase
+> pretendía resolver, reaparecido por la interacción con la Fase 32.
+> Arreglado con `packages/router/src/active-links.ts::updateActiveLinks`
+> — recalcula `aria-current` en todo el documento después de cada
+> navegación, con el mismo criterio de coincidencia que el servidor. Por
+> esto `data-nexa-match` **sí queda** en el HTML final (a diferencia de
+> `data-nexa-strategy` para eventos, que se descarta): el cliente
+> necesita releerlo para saber si le toca coincidencia exacta o por
+> prefijo. Un nav dentro de `data-nexa-slot` no necesita este recálculo
+> — llega resuelto en el HTML fresco de cada navegación, como cualquier
+> otro contenido; el recálculo del cliente es redundante ahí pero
+> inofensivo (misma respuesta, dos veces).
+>
+> **Verificado con un proyecto real y Chromium real:** un layout con un
+> nav de dos links, dos páginas navegables entre sí por un `<a>` real.
+> Antes del fix de arriba: navegar a "Otra" dejaba "Inicio" marcado
+> activo. Después: el link activo cambia correctamente en cada
+> navegación, ida y vuelta, en ambas direcciones. Coincidencia por
+> prefijo (`data-nexa-match="prefix"`) verificada con una ruta de
+> verdad tres niveles más profunda que el `href` declarado
+> (`/other/deep` activando `<a href="/other" data-nexa-match="prefix">`).
+> `nexa lint` sin avisos sobre el proyecto completo.
+>
+> Los 283 tests del workspace de Rust (+9 sobre los 274 de la Fase 32,
+> todos en `nexa-renderer`) siguen en verde, más 23 tests en
+> `packages/router` (+6 sobre los 17 de antes: 5 en un archivo nuevo,
+> `active-links.test.ts`, más 1 de integración confirmando el
+> recálculo tras una navegación SPA real).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio
