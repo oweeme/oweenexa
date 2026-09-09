@@ -171,13 +171,25 @@ se produce ese HTML:
   primera clase (`platform.theme.set("dark")`, tokens con variante
   oscura, respeta `prefers-color-scheme` incluso sin JavaScript); un
   set chico de utilidades de layout (`nx-flex`/`nx-grid`/`nx-stack`); y
-  seis componentes puramente visuales para armar UI rápido —
+  nueve componentes puramente visuales para armar UI rápido —
   `nx-table` (con zebra), `nx-badge`, `nx-avatar`, `nx-breadcrumbs`,
-  `nx-alert` y `nx-divider` — todos tree-shakeados igual que el resto,
-  cero JavaScript. Los componentes con estado propio (pestañas,
-  acordeón, orden de tabla) siguen el mismo patrón que `Dialog`/`Drawer`
-  — una función de `@nexa/ui` llamada desde un `onClick` normal, nunca
-  una isla — ver la Fase 57 en `docs/FASES-DE-CONSTRUCCION.md`.
+  `nx-alert`, `nx-divider`, `nx-tooltip`, `nx-progress` y `nx-skeleton`
+  — todos tree-shakeados igual que el resto, cero JavaScript.
+- **Componentes con estado, sin ninguna isla.** `Tabs`
+  (`ui.selectTab`), `Accordion` (`ui.toggleAccordionItem`, con modo
+  exclusivo opcional) y `Dropdown` (`ui.toggleDropdown`/
+  `ui.selectDropdownOption`, cierre con click afuera o `Escape`) siguen
+  el mismo patrón que `Dialog`/`Drawer` desde la Fase 9 — una función
+  de `@nexa/ui` llamada desde un `onClick` normal, activación
+  progresiva de siempre, nunca composición ni un framework externo.
+  `ui.sortTable()`/`ui.filterTable()` ordenan y filtran client-side una
+  `<table class="nx-table">` que el servidor ya renderizó (sin
+  re-pedir nada al backend); `ui.createPageSearch()` es un buscador
+  reactivo de página completa con un `Signal` real de
+  `@nexa/reactivity` por debajo — la primera vez que `@nexa/ui` usa
+  reactividad real, siempre fuera de una isla. Ver la Fase 57 en
+  `docs/FASES-DE-CONSTRUCCION.md` para la regla completa de "isla vs.
+  función de `ui`", y `docs/REFERENCIA.md` para cada API.
 - **i18n con interpolación real.** `t("perfil.saludo", { name: data.x })`
   sustituye `{name}` en el texto del diccionario — `nexa build`/`nexa
   lint` fallan con un error claro si una clave y sus argumentos no se

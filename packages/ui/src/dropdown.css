@@ -1,0 +1,53 @@
+.nx-dropdown {
+    position: relative;
+    display: inline-block;
+}
+
+.nx-dropdown-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--nx-space-2);
+    padding: var(--nx-space-2) var(--nx-space-3);
+    border: 1px solid var(--nx-color-border);
+    border-radius: var(--nx-radius-md);
+    background: var(--nx-color-surface);
+    color: var(--nx-color-text);
+    font-family: var(--nx-font-body);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.nx-dropdown-menu {
+    position: absolute;
+    top: calc(100% + var(--nx-space-1));
+    left: 0;
+    min-width: 100%;
+    max-height: 16rem;
+    overflow-y: auto;
+    margin: 0;
+    padding: var(--nx-space-1);
+    list-style: none;
+    border: 1px solid var(--nx-color-border);
+    border-radius: var(--nx-radius-md);
+    background: var(--nx-color-surface);
+    box-shadow: var(--nx-shadow-md);
+    z-index: 20;
+}
+
+.nx-dropdown-menu[hidden] {
+    display: none;
+}
+
+.nx-dropdown-option {
+    padding: var(--nx-space-2) var(--nx-space-3);
+    border-radius: var(--nx-radius-sm);
+    color: var(--nx-color-text);
+    font-family: var(--nx-font-body);
+    font-size: 0.9rem;
+    cursor: pointer;
+}
+
+.nx-dropdown-option:hover,
+.nx-dropdown-option[aria-selected="true"] {
+    background-color: var(--nx-color-zebra);
+}

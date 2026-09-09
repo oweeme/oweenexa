@@ -3474,7 +3474,10 @@ tree-shaking ni el de tema oscuro.
   `avatar.css` (`nx-avatar` + tamaños `sm/lg`), `breadcrumbs.css`
   (`nx-breadcrumbs`/`nx-breadcrumbs-link`), `alert.css` (`nx-alert` +
   variantes `success/warning/danger`), `divider.css` (`nx-divider`,
-  `nx-divider-vertical`).
+  `nx-divider-vertical`), `tooltip.css` (`nx-tooltip`/`nx-tooltip-content`,
+  con `:hover`/`:focus-within`), `progress.css` (`nx-progress`/
+  `nx-progress-bar`), `skeleton.css` (`nx-skeleton`, con
+  `@keyframes nx-skeleton-shimmer`) — nueve componentes en total.
 - Tokens nuevos en `tokens.css` (con su variante oscura, mismo patrón
   que el resto): `--nx-color-success`/`--nx-color-on-success`,
   `--nx-color-warning`/`--nx-color-on-warning`, `--nx-color-on-danger`,
@@ -3511,7 +3514,7 @@ tree-shaking ni el de tema oscuro.
 
 ---
 
-## Fase 57 — Componentes con estado sin isla: el mismo patrón de `Dialog`/`Drawer`, extendido
+## Fase 57 — Componentes con estado sin isla: Tabs, Accordion, Dropdown, orden/filtro de Table, y un buscador de página reactivo
 
 **Contexto:** feedback directo del usuario tras la Fase 56 — "eso de
 componentes tenemos que ver cómo arreglarlo para que todo el tiempo no
@@ -3519,40 +3522,110 @@ se esté creando una isla, eso sería frustrante". Es una preocupación
 válida: si cada `Tabs` o cada tabla ordenable necesitara una isla
 (specifier en `nexa.toml`, archivo `.island.ts` aparte, bundle propio),
 `@nexa/ui` sería tedioso de usar para exactamente el tipo de UI que
-más lo necesita.
+más lo necesita. El mismo pedido incluyó dos casos concretos:
+un buscador *dentro de una tabla* y un buscador *de página completa*
+implementado como "componente reactivo".
 
-**La respuesta ya existe en el propio código, desde antes de esta
-fase — solo faltaba nombrarla como patrón general:** `Dialog`, `Drawer`,
-`ui.confirm()`/`ui.alert()` y `notify()` (Toast) ya tienen estado real
-en cliente (abierto/cerrado, foco atrapado, pila de z-index) y **ninguno
-es una isla.** Son funciones normales de `@nexa/ui`, detectadas por el
-mismo mecanismo textual que ya usan `platform.`/`stripe.` (Fase 15):
-el chunk que genera un `onClick={fn}` antepone el `import` necesario
-si `fn` menciona `ui.`/`nombreDeLaFunción` en su código fuente. Ese
-JavaScript corre en el nodo interactivo de siempre (activación
-progresiva, Fase 5) — nunca abre la puerta a composición de
-componentes ni a un framework externo.
+**La respuesta ya existía en el propio código, desde antes de esta
+fase — solo faltaba extenderla:** `Dialog`, `Drawer`,
+`ui.confirm()`/`ui.alert()` y `notify()` (Toast) ya tenían estado real
+en cliente (abierto/cerrado, foco atrapado, pila de z-index) y
+**ninguno es una isla.** Son funciones normales de `@nexa/ui`,
+detectadas por el mismo mecanismo textual que ya usan
+`platform.`/`stripe.` (Fase 15): el chunk que genera un `onClick={fn}`
+antepone el `import` necesario si `fn` menciona `ui.` en su código
+fuente. Esta fase agrega cinco piezas nuevas al mismo patrón.
 
-**Regla general para decidir isla vs. función de `@nexa/ui` (a
-documentar en `docs/REFERENCIA.md`):**
-- **Función de `@nexa/ui` + `onClick`/estrategia de activación** — si
-  el estado es local a un widget concreto y se puede modelar como
-  "manipular directamente el DOM que ya está en la página" (abrir/cerrar,
-  marcar una pestaña activa, reordenar filas de una tabla que ya está
-  renderizada, filtrar una lista ya renderizada por texto). Sin
-  Virtual DOM, sin re-render — el mismo trato que ya recibe `Dialog`.
+**Entregables:**
+- `tabs.ts`/`tabs.css` (`nx-tab-group`/`nx-tab-list`/`nx-tab`/
+  `nx-tab-panel`) — `ui.selectTab(event)`.
+- `accordion.ts`/`accordion.css` (`nx-accordion`/`nx-accordion-item`/
+  `nx-accordion-trigger`/`nx-accordion-panel`) — `ui.toggleAccordionItem(event)`,
+  con `data-exclusive="true"` opcional en el contenedor.
+- `dropdown.ts`/`dropdown.css` (`nx-dropdown`/`nx-dropdown-trigger`/
+  `nx-dropdown-menu`/`nx-dropdown-option`) — `ui.toggleDropdown(event)` /
+  `ui.selectDropdownOption(event)`, cierre con click afuera o `Escape`
+  (mismo patrón de listeners en `document` que ya usaba `Dialog` para
+  el focus trap, sin atrapar el foco — un dropdown no es modal).
+- `table.ts` (extiende `.nx-table`, sin CSS nuevo salvo el indicador de
+  orden en `table.css`) — `ui.sortTable(event)` (numérico si ambas
+  celdas lo son, si no alfabético; alterna asc/desc en el mismo `<th>`,
+  `aria-sort` real) y `ui.filterTable(table, query)` (oculta filas de
+  `<tbody>` por texto — el "buscador dentro de una tabla" pedido).
+- `search.ts` — `ui.createPageSearch(container, itemSelector?)`, el
+  "buscador de página como componente reactivo" pedido: por debajo usa
+  un `Signal` real de `@nexa/reactivity` (`state`/`effect`, Fase 4) —
+  la primera vez que se agrega `@nexa/reactivity` como dependencia real
+  de `@nexa/ui` (antes solo se usaba dentro de islas o de `@nexa/http`).
+  `packages/ui/package.json` gana `"@nexa/reactivity": "*"`, resuelto
+  por los workspaces de npm igual que ya hacía `@nexa/http`.
+- `registry.rs` gana tres familias CSS más (`nx-tab`, `nx-accordion`,
+  `nx-dropdown`); `ui` (el objeto agrupado) gana las seis funciones
+  nuevas.
+- 5 archivos de test nuevos en `packages/ui/test/` (vitest + happy-dom):
+  `tabs.test.ts`, `accordion.test.ts`, `dropdown.test.ts`,
+  `table.test.ts`, `search.test.ts`.
+
+**Criterio de salida:**
+- `cargo test --workspace --release` (0 failed) y `npx vitest run` en
+  `packages/ui` (56 tests, 0 failed).
+- Proyecto de scratch real con las seis funciones juntas en una sola
+  página (tabs + accordion + dropdown + tabla ordenable/filtrable +
+  buscador de página), compilado con `nexa lint`/`nexa build` reales —
+  11 nodos interactivos, 11 chunks, los 11 con
+  `import { ui } from "ui";` real.
+- Verificado en un navegador real (Playwright/Chromium): cambiar de
+  pestaña, expandir/colapsar el acordeón, abrir el dropdown y elegir
+  una opción (actualiza el trigger, cierra el menú), cerrar el dropdown
+  con click afuera, ordenar la tabla asc/desc por columna (numérico
+  real, no alfabético — `10 < 20 < 30`, no `"10" < "20" < "30"` por
+  string), filtrar filas de la tabla en vivo, y filtrar el catálogo de
+  la página con el buscador reactivo — las seis, sin ninguna isla.
+
+**Regla general para decidir isla vs. función de `ui` (documentada en
+`docs/REFERENCIA.md`):**
+- **Función de `ui` + `onClick`/`onInput`** — si el estado es local a
+  un widget concreto y se puede modelar como "manipular directamente
+  el DOM que ya está en la página" (abrir/cerrar, marcar una pestaña
+  activa, ordenar/filtrar filas ya renderizadas). Sin Virtual DOM, sin
+  re-render — el mismo trato que ya recibía `Dialog`.
 - **Isla** — solo cuando de verdad se necesita un framework completo
   (Vue/React/etc. con su propio ciclo de vida) o composición real con
   props/children profundos (Fase 50, modelo de componentes liviano,
   dentro de la isla). Nunca como default para "este botón hace algo".
 
-**Próximos candidatos concretos para este patrón (sin isla):** `tabs.ts`
-(cambiar panel activo + `aria-selected`), `accordion.ts` (expandir/
-colapsar), `dropdown.ts`/`select.ts` con búsqueda simple, y
-`sortTable(el, columnIndex)` para ordenar client-side las filas que
-`nx-table` ya renderizó — los cuatro candidatos a implementar en una
-fase futura, cada uno verificado igual que `Dialog`/`Drawer`: con un
-navegador real, nunca solo con `cargo test`.
+> **Bug real encontrado verificando el buscador de página, antes de
+> escribirlo en la documentación:** el primer diseño guardaba el
+> controlador reactivo en un `let pageSearch;` a nivel de módulo,
+> declarado aparte de la función `onSearchInput`. Al probarlo en un
+> navegador real (`pageSearch is not defined`, `ReferenceError`) quedó
+> claro por qué: `nexa-activation` extrae el código fuente de **una
+> sola función** por chunk (Fase 5/7) — cualquier variable declarada
+> fuera de esa función en el archivo de la página no viaja con el
+> chunk, porque cada chunk es su propio módulo aislado, cargado por
+> `import()` dinámico. La solución real: colgar el controlador del
+> propio elemento DOM (`event.currentTarget.pageSearch ??= ...`), que
+> sí persiste entre una tecleada y la siguiente porque es el mismo
+> nodo. Quedó documentado explícitamente en el JSDoc de `search.ts` y
+> en `docs/REFERENCIA.md` — es la primera vez que este límite concreto
+> (un chunk no comparte scope de módulo con el resto de la página) se
+> vuelve visible para un desarrollador, así que vale la pena que la
+> documentación lo explique con la razón, no solo la receta.
+>
+> **Otro descubrimiento, antes de asumir que "pasar `ui.selectTab`
+> directo como `onClick`" funcionaría:** se confirmó leyendo
+> `crates/nexa-parser/src/expr.rs` que `onClick={ui.selectTab}`
+> (una `StaticMemberExpression`) SÍ se parsea (`Expr::Member`), pero
+> `crates/nexa-activation/src/build.rs` busca el handler por su
+> `path()` completo (`"ui.selectTab"`) dentro de las funciones
+> declaradas *en el archivo de la página* — que nunca va a tener una
+> función llamada literalmente `ui.selectTab`. El resultado sería un
+> `placeholder_chunk` silencioso (un `console.warn`, sin romper el
+> build) en vez de la función real. Por eso todos los ejemplos de esta
+> fase (y los anteriores de `Dialog`/`Drawer`) usan una función local
+> de una línea (`function selectTab(event) { ui.selectTab(event); }`)
+> como intermediario — no es una limitación de estilo, es requisito
+> real del mecanismo de extracción de handlers.
 
 ---
 

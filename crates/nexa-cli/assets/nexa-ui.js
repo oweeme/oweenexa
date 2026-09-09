@@ -267,15 +267,281 @@ var TOAST_CSS = `
 .nx-toast-close:hover { opacity: 1; }
 `;
 
+// packages/ui/src/tabs.ts
+function selectTab(event) {
+  const tab = event.currentTarget;
+  const group = tab?.closest(".nx-tab-group");
+  const tabId = tab?.dataset.tab;
+  if (!group || tabId === void 0) return;
+  for (const candidate of group.querySelectorAll(".nx-tab")) {
+    const selected = candidate.dataset.tab === tabId;
+    candidate.setAttribute("aria-selected", String(selected));
+    candidate.tabIndex = selected ? 0 : -1;
+  }
+  for (const panel of group.querySelectorAll(".nx-tab-panel")) {
+    panel.hidden = panel.dataset.tab !== tabId;
+  }
+}
+
+// packages/ui/src/accordion.ts
+function toggleAccordionItem(event) {
+  const trigger = event.currentTarget;
+  const item = trigger?.closest(".nx-accordion-item");
+  const accordion = item?.closest(".nx-accordion");
+  const panel = item?.querySelector(".nx-accordion-panel");
+  if (!trigger || !item || !panel) return;
+  const expanded = trigger.getAttribute("aria-expanded") === "true";
+  if (!expanded && accordion?.dataset.exclusive === "true") {
+    for (const otherItem of accordion.querySelectorAll(".nx-accordion-item")) {
+      if (otherItem === item) continue;
+      otherItem.querySelector(".nx-accordion-trigger")?.setAttribute("aria-expanded", "false");
+      const otherPanel = otherItem.querySelector(".nx-accordion-panel");
+      if (otherPanel) otherPanel.hidden = true;
+    }
+  }
+  trigger.setAttribute("aria-expanded", String(!expanded));
+  panel.hidden = expanded;
+}
+
+// packages/ui/src/dropdown.ts
+var outsideClickListeners = /* @__PURE__ */ new WeakMap();
+var keydownListeners3 = /* @__PURE__ */ new WeakMap();
+function toggleDropdown(event) {
+  const trigger = event.currentTarget;
+  const dropdown = trigger?.closest(".nx-dropdown");
+  const menu = dropdown?.querySelector(".nx-dropdown-menu");
+  if (!trigger || !dropdown || !menu) return;
+  if (menu.hasAttribute("hidden")) {
+    openDropdownMenu(dropdown, trigger, menu);
+  } else {
+    closeDropdownMenu(dropdown, trigger, menu);
+  }
+}
+function selectDropdownOption(event) {
+  const option = event.currentTarget;
+  const dropdown = option?.closest(".nx-dropdown");
+  const trigger = dropdown?.querySelector(".nx-dropdown-trigger");
+  const menu = dropdown?.querySelector(".nx-dropdown-menu");
+  if (!option || !dropdown || !trigger || !menu) return;
+  for (const candidate of menu.querySelectorAll(".nx-dropdown-option")) {
+    candidate.setAttribute("aria-selected", String(candidate === option));
+  }
+  trigger.textContent = option.textContent;
+  if (option.dataset.value !== void 0) {
+    trigger.dataset.value = option.dataset.value;
+  }
+  closeDropdownMenu(dropdown, trigger, menu);
+}
+function openDropdownMenu(dropdown, trigger, menu) {
+  menu.removeAttribute("hidden");
+  trigger.setAttribute("aria-expanded", "true");
+  const onOutsideClick = (clickEvent) => {
+    if (!dropdown.contains(clickEvent.target)) {
+      closeDropdownMenu(dropdown, trigger, menu);
+    }
+  };
+  const onKeydown = (keyEvent) => {
+    if (keyEvent.key === "Escape") {
+      closeDropdownMenu(dropdown, trigger, menu);
+      trigger.focus();
+    }
+  };
+  outsideClickListeners.set(dropdown, onOutsideClick);
+  keydownListeners3.set(dropdown, onKeydown);
+  document.addEventListener("click", onOutsideClick);
+  document.addEventListener("keydown", onKeydown);
+}
+function closeDropdownMenu(dropdown, trigger, menu) {
+  menu.setAttribute("hidden", "");
+  trigger.setAttribute("aria-expanded", "false");
+  const onOutsideClick = outsideClickListeners.get(dropdown);
+  if (onOutsideClick) {
+    document.removeEventListener("click", onOutsideClick);
+    outsideClickListeners.delete(dropdown);
+  }
+  const onKeydown = keydownListeners3.get(dropdown);
+  if (onKeydown) {
+    document.removeEventListener("keydown", onKeydown);
+    keydownListeners3.delete(dropdown);
+  }
+}
+
+// packages/ui/src/table.ts
+function sortTable(event) {
+  const th = event.currentTarget;
+  const table = th?.closest(".nx-table");
+  const headerRow = th?.parentElement;
+  if (!th || !table || !headerRow) return;
+  const columnIndex = Array.from(headerRow.children).indexOf(th);
+  if (columnIndex === -1) return;
+  const nextDir = th.getAttribute("aria-sort") === "ascending" ? "descending" : "ascending";
+  for (const header of Array.from(headerRow.children)) {
+    header.removeAttribute("aria-sort");
+  }
+  th.setAttribute("aria-sort", nextDir);
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+  const direction = nextDir === "ascending" ? 1 : -1;
+  const rows = Array.from(tbody.querySelectorAll("tr"));
+  rows.sort((rowA, rowB) => {
+    const cellA = rowA.children[columnIndex]?.textContent?.trim() ?? "";
+    const cellB = rowB.children[columnIndex]?.textContent?.trim() ?? "";
+    const numA = Number(cellA);
+    const numB = Number(cellB);
+    if (cellA !== "" && cellB !== "" && !Number.isNaN(numA) && !Number.isNaN(numB)) {
+      return (numA - numB) * direction;
+    }
+    return cellA.localeCompare(cellB) * direction;
+  });
+  for (const row of rows) {
+    tbody.appendChild(row);
+  }
+}
+function filterTable(table, query) {
+  const tbody = table.querySelector("tbody");
+  if (!tbody) return;
+  const q = query.trim().toLowerCase();
+  for (const row of Array.from(tbody.querySelectorAll("tr"))) {
+    const text = (row.textContent ?? "").toLowerCase();
+    row.hidden = q.length > 0 && !text.includes(q);
+  }
+}
+
+// packages/reactivity/src/reactive.ts
+var activeEffect = null;
+var pending = /* @__PURE__ */ new Set();
+var flushScheduled = false;
+function schedule(effect2) {
+  pending.add(effect2);
+  if (flushScheduled) return;
+  flushScheduled = true;
+  queueMicrotask(flush);
+}
+function flush() {
+  flushScheduled = false;
+  const effects = Array.from(pending);
+  pending.clear();
+  for (const effect2 of effects) {
+    effect2.execute();
+  }
+}
+var Signal = class {
+  #value;
+  #subscribers = /* @__PURE__ */ new Set();
+  constructor(initial) {
+    this.#value = initial;
+  }
+  get value() {
+    if (activeEffect) {
+      this.#subscribers.add(activeEffect);
+      activeEffect.deps.add(this);
+    }
+    return this.#value;
+  }
+  set value(next) {
+    if (Object.is(next, this.#value)) return;
+    this.#value = next;
+    for (const effect2 of this.#subscribers) {
+      schedule(effect2);
+    }
+  }
+  /** Lee el valor sin suscribirse: no crea una dependencia. */
+  peek() {
+    return this.#value;
+  }
+  /** Usado por los efectos al limpiar sus dependencias antes de re-ejecutarse. */
+  unsubscribe(effect2) {
+    this.#subscribers.delete(effect2);
+  }
+};
+function state(initial) {
+  return new Signal(initial);
+}
+var EffectImpl = class {
+  deps = /* @__PURE__ */ new Set();
+  #fn;
+  #disposed = false;
+  constructor(fn) {
+    this.#fn = fn;
+    this.execute();
+  }
+  execute() {
+    if (this.#disposed) return;
+    this.#cleanup();
+    const previous = activeEffect;
+    activeEffect = this;
+    try {
+      this.#fn();
+    } finally {
+      activeEffect = previous;
+    }
+  }
+  #cleanup() {
+    for (const dep of this.deps) {
+      dep.unsubscribe(this);
+    }
+    this.deps.clear();
+  }
+  dispose() {
+    this.#disposed = true;
+    this.#cleanup();
+    pending.delete(this);
+  }
+};
+function createEffect(fn) {
+  const instance = new EffectImpl(fn);
+  return () => instance.dispose();
+}
+var effect = Object.assign(createEffect, { client: createEffect });
+
+// packages/ui/src/search.ts
+function createPageSearch(container2, itemSelector = "[data-searchable]") {
+  const query = state("");
+  effect(() => {
+    const q = query.value.trim().toLowerCase();
+    for (const item of Array.from(container2.querySelectorAll(itemSelector))) {
+      const text = (item.textContent ?? "").toLowerCase();
+      item.hidden = q.length > 0 && !text.includes(q);
+    }
+  });
+  return {
+    setQuery(value) {
+      query.value = value;
+    }
+  };
+}
+
 // packages/ui/src/index.ts
-var ui = { openDialog, closeDialog, confirm, alert, openDrawer, closeDrawer, notify };
+var ui = {
+  openDialog,
+  closeDialog,
+  confirm,
+  alert,
+  openDrawer,
+  closeDrawer,
+  notify,
+  selectTab,
+  toggleAccordionItem,
+  toggleDropdown,
+  selectDropdownOption,
+  sortTable,
+  filterTable,
+  createPageSearch
+};
 export {
   alert,
   closeDialog,
   closeDrawer,
   confirm,
+  createPageSearch,
+  filterTable,
   notify,
   openDialog,
   openDrawer,
+  selectDropdownOption,
+  selectTab,
+  sortTable,
+  toggleAccordionItem,
+  toggleDropdown,
   ui
 };

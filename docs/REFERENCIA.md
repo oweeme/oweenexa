@@ -723,9 +723,181 @@ momento, así que su CSS no pasa por el tree-shaking a nivel de sitio:
 se inyecta una sola vez, en runtime, la primera vez que se llama
 `notify()` — cero costo si nunca se usa.
 
+**Tooltip / Progress / Skeleton** (Fase 56) — tres componentes más,
+también puramente visuales:
+
+```tsx
+<span class="nx-tooltip">
+    Pasá el mouse acá
+    <span class="nx-tooltip-content">Info extra</span>
+</span>
+
+<div class="nx-progress">
+    <div class="nx-progress-bar" style={`width: ${data.percent}%`}></div>
+</div>
+
+<div class="nx-skeleton" style="width: 200px; height: 1rem;"></div>
+```
+
+`.nx-tooltip-content` se muestra con `:hover`/`:focus-within` — sin
+JavaScript. `.nx-progress-bar` necesita su `width` puesto a mano (fijo
+o dinámico vía `data.*`) — Nexa no calcula ningún porcentaje.
+`.nx-skeleton` es un bloque con una animación de "shimmer"; el
+desarrollador pone el `width`/`height` que necesite.
+
+**Table / Badge / Avatar / Breadcrumbs / Alert / Divider** (Fase 56) —
+seis componentes puramente visuales, cero JavaScript, tree-shakeados
+igual que el resto:
+
+```tsx
+<div class="nx-table-wrap">
+    <table class="nx-table nx-table-zebra">
+        <thead><tr><th>Cliente</th><th>Estado</th></tr></thead>
+        <tbody>
+            <tr><td>Hector M.</td><td><span class="nx-badge nx-badge-success">Pagado</span></td></tr>
+        </tbody>
+    </table>
+</div>
+
+<nav class="nx-breadcrumbs" aria-label="breadcrumb">
+    <a class="nx-breadcrumbs-link" href="/">Inicio</a>
+    <span class="nx-breadcrumbs-link" aria-current="page">Pedido #1024</span>
+</nav>
+
+<div class="nx-alert nx-alert-warning">
+    <p class="nx-alert-title">Stock bajo</p>
+    <p>Quedan 3 unidades.</p>
+</div>
+
+<span class="nx-avatar nx-avatar-sm">HM</span>
+<hr class="nx-divider" />
+```
+
+| Componente | Clases |
+| --- | --- |
+| Table | `.nx-table`, `.nx-table-wrap` (scroll horizontal), `.nx-table-zebra` (filas alternadas) |
+| Badge | `.nx-badge` + `.nx-badge-primary/success/warning/danger/neutral` |
+| Avatar | `.nx-avatar` (círculo, 2.5rem por defecto) + `.nx-avatar-sm/-lg`; con `<img>` adentro recorta a `object-fit: cover` |
+| Breadcrumbs | `.nx-breadcrumbs` (contenedor) + `.nx-breadcrumbs-link` (cada link/paso; `/` automático entre ellos vía `::after`); `aria-current="page"` marca el actual |
+| Alert | `.nx-alert` + `.nx-alert-success/warning/danger` (borde izquierdo de color); `.nx-alert-title` opcional |
+| Divider | `.nx-divider` (horizontal) / `.nx-divider-vertical` |
+
+**Tabs, Accordion, Dropdown, y ordenar/filtrar una `Table`** (Fase 57)
+— con estado real en cliente, pero **ninguno es una isla**: son
+funciones normales de `ui`, llamadas desde un `onClick`/`onInput`
+normal, exactamente igual que `Dialog`/`Drawer` desde la Fase 9. Ver
+"Isla vs. función de `ui`" más abajo para el criterio general.
+
+*Tabs* — `ui.selectTab(event)` lee `event.currentTarget.dataset.tab` y
+el `.nx-tab-group` más cercano; no necesita el elemento explícito:
+
+```tsx
+function selectTab(event) { ui.selectTab(event); }
+
+<div class="nx-tab-group">
+    <div class="nx-tab-list" role="tablist">
+        <button class="nx-tab" data-tab="uno" aria-selected="true" onClick={selectTab}>Uno</button>
+        <button class="nx-tab" data-tab="dos" onClick={selectTab}>Dos</button>
+    </div>
+    <div class="nx-tab-panel" data-tab="uno">Contenido uno</div>
+    <div class="nx-tab-panel" data-tab="dos" hidden>Contenido dos</div>
+</div>
+```
+
+*Accordion* — `ui.toggleAccordionItem(event)`; con `data-exclusive="true"`
+en el `.nx-accordion` contenedor, abrir un item cierra los demás (por
+defecto, varios pueden estar abiertos a la vez):
+
+```tsx
+function toggle(event) { ui.toggleAccordionItem(event); }
+
+<div class="nx-accordion" data-exclusive="true">
+    <div class="nx-accordion-item">
+        <button class="nx-accordion-trigger" aria-expanded="false" onClick={toggle}>Pregunta</button>
+        <div class="nx-accordion-panel" hidden>Respuesta</div>
+    </div>
+</div>
+```
+
+*Dropdown* — `ui.toggleDropdown(event)` / `ui.selectDropdownOption(event)`;
+se cierra solo con click afuera o `Escape` (igual que `Dialog`, pero sin
+atrapar el foco — un dropdown no bloquea el resto de la página):
+
+```tsx
+function toggleMenu(event) { ui.toggleDropdown(event); }
+function pick(event) { ui.selectDropdownOption(event); }
+
+<div class="nx-dropdown">
+    <button class="nx-dropdown-trigger" aria-haspopup="listbox" aria-expanded="false" onClick={toggleMenu}>
+        Elegir talle…
+    </button>
+    <ul class="nx-dropdown-menu" role="listbox" hidden>
+        <li class="nx-dropdown-option" role="option" data-value="m" onClick={pick}>M</li>
+    </ul>
+</div>
+```
+
+*Table: ordenar y filtrar* — `ui.sortTable(event)` sobre el `<th>`
+clickeado (ordena como número si ambas celdas lo son, si no como
+texto; alterna ascendente/descendente); `ui.filterTable(table, query)`
+oculta filas de `<tbody>` cuyo texto no matchea — ambos client-side,
+sobre datos que el servidor ya renderizó, sin re-pedir nada:
+
+```tsx
+function sortByColumn(event) { ui.sortTable(event); }
+function filterOrders(event) { ui.filterTable(document.getElementById("orders"), event.target.value); }
+
+<input type="search" onInput={filterOrders} placeholder="Buscar pedido…" />
+<table id="orders" class="nx-table">
+    <thead><tr><th data-sortable onClick={sortByColumn}>Cliente</th></tr></thead>
+    <tbody>...</tbody>
+</table>
+```
+
+**Buscador de página, reactivo — sin isla** (Fase 57) —
+`ui.createPageSearch(container, itemSelector?)` filtra cualquier
+conjunto de elementos marcados con `data-searchable` (selector
+configurable) dentro de `container`, con un `Signal` real de
+`@nexa/reactivity` por debajo. El chunk extraído de un handler es un
+módulo aislado — no puede depender de una variable de módulo declarada
+aparte en la página — por eso el controlador se cuelga del propio
+elemento `<input>` (`event.currentTarget`), que sí persiste entre una
+tecleada y la siguiente:
+
+```tsx
+function onSearchInput(event) {
+    const input = event.currentTarget;
+    input.pageSearch ??= ui.createPageSearch(document.getElementById("catalogo"));
+    input.pageSearch.setQuery(event.target.value);
+}
+
+<input type="search" onInput={onSearchInput} placeholder="Buscar…" />
+<div id="catalogo">
+    <article data-searchable>Zapatillas Nezha</article>
+    <article data-searchable>Camiseta Jade</article>
+</div>
+```
+
+```ts
+ui.createPageSearch(container: Element, itemSelector?: string): { setQuery(value: string): void }
+```
+
+**Isla vs. función de `ui`: cómo decidir** — regla general (Fase 57):
+si el estado es local a un widget concreto y se puede modelar como
+"manipular directamente el DOM que ya está en la página" (abrir/cerrar,
+marcar una pestaña activa, ordenar/filtrar filas ya renderizadas), es
+una función de `ui` + `onClick`/`onInput` — sin Virtual DOM, sin
+re-render, activación progresiva normal (Fase 5). Reservá una isla
+(Fase 16) para cuando de verdad hace falta un framework completo
+(Vue/React con su propio ciclo de vida) o composición real con props/
+children profundos (`@nexa/reactivity`, modelo de componentes, Fase 50,
+dentro de la isla) — nunca como opción por defecto para "este botón
+hace algo".
+
 Design tokens (`--nx-color-primary`, `--nx-space-4`, `--nx-radius-md`,
-...) son custom properties de CSS normales — sobreescribilas en tu
-propio `:root` para otra paleta.
+`--nx-color-success`, `--nx-color-warning`, `--nx-color-zebra`, ...) son
+custom properties de CSS normales — sobreescribilas en tu propio
+`:root` para otra paleta.
 
 ## `@nexa/forms`
 

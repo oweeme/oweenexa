@@ -22,6 +22,19 @@
     border-bottom: 2px solid var(--nx-color-border);
 }
 
+.nx-table thead th[data-sortable] {
+    cursor: pointer;
+    user-select: none;
+}
+
+.nx-table thead th[aria-sort="ascending"]::after {
+    content: " \25B2";
+}
+
+.nx-table thead th[aria-sort="descending"]::after {
+    content: " \25BC";
+}
+
 .nx-table-zebra tbody tr:nth-child(even) {
     background-color: var(--nx-color-zebra);
 }

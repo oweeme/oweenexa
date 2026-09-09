@@ -136,6 +136,62 @@ fn using_the_divider_includes_tokens_and_divider_css_only() {
 }
 
 #[test]
+fn using_the_tooltip_includes_tokens_and_tooltip_css_only() {
+    let root = element("span", vec![static_class("nx-tooltip")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-tooltip {"));
+    assert!(!css.contains(".nx-progress {"));
+}
+
+#[test]
+fn using_the_progress_bar_includes_tokens_and_progress_css_only() {
+    let root = element("div", vec![static_class("nx-progress")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-progress {"));
+    assert!(!css.contains(".nx-skeleton {"));
+}
+
+#[test]
+fn using_the_skeleton_includes_tokens_and_skeleton_css_only() {
+    let root = element("div", vec![static_class("nx-skeleton")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-skeleton {"));
+    assert!(!css.contains(".nx-tab {"));
+}
+
+#[test]
+fn using_tabs_includes_tokens_and_tab_css_only() {
+    let root = element("div", vec![static_class("nx-tab-group")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-tab-group {"));
+    assert!(css.contains(".nx-tab-panel"));
+    assert!(!css.contains(".nx-accordion {"));
+}
+
+#[test]
+fn using_the_accordion_includes_tokens_and_accordion_css_only() {
+    let root = element("div", vec![static_class("nx-accordion")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-accordion {"));
+    assert!(!css.contains(".nx-dropdown {"));
+}
+
+#[test]
+fn using_the_dropdown_includes_tokens_and_dropdown_css_only() {
+    let root = element("div", vec![static_class("nx-dropdown")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(".nx-dropdown {"));
+    assert!(css.contains(".nx-dropdown-menu"));
+    assert!(!css.contains(".nx-tooltip {"));
+}
+
+#[test]
 fn using_two_components_includes_both_and_nothing_else() {
     let root = element(
         "div",
@@ -196,6 +252,12 @@ fn full_source_includes_tokens_and_every_component_regardless_of_usage() {
     assert!(css.contains(".nx-breadcrumbs {"));
     assert!(css.contains(".nx-alert {"));
     assert!(css.contains(".nx-divider {"));
+    assert!(css.contains(".nx-tooltip {"));
+    assert!(css.contains(".nx-progress {"));
+    assert!(css.contains(".nx-skeleton {"));
+    assert!(css.contains(".nx-tab-group {"));
+    assert!(css.contains(".nx-accordion {"));
+    assert!(css.contains(".nx-dropdown {"));
 }
 
 #[test]

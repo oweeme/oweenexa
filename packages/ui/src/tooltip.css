@@ -1,0 +1,29 @@
+.nx-tooltip {
+    position: relative;
+    display: inline-block;
+}
+
+.nx-tooltip-content {
+    position: absolute;
+    bottom: 125%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: var(--nx-space-1) var(--nx-space-2);
+    border-radius: var(--nx-radius-sm);
+    background-color: var(--nx-color-text);
+    color: var(--nx-color-surface);
+    font-family: var(--nx-font-body);
+    font-size: 0.75rem;
+    white-space: nowrap;
+    opacity: 0;
+    visibility: hidden;
+    transition: opacity 0.15s ease;
+    pointer-events: none;
+    z-index: 30;
+}
+
+.nx-tooltip:hover .nx-tooltip-content,
+.nx-tooltip:focus-within .nx-tooltip-content {
+    opacity: 1;
+    visibility: visible;
+}

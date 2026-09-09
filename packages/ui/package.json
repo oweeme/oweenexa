@@ -11,6 +11,9 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
+  "dependencies": {
+    "@nexa/reactivity": "*"
+  },
   "devDependencies": {
     "happy-dom": "^20",
     "typescript": "^5",

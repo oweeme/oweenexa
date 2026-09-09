@@ -1,0 +1,48 @@
+.nx-accordion {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--nx-color-border);
+    border-radius: var(--nx-radius-md);
+    overflow: hidden;
+}
+
+.nx-accordion-item + .nx-accordion-item {
+    border-top: 1px solid var(--nx-color-border);
+}
+
+.nx-accordion-trigger {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding: var(--nx-space-3) var(--nx-space-4);
+    border: none;
+    background: var(--nx-color-surface);
+    color: var(--nx-color-text);
+    font-family: var(--nx-font-body);
+    font-size: 0.95rem;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+}
+
+.nx-accordion-trigger::after {
+    content: "+";
+    font-weight: 400;
+    transition: transform 0.15s ease;
+}
+
+.nx-accordion-trigger[aria-expanded="true"]::after {
+    transform: rotate(45deg);
+}
+
+.nx-accordion-panel {
+    padding: 0 var(--nx-space-4) var(--nx-space-4);
+    color: var(--nx-color-text);
+    font-family: var(--nx-font-body);
+    font-size: 0.9rem;
+}
+
+.nx-accordion-panel[hidden] {
+    display: none;
+}

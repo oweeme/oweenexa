@@ -1,0 +1,16 @@
+.nx-skeleton {
+    display: block;
+    border-radius: var(--nx-radius-sm);
+    background: linear-gradient(90deg, var(--nx-color-border) 25%, var(--nx-color-surface) 37%, var(--nx-color-border) 63%);
+    background-size: 400% 100%;
+    animation: nx-skeleton-shimmer 1.4s ease infinite;
+}
+
+@keyframes nx-skeleton-shimmer {
+    0% {
+        background-position: 100% 50%;
+    }
+    100% {
+        background-position: 0 50%;
+    }
+}

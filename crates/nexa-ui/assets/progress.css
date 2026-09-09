@@ -1,0 +1,14 @@
+.nx-progress {
+    width: 100%;
+    height: 0.5rem;
+    border-radius: 999px;
+    background-color: var(--nx-color-border);
+    overflow: hidden;
+}
+
+.nx-progress-bar {
+    height: 100%;
+    background-color: var(--nx-color-primary);
+    border-radius: 999px;
+    transition: width 0.2s ease;
+}
