@@ -29,6 +29,54 @@ e-commerce — pero sin renunciar a tener partes genuinamente interactivas
 (un dashboard, un carrito, un formulario con validación) cuando hacen
 falta, en el mismo proyecto.
 
+### ¿En qué se diferencia de Astro, Next.js, Nuxt o SvelteKit?
+
+Todos esos frameworks ya resuelven bien "HTML primero, JS solo donde
+hace falta". La diferencia de Nexa está un nivel más abajo, en **cómo**
+se produce ese HTML:
+
+- **El compilador nunca ejecuta tu código — solo lo analiza.** Astro,
+  Next.js, Nuxt y SvelteKit producen el HTML **ejecutando** tu código:
+  corren el renderer real de React, Vue o Svelte en el servidor, incluso
+  para contenido 100% estático. El compilador de Nexa (`nexa-parser` +
+  `nexa-analyzer` + `nexa-renderer`, en Rust) nunca ejecuta una sola
+  línea de JavaScript/TypeScript del proyecto: es un analizador estático
+  que reconoce un conjunto **fijo** de patrones sintácticos literales —
+  `data.x`/`params.x`, `t("clave")` (con o sin interpolación),
+  `<For each={...}>`, `export const load/seo/schema = {...}`, y
+  `onClick={fn}` (donde se extrae el código fuente de `fn` tal cual,
+  nunca se lo ejecuta) — y los traduce directo a HTML. No hay runtime de
+  JavaScript involucrado en absoluto, ni en build ni en producción, para
+  generar el HTML.
+- **Activación progresiva, no hidratación.** La hidratación clásica
+  vuelve a ejecutar el árbol entero de un componente en el navegador
+  para "revivir" sus event listeners, aunque solo un botón sea
+  interactivo. Nexa nunca tiene un árbol de componentes que revivir:
+  cada nodo interactivo (cada `onClick`, cada isla) recibe su propio
+  `data-nexa="<id>"`, su propia entrada en el manifiesto de activación y
+  su propio chunk de JS cargado de forma independiente, con su propia
+  estrategia (`interaction`/`visible`/`idle`/`load`/`manual`) — más
+  granular que el modelo de islands de Astro, que activa por isla
+  completa, no por nodo.
+- **Las islas son una caja negra real, no "otro framework de islas".**
+  En Astro, una isla es un componente real de React/Vue/Svelte, y el
+  propio renderer de Astro para ese framework ejecuta ese componente en
+  el servidor para producir el HTML inicial de la isla. En Nexa, el
+  compilador de Rust **nunca** abre ni interpreta el archivo al que
+  apunta `data-nexa-island` — para `nexa-parser`/`nexa-analyzer`, es
+  literalmente un `Element` más con un atributo de texto, igual que
+  cualquier otro `div`. El HTML inicial de una isla Nexa es el que el
+  desarrollador escribe a mano, con las mismas herramientas estáticas de
+  cualquier página Nexa (`data.*`, `t()`, `<For>`) — nunca generado por
+  el framework que se monta después. Ese framework real (Vue, React, lo
+  que sea) corre 100% en el cliente, nunca en el servidor.
+- **No hace falta elegir un solo paradigma para todo el proyecto.** La
+  home y el blog pueden ser HTML puro sin una línea de framework; un
+  formulario puede activarse solo con `@nexa/reactivity`; y un dashboard
+  complejo puede ser una isla con Vue o React completo adentro — todo en
+  el mismo proyecto, compilado por el mismo Rust que nunca necesita
+  entender ese Vue o ese React.
+
 ## Ventajas
 
 - **Cero JavaScript por defecto.** Una página sin interacción se compila
