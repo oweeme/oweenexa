@@ -298,7 +298,14 @@ pub fn compile_page(
         import_map_script.as_deref(),
     );
 
-    let (activation_manifest, chunks) = nexa_activation::build(&ir, &component_name, &component.handlers, &import_names);
+    // Bug #27: un handler que usa un `const` de nivel superior no lo
+    // bastante simple para copiar dentro de su chunk (una llamada a
+    // función, otra variable, algo calculado) hace fallar el build acá
+    // mismo, con el mensaje exacto de `nexa-activation` — mejor esto
+    // que un `ReferenceError` silencioso en el navegador, el mismo
+    // criterio que ya aplica `validate_translate_calls` más arriba.
+    let (activation_manifest, chunks) = nexa_activation::build(&ir, &component_name, &component.handlers, &component.consts, &import_names)
+        .map_err(|message| PageError::Other(anyhow::anyhow!("{}: {message}", file.display())))?;
     let has_forms = has_forms(&ir.root);
     let has_islands = !island_specifiers.is_empty();
     let has_pwa = project_manifest.pwa.is_some();

@@ -275,7 +275,10 @@ Dentro del JSX tenés disponibles, sin importar nada:
 - `t("clave")` — traducción (ver la sección de i18n).
 - Un `onClick={handler}` donde `handler` es una `function` o `const...
   = () => {}` de nivel superior en el mismo archivo — se activa de
-  verdad en el navegador.
+  verdad en el navegador. Si `handler` usa además un `const NOMBRE =
+  "algo compartido";` de nivel superior (una URL base, un límite), esa
+  constante viaja junto con el handler a su chunk — no hace falta
+  repetir el valor adentro de cada función.
 
 ## `load` — traer datos
 
@@ -1520,7 +1523,13 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
   preview`/`nexa dev`), nunca como HTML estático de `nexa build`.
 - Un chunk de evento solo tiene código real si el handler es una
   función de nivel superior en el mismo archivo; un patrón más complejo
-  cae a un placeholder explícito.
+  cae a un placeholder explícito. Si el handler usa además un `const
+  NOMBRE = <valor>;` de nivel superior del mismo archivo (Fase 58, bug
+  #27), esa constante se antepone al chunk automáticamente cuando
+  `<valor>` es un literal simple (string/número/booleano/array u
+  objeto compuesto solo de esos); si no es simple (una llamada, otra
+  variable, algo calculado), el build falla explícito en vez de generar
+  un chunk con un identificador sin definir.
 - El tree-shaking de `@nexa/ui` es a nivel de sitio completo, no por
   página individual.
 - `initRouter` reemplaza solo `data-nexa-slot` cuando el proyecto usa

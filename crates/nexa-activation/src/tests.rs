@@ -82,7 +82,7 @@ fn static_only_component_produces_no_manifest_entries_and_no_chunks() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (manifest, chunks) = build(&component, "About", &BTreeMap::new(), &no_imports());
+    let (manifest, chunks) = build(&component, "About", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
 
     assert!(manifest.is_empty(), "una página estática no debe generar manifiesto");
     assert!(chunks.is_empty(), "una página estática no debe generar JS");
@@ -103,7 +103,7 @@ fn interactive_button_gets_one_manifest_entry_and_one_chunk() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (manifest, chunks) = build(&component, "ProductPage", &BTreeMap::new(), &no_imports());
+    let (manifest, chunks) = build(&component, "ProductPage", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
 
     assert_eq!(manifest.len(), 1);
     assert_eq!(chunks.len(), 1);
@@ -144,7 +144,7 @@ fn an_interactive_element_inside_a_for_loop_body_gets_a_manifest_entry() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (manifest, chunks) = build(&component, "Catalog", &BTreeMap::new(), &no_imports());
+    let (manifest, chunks) = build(&component, "Catalog", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
 
     assert_eq!(manifest.len(), 1);
     assert_eq!(chunks.len(), 1);
@@ -165,8 +165,8 @@ fn chunk_filename_changes_when_the_handler_source_changes() {
         m
     };
 
-    let (_, chunks_a) = build(&component(), "ProductPage", &handlers_with("function buy() { cart.add(1); }"), &no_imports());
-    let (_, chunks_b) = build(&component(), "ProductPage", &handlers_with("function buy() { cart.add(2); }"), &no_imports());
+    let (_, chunks_a) = build(&component(), "ProductPage", &handlers_with("function buy() { cart.add(1); }"), &BTreeMap::new(), &no_imports()).unwrap();
+    let (_, chunks_b) = build(&component(), "ProductPage", &handlers_with("function buy() { cart.add(2); }"), &BTreeMap::new(), &no_imports()).unwrap();
 
     assert_ne!(
         chunks_a[0].filename, chunks_b[0].filename,
@@ -182,7 +182,7 @@ fn data_nexa_strategy_overrides_the_default() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (manifest, _chunks) = build(&component, "Gallery", &BTreeMap::new(), &no_imports());
+    let (manifest, _chunks) = build(&component, "Gallery", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
     assert_eq!(manifest.get(0).unwrap().strategy, Strategy::Visible);
 }
 
@@ -194,7 +194,7 @@ fn manifest_serializes_to_json_keyed_by_node_id() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (manifest, _chunks) = build(&component, "ProductPage", &BTreeMap::new(), &no_imports());
+    let (manifest, _chunks) = build(&component, "ProductPage", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
     let json = manifest.to_json_pretty().expect("should serialize");
 
     assert!(json.contains("\"5\""));
@@ -211,7 +211,7 @@ fn entries_iterates_every_manifest_entry() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (manifest, _chunks) = build(&component, "ProductPage", &BTreeMap::new(), &no_imports());
+    let (manifest, _chunks) = build(&component, "ProductPage", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
     let entries: Vec<_> = manifest.entries().collect();
 
     assert_eq!(entries.len(), 1);
@@ -230,11 +230,166 @@ fn uses_the_real_handler_source_when_its_known() {
     let mut handlers = BTreeMap::new();
     handlers.insert("buy".to_string(), "function buy() {\n    cart.add(id);\n}".to_string());
 
-    let (_manifest, chunks) = build(&component, "ProductPage", &handlers, &no_imports());
+    let (_manifest, chunks) = build(&component, "ProductPage", &handlers, &BTreeMap::new(), &no_imports()).unwrap();
 
     assert!(chunks[0].content.contains("function buy()"));
     assert!(chunks[0].content.contains("cart.add(id)"));
     assert!(!chunks[0].content.contains("no se pudo resolver"));
+}
+
+#[test]
+fn bug_27_prepends_a_simple_top_level_const_the_handler_actually_uses() {
+    let component = IrComponent {
+        name: "LoginPage".into(),
+        root: button_with_click(0, "handleLogin", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let mut handlers = BTreeMap::new();
+    handlers.insert(
+        "handleLogin".to_string(),
+        "async function handleLogin() {\n    await fetch(`${API_BASE}/auth/login`);\n}".to_string(),
+    );
+    let mut consts = BTreeMap::new();
+    consts.insert(
+        "API_BASE".to_string(),
+        nexa_ast::TopLevelConst {
+            source: "const API_BASE = \"https://api.oweeme.com\";".to_string(),
+            is_simple: true,
+        },
+    );
+
+    let (_manifest, chunks) = build(&component, "LoginPage", &handlers, &consts, &no_imports()).unwrap();
+
+    assert!(chunks[0].content.contains("const API_BASE = \"https://api.oweeme.com\";"));
+    assert!(chunks[0].content.contains("async function handleLogin()"));
+}
+
+#[test]
+fn bug_27_does_not_prepend_a_const_the_handler_never_mentions() {
+    let component = IrComponent {
+        name: "LoginPage".into(),
+        root: button_with_click(0, "handleLogin", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let mut handlers = BTreeMap::new();
+    handlers.insert("handleLogin".to_string(), "function handleLogin() {\n    console.log(\"hola\");\n}".to_string());
+    let mut consts = BTreeMap::new();
+    consts.insert(
+        "API_BASE".to_string(),
+        nexa_ast::TopLevelConst { source: "const API_BASE = \"https://api.oweeme.com\";".to_string(), is_simple: true },
+    );
+
+    let (_manifest, chunks) = build(&component, "LoginPage", &handlers, &consts, &no_imports()).unwrap();
+
+    assert!(!chunks[0].content.contains("API_BASE"));
+}
+
+#[test]
+fn bug_27_does_not_confuse_a_const_with_a_longer_name_that_contains_it() {
+    let component = IrComponent {
+        name: "LoginPage".into(),
+        root: button_with_click(0, "handleLogin", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let mut handlers = BTreeMap::new();
+    handlers.insert(
+        "handleLogin".to_string(),
+        "function handleLogin() {\n    console.log(MY_API_BASE_URL);\n}".to_string(),
+    );
+    let mut consts = BTreeMap::new();
+    consts.insert(
+        "API_BASE".to_string(),
+        nexa_ast::TopLevelConst {
+            source: "const API_BASE = \"esto no debería aparecer\";".to_string(),
+            is_simple: true,
+        },
+    );
+
+    let (_manifest, chunks) = build(&component, "LoginPage", &handlers, &consts, &no_imports()).unwrap();
+
+    assert!(!chunks[0].content.contains("esto no debería aparecer"));
+}
+
+#[test]
+fn bug_27_a_const_name_that_only_appears_inside_a_string_or_comment_is_not_a_real_usage() {
+    // Falso positivo real, encontrado verificando el fix con un
+    // navegador: "console.log(\"...CONFIG\")" contiene el texto
+    // "CONFIG" pero el handler nunca usa la constante — antes de
+    // enmascarar strings/comentarios, esto rompía el build por algo
+    // completamente ajeno al código real.
+    let component = IrComponent {
+        name: "LoginPage".into(),
+        root: button_with_click(0, "handleClick", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let mut handlers = BTreeMap::new();
+    handlers.insert(
+        "handleClick".to_string(),
+        "function handleClick() {\n    // no toca CONFIG para nada\n    console.log(\"click, sin tocar CONFIG\");\n}"
+            .to_string(),
+    );
+    let mut consts = BTreeMap::new();
+    consts.insert(
+        "CONFIG".to_string(),
+        nexa_ast::TopLevelConst { source: "const CONFIG = buildConfig();".to_string(), is_simple: false },
+    );
+
+    let (_manifest, chunks) = build(&component, "LoginPage", &handlers, &consts, &no_imports()).unwrap();
+
+    assert!(chunks[0].content.contains("click, sin tocar CONFIG"), "el string real debe seguir intacto en el chunk");
+}
+
+#[test]
+fn bug_27_a_real_usage_inside_a_template_literal_interpolation_still_counts() {
+    // Lo opuesto del test de arriba: un `${API_BASE}` real adentro de
+    // un template literal SÍ tiene que seguir contando como uso real —
+    // enmascarar strings no debe enmascarar también las interpolaciones.
+    let component = IrComponent {
+        name: "LoginPage".into(),
+        root: button_with_click(0, "handleLogin", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let mut handlers = BTreeMap::new();
+    handlers.insert(
+        "handleLogin".to_string(),
+        "async function handleLogin() {\n    await fetch(`${API_BASE}/auth/login`);\n}".to_string(),
+    );
+    let mut consts = BTreeMap::new();
+    consts.insert(
+        "API_BASE".to_string(),
+        nexa_ast::TopLevelConst { source: "const API_BASE = \"https://api.oweeme.com\";".to_string(), is_simple: true },
+    );
+
+    let (_manifest, chunks) = build(&component, "LoginPage", &handlers, &consts, &no_imports()).unwrap();
+
+    assert!(chunks[0].content.contains("const API_BASE ="));
+}
+
+#[test]
+fn bug_27_fails_explicitly_when_a_handler_uses_a_const_that_is_not_a_simple_literal() {
+    let component = IrComponent {
+        name: "LoginPage".into(),
+        root: button_with_click(0, "handleLogin", None, vec![]),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let mut handlers = BTreeMap::new();
+    handlers.insert("handleLogin".to_string(), "function handleLogin() {\n    console.log(CONFIG);\n}".to_string());
+    let mut consts = BTreeMap::new();
+    consts.insert(
+        "CONFIG".to_string(),
+        nexa_ast::TopLevelConst { source: "const CONFIG = buildConfig();".to_string(), is_simple: false },
+    );
+
+    let error = build(&component, "LoginPage", &handlers, &consts, &no_imports()).unwrap_err();
+
+    assert!(error.contains("handleLogin"));
+    assert!(error.contains("CONFIG"));
 }
 
 #[test]
@@ -245,7 +400,7 @@ fn falls_back_to_a_placeholder_when_the_handler_source_is_unknown() {
         dependencies: DependencyGraph::new(),
     };
 
-    let (_manifest, chunks) = build(&component, "ProductPage", &BTreeMap::new(), &no_imports());
+    let (_manifest, chunks) = build(&component, "ProductPage", &BTreeMap::new(), &BTreeMap::new(), &no_imports()).unwrap();
 
     assert!(chunks[0].content.contains("no se pudo resolver"));
 }
@@ -264,7 +419,7 @@ fn imports_a_known_identifier_only_when_the_handler_actually_uses_it() {
         "function share() {\n    platform.share({ title: \"hola\" });\n}".to_string(),
     );
 
-    let (_manifest, chunks) = build(&component, "ProductPage", &handlers, &imports(&["platform"]));
+    let (_manifest, chunks) = build(&component, "ProductPage", &handlers, &BTreeMap::new(), &imports(&["platform"])).unwrap();
 
     // El specifier es el nombre pelado ("platform"), no una ruta — se
     // resuelve vía el import map que declara `nexa-cli` en `<head>`
@@ -283,7 +438,7 @@ fn does_not_import_an_identifier_the_handler_does_not_use() {
     let mut handlers = BTreeMap::new();
     handlers.insert("buy".to_string(), "function buy() {\n    cart.add(id);\n}".to_string());
 
-    let (_manifest, chunks) = build(&component, "ProductPage", &handlers, &imports(&["platform"]));
+    let (_manifest, chunks) = build(&component, "ProductPage", &handlers, &BTreeMap::new(), &imports(&["platform"])).unwrap();
 
     assert!(!chunks[0].content.contains("import {"));
 }
@@ -303,7 +458,7 @@ fn generalizes_to_any_declared_identifier_not_just_platform() {
     let mut handlers = BTreeMap::new();
     handlers.insert("pay".to_string(), "function pay() {\n    stripe.redirectToCheckout();\n}".to_string());
 
-    let (_manifest, chunks) = build(&component, "Checkout", &handlers, &imports(&["platform", "stripe"]));
+    let (_manifest, chunks) = build(&component, "Checkout", &handlers, &BTreeMap::new(), &imports(&["platform", "stripe"])).unwrap();
 
     assert!(chunks[0].content.contains("import { stripe } from \"stripe\";"));
     assert!(!chunks[0].content.contains("platform"));

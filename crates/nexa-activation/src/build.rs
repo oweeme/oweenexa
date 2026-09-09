@@ -1,5 +1,6 @@
 use std::collections::{BTreeMap, BTreeSet};
 
+use nexa_ast::TopLevelConst;
 use nexa_ir::{Classification, IrComponent, IrNode, IrNodeKind};
 
 use crate::chunk::{self, Chunk};
@@ -13,44 +14,52 @@ use crate::strategy::Strategy;
 /// (`ProductPage-3.js`) de forma legible; no afecta a la clasificación.
 /// `handlers` es `nexa_ast::Component::handlers` — el código fuente ya
 /// extraído de cada `function nombre() {...}` / `const nombre = () => {}`
-/// del archivo, si `nexa-parser` lo encontró. `import_names` (Fase 15)
-/// son los identificadores que un chunk puede importar por su nombre
-/// pelado (`platform`, o lo que el proyecto declare en `nexa.toml`
-/// `[imports]`) — ver `chunk::generate`.
+/// del archivo, si `nexa-parser` lo encontró. `consts` es
+/// `nexa_ast::Component::consts` (Fase 58, bug #27) — cualquier otro
+/// `const NOMBRE = <valor>;` de nivel superior, para anteponerlo al
+/// chunk si el handler lo usa. `import_names` (Fase 15) son los
+/// identificadores que un chunk puede importar por su nombre pelado
+/// (`platform`, o lo que el proyecto declare en `nexa.toml` `[imports]`)
+/// — ver `chunk::generate`.
+///
+/// `Err` solo si algún handler usa una constante que no es lo bastante
+/// simple para copiar dentro del chunk (ver `chunk::content_for`) — el
+/// mensaje ya es apto para mostrarse tal cual como error de build.
 pub fn build(
     component: &IrComponent,
     component_name: &str,
     handlers: &BTreeMap<String, String>,
+    consts: &BTreeMap<String, TopLevelConst>,
     import_names: &BTreeSet<String>,
-) -> (ActivationManifest, Vec<Chunk>) {
+) -> Result<(ActivationManifest, Vec<Chunk>), String> {
     let mut manifest = ActivationManifest::new();
     let mut chunks = Vec::new();
 
-    collect(&component.root, component_name, handlers, import_names, &mut manifest, &mut chunks);
+    collect(&component.root, component_name, handlers, consts, import_names, &mut manifest, &mut chunks)?;
 
-    (manifest, chunks)
+    Ok((manifest, chunks))
 }
 
 fn collect(
     node: &IrNode,
     component_name: &str,
     handlers: &BTreeMap<String, String>,
+    consts: &BTreeMap<String, TopLevelConst>,
     import_names: &BTreeSet<String>,
     manifest: &mut ActivationManifest,
     chunks: &mut Vec<Chunk>,
-) {
+) -> Result<(), String> {
     if let IrNodeKind::For { body, .. } = &node.kind {
         // El cuerpo de un `<For>` (Fase 30) es una plantilla que se
         // clasifica una sola vez — un evento interactivo adentro recibe
         // un único `NodeId`/entrada de manifiesto, aunque el renderer
         // termine produciendo N copias de su HTML. El runtime de
         // activación (`packages/runtime`) es quien activa cada copia.
-        collect(body, component_name, handlers, import_names, manifest, chunks);
-        return;
+        return collect(body, component_name, handlers, consts, import_names, manifest, chunks);
     }
 
     let IrNodeKind::Element { events, children, .. } = &node.kind else {
-        return;
+        return Ok(());
     };
 
     if node.classification == Classification::Interactive {
@@ -66,7 +75,7 @@ fn collect(
             // del chunk, no de un dato arbitrario — así el nombre cambia
             // si (y solo si) el código que sirve cambió de verdad.
             let draft = ActivationEntry { event: event.name.clone(), handler, module: String::new(), strategy };
-            let content = chunk::content_for(&draft, handler_source, import_names);
+            let content = chunk::content_for(&draft, handler_source, import_names, consts)?;
             let hash = crate::content_hash::short_hash(content.as_bytes());
             let filename = format!("{component_name}-{}.{hash}.js", node.id);
             let module = format!("/assets/{filename}");
@@ -78,6 +87,8 @@ fn collect(
     }
 
     for child in children {
-        collect(child, component_name, handlers, import_names, manifest, chunks);
+        collect(child, component_name, handlers, consts, import_names, manifest, chunks)?;
     }
+
+    Ok(())
 }

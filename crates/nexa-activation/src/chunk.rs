@@ -1,4 +1,6 @@
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
+
+use nexa_ast::TopLevelConst;
 
 use crate::manifest::ActivationEntry;
 use crate::strategy::Strategy;
@@ -11,6 +13,7 @@ use crate::strategy::Strategy;
 /// solo lo copia; quien lo ejecuta es el navegador. Si no se encontró
 /// (ej. el handler viene de un import, o de un patrón que todavía no
 /// reconocemos), se emite un placeholder explícito en su lugar.
+#[derive(Debug)]
 pub struct Chunk {
     pub filename: String,
     pub content: String,
@@ -38,10 +41,21 @@ pub struct Chunk {
 /// contenido primero, y solo después decidir el nombre de archivo a
 /// partir de su hash de contenido (cache-busting real: dos handlers con
 /// contenido distinto nunca comparten nombre de archivo).
-pub(crate) fn content_for(entry: &ActivationEntry, handler_source: Option<&str>, import_names: &BTreeSet<String>) -> String {
+/// `Err` solo cuando un handler usa un `const` de nivel superior del
+/// archivo que no es lo bastante simple para copiar dentro del chunk
+/// (Fase 58, bug #27) — el mensaje ya trae el nombre del handler y de
+/// la constante, listo para que `nexa-cli` lo devuelva como error de
+/// build explícito, en vez de generar en silencio un chunk con un
+/// identificador sin definir.
+pub(crate) fn content_for(
+    entry: &ActivationEntry,
+    handler_source: Option<&str>,
+    import_names: &BTreeSet<String>,
+    consts: &BTreeMap<String, TopLevelConst>,
+) -> Result<String, String> {
     match handler_source {
-        Some(source) => real_chunk(entry, source, import_names),
-        None => placeholder_chunk(entry),
+        Some(source) => real_chunk(entry, source, import_names, consts),
+        None => Ok(placeholder_chunk(entry)),
     }
 }
 
@@ -49,7 +63,12 @@ pub(crate) fn generate(filename: String, content: String, strategy: Strategy) ->
     Chunk { filename, content, strategy }
 }
 
-fn real_chunk(entry: &ActivationEntry, handler_source: &str, import_names: &BTreeSet<String>) -> String {
+fn real_chunk(
+    entry: &ActivationEntry,
+    handler_source: &str,
+    import_names: &BTreeSet<String>,
+    consts: &BTreeMap<String, TopLevelConst>,
+) -> Result<String, String> {
     let mut lines = vec!["// Generado por Nexa: handler extraído tal cual del código fuente de la página.".to_string()];
 
     // Cada identificador importable se pide solo si el handler de
@@ -62,6 +81,38 @@ fn real_chunk(entry: &ActivationEntry, handler_source: &str, import_names: &BTre
         }
     }
 
+    // Bug #27: un handler extraído a su propio chunk no comparte scope
+    // de módulo con el resto del archivo — un `const API_BASE = "...";`
+    // declarado arriba en la página nunca viaja solo. Si el handler lo
+    // usa de verdad (identificador aislado, no parte de otro nombre más
+    // largo) y es lo bastante simple para copiarlo tal cual, se
+    // antepone acá; si no es simple, mejor un build roto y explícito
+    // que un `ReferenceError` silencioso en el navegador.
+    //
+    // `masked` (no `handler_source` directo): un handler que solo
+    // *menciona* el nombre de la constante dentro de un string o un
+    // comentario (ej. `console.log("no se pudo conectar a CONFIG")`)
+    // no la está usando de verdad — sin enmascarar eso, ese texto
+    // rompería el build por una razón que no tiene nada que ver con el
+    // código real. Un `${...}` de un template literal sí queda intacto,
+    // porque ahí sí puede haber un identificador real (`` `${API_BASE}/x` ``).
+    let masked = mask_non_code_text(handler_source);
+    for (name, value) in consts {
+        if !uses_standalone_identifier(&masked, name) {
+            continue;
+        }
+        if !value.is_simple {
+            return Err(format!(
+                "el handler `{}` usa `{name}`, declarado en este archivo, pero su valor no es un \
+                 literal simple (string/número/booleano/array u objeto compuesto solo de esos) — \
+                 Nexa no puede copiarlo dentro del chunk sin ejecutarlo. Movés el valor adentro del \
+                 propio handler, o lo volvés un literal simple.",
+                entry.handler
+            ));
+        }
+        lines.push(value.source.clone());
+    }
+
     lines.push(handler_source.to_string());
     lines.push(String::new());
     lines.push("export default function activate(el) {".to_string());
@@ -69,7 +120,7 @@ fn real_chunk(entry: &ActivationEntry, handler_source: &str, import_names: &BTre
     lines.push("}".to_string());
     lines.push(String::new());
 
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }
 
 /// Un identificador seguido de `.` — la misma clase de detección
@@ -78,6 +129,148 @@ fn real_chunk(entry: &ActivationEntry, handler_source: &str, import_names: &BTre
 /// suficiente para este propósito.
 fn uses_identifier(handler_source: &str, name: &str) -> bool {
     handler_source.contains(&format!("{name}."))
+}
+
+/// Reemplaza por espacios el contenido de strings (`'...'`/`"..."`),
+/// comentarios (`//...`/`/*...*/`), y la parte fija de un template
+/// literal (`` `texto` ``) — sin tocar los `${...}` de un template
+/// literal, donde sí puede haber un identificador real. No es un
+/// tokenizador de JS completo (no distingue una `/` de división de una
+/// `/` de regex, por ejemplo) — la misma clase de heurística barata que
+/// ya usa el resto de este archivo, solo un poco más cuidadosa porque
+/// acá un falso positivo rompe el build entero, no solo agrega un
+/// import de más.
+fn mask_non_code_text(source: &str) -> String {
+    #[derive(Clone, Copy, PartialEq)]
+    enum State {
+        Code,
+        SingleQuote,
+        DoubleQuote,
+        Template,
+        TemplateExpr(u32),
+        LineComment,
+        BlockComment,
+    }
+
+    let mut out = String::with_capacity(source.len());
+    let mut state = State::Code;
+    let mut chars = source.chars().peekable();
+
+    while let Some(c) = chars.next() {
+        match state {
+            State::Code => match c {
+                '\'' => {
+                    state = State::SingleQuote;
+                    out.push(' ');
+                }
+                '"' => {
+                    state = State::DoubleQuote;
+                    out.push(' ');
+                }
+                '`' => {
+                    state = State::Template;
+                    out.push(' ');
+                }
+                '/' if chars.peek() == Some(&'/') => {
+                    chars.next();
+                    state = State::LineComment;
+                    out.push_str("  ");
+                }
+                '/' if chars.peek() == Some(&'*') => {
+                    chars.next();
+                    state = State::BlockComment;
+                    out.push_str("  ");
+                }
+                _ => out.push(c),
+            },
+            State::SingleQuote | State::DoubleQuote => {
+                let quote = if state == State::SingleQuote { '\'' } else { '"' };
+                if c == '\\' {
+                    chars.next();
+                    out.push_str("  ");
+                } else if c == quote {
+                    state = State::Code;
+                    out.push(' ');
+                } else {
+                    out.push(if c == '\n' { '\n' } else { ' ' });
+                }
+            }
+            State::Template => {
+                if c == '\\' {
+                    chars.next();
+                    out.push_str("  ");
+                } else if c == '`' {
+                    state = State::Code;
+                    out.push(' ');
+                } else if c == '$' && chars.peek() == Some(&'{') {
+                    chars.next();
+                    state = State::TemplateExpr(0);
+                    out.push_str("  ");
+                } else {
+                    out.push(if c == '\n' { '\n' } else { ' ' });
+                }
+            }
+            State::TemplateExpr(depth) => {
+                if c == '{' {
+                    state = State::TemplateExpr(depth + 1);
+                    out.push(c);
+                } else if c == '}' {
+                    state = if depth == 0 { State::Template } else { State::TemplateExpr(depth - 1) };
+                    out.push(if depth == 0 { ' ' } else { c });
+                } else {
+                    out.push(c);
+                }
+            }
+            State::LineComment => {
+                if c == '\n' {
+                    state = State::Code;
+                    out.push('\n');
+                } else {
+                    out.push(' ');
+                }
+            }
+            State::BlockComment => {
+                if c == '*' && chars.peek() == Some(&'/') {
+                    chars.next();
+                    state = State::Code;
+                    out.push_str("  ");
+                } else {
+                    out.push(if c == '\n' { '\n' } else { ' ' });
+                }
+            }
+        }
+    }
+
+    out
+}
+
+/// A diferencia de `uses_identifier` (que exige un `.` después, para
+/// member access tipo `platform.share`), esto detecta el identificador
+/// solo — `API_BASE` en `${API_BASE}/login`, no seguido ni precedido de
+/// otro caracter de identificador, para no confundirlo con un nombre
+/// más largo que lo contenga (`MY_API_BASE_URL`).
+fn uses_standalone_identifier(handler_source: &str, name: &str) -> bool {
+    let bytes = handler_source.as_bytes();
+    let mut search_start = 0;
+
+    while let Some(relative_pos) = handler_source[search_start..].find(name) {
+        let match_start = search_start + relative_pos;
+        let match_end = match_start + name.len();
+
+        let boundary_before = match_start == 0 || !is_identifier_byte(bytes[match_start - 1]);
+        let boundary_after = match_end >= bytes.len() || !is_identifier_byte(bytes[match_end]);
+
+        if boundary_before && boundary_after {
+            return true;
+        }
+        search_start = match_start + 1;
+    }
+
+    false
+}
+
+fn is_identifier_byte(b: u8) -> bool {
+    b.is_ascii_alphanumeric() || b == b'_' || b == b'$'
 }
 
 fn placeholder_chunk(entry: &ActivationEntry) -> String {

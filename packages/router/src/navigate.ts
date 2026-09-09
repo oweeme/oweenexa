@@ -105,6 +105,14 @@ function isInternalNavigableLink(anchor: HTMLAnchorElement): boolean {
 function applyPage(root: Document, html: string): ParentNode {
     const parsed = new DOMParser().parseFromString(html, "text/html");
     root.title = parsed.title;
+    // Bug real (#26): antes de esto, una navegación SPA nunca tocaba
+    // `<head>` — el `<link rel="stylesheet">` de `@nexa/ui` de la página
+    // nueva (un archivo distinto en `nexa dev`, donde el CSS es solo el
+    // de esa página; el mismo archivo compartido en `nexa build`, así
+    // que ahí no se notaba) nunca se agregaba, y `canonical`/`meta`
+    // (SEO real) se quedaban con los valores de la página anterior —
+    // esto último sí importa en producción, con o sin layout.
+    syncHead(root, parsed);
 
     const currentSlot = root.querySelector(SLOT_SELECTOR);
     const incomingSlot = parsed.querySelector(SLOT_SELECTOR);
@@ -127,6 +135,106 @@ function applyPage(root: Document, html: string): ParentNode {
     // HTML de la página de destino.
     root.body.innerHTML = parsed.body.innerHTML;
     return root;
+}
+
+const STYLESHEET_SELECTOR = 'link[rel="stylesheet"]';
+const HEAD_SYNC_SELECTOR = [
+    'link[rel="canonical"]',
+    'link[rel="alternate"][hreflang]',
+    "meta[name]",
+    "meta[property]",
+    'script[type="application/ld+json"]',
+].join(", ");
+
+/**
+ * Sincroniza `<head>` con la página de destino — el mismo patrón que
+ * `syncManifestScript` (comparar viejo vs. nuevo, actualizar solo lo que
+ * cambió), aplicado a los nodos de `<head>` que sí varían por página:
+ * hojas de estilo, `canonical`, `hreflang`, `meta` con `name`/`property`,
+ * y el JSON-LD de `schema`. No toca `<meta charset>` (no tiene
+ * `name`/`property`, así que ningún selector de acá lo mira) ni los
+ * `<link>` de favicon/apple-touch-icon (tampoco matchean). `viewport`/
+ * `generator` sí entran por `meta[name]` — en la práctica es un
+ * reemplazo por un clon idéntico, porque toda página real de Nexa los
+ * declara igual, así que no hace falta un caso especial para excluirlos.
+ */
+function syncHead(root: Document, parsed: Document): void {
+    syncStylesheets(root, parsed);
+    syncHeadElementsByKey(root, parsed);
+}
+
+function syncStylesheets(root: Document, parsed: Document): void {
+    const currentLinks = Array.from(root.head.querySelectorAll<HTMLLinkElement>(STYLESHEET_SELECTOR));
+    const incomingLinks = Array.from(parsed.head.querySelectorAll<HTMLLinkElement>(STYLESHEET_SELECTOR));
+
+    const currentHrefs = new Set(currentLinks.map((link) => link.href));
+    const incomingHrefs = new Set(incomingLinks.map((link) => link.href));
+
+    for (const link of incomingLinks) {
+        if (!currentHrefs.has(link.href)) {
+            root.head.appendChild(link.cloneNode(true));
+        }
+    }
+    for (const link of currentLinks) {
+        if (!incomingHrefs.has(link.href)) {
+            link.remove();
+        }
+    }
+}
+
+/**
+ * Identidad estable de un nodo de `<head>` sincronizable — lo que hace
+ * que `<meta name="description">` de la página vieja y la nueva sean
+ * "el mismo elemento" a reemplazar, sin importar que el `content`
+ * cambie. `null` para cualquier cosa fuera de las cinco formas que
+ * `HEAD_SYNC_SELECTOR` ya filtró (nunca debería pasar, pero evita un
+ * `undefined` silencioso si el selector se extiende a futuro).
+ */
+function headElementKey(el: Element): string | null {
+    const tag = el.tagName.toLowerCase();
+    if (tag === "link") {
+        const rel = el.getAttribute("rel");
+        if (rel === "canonical") return "link:canonical";
+        if (rel === "alternate") return `link:alternate:${el.getAttribute("hreflang") ?? ""}`;
+        return null;
+    }
+    if (tag === "meta") {
+        const name = el.getAttribute("name");
+        if (name) return `meta:name:${name}`;
+        const property = el.getAttribute("property");
+        if (property) return `meta:property:${property}`;
+        return null;
+    }
+    if (tag === "script" && el.getAttribute("type") === "application/ld+json") {
+        return "script:ld-json";
+    }
+    return null;
+}
+
+function syncHeadElementsByKey(root: Document, parsed: Document): void {
+    const current = new Map<string, Element>();
+    for (const el of Array.from(root.head.querySelectorAll(HEAD_SYNC_SELECTOR))) {
+        const key = headElementKey(el);
+        if (key) current.set(key, el);
+    }
+
+    const seen = new Set<string>();
+    for (const el of Array.from(parsed.head.querySelectorAll(HEAD_SYNC_SELECTOR))) {
+        const key = headElementKey(el);
+        if (!key) continue;
+        seen.add(key);
+
+        const existing = current.get(key);
+        if (existing) {
+            existing.replaceWith(el.cloneNode(true));
+        } else {
+            root.head.appendChild(el.cloneNode(true));
+        }
+    }
+
+    for (const [key, el] of current) {
+        if (!seen.has(key)) el.remove();
+    }
 }
 
 function syncManifestScript(root: Document, parsed: Document): void {

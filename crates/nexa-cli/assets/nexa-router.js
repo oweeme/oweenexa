@@ -67,6 +67,7 @@ function isInternalNavigableLink(anchor) {
 function applyPage(root, html) {
   const parsed = new DOMParser().parseFromString(html, "text/html");
   root.title = parsed.title;
+  syncHead(root, parsed);
   const currentSlot = root.querySelector(SLOT_SELECTOR);
   const incomingSlot = parsed.querySelector(SLOT_SELECTOR);
   if (currentSlot && incomingSlot) {
@@ -76,6 +77,76 @@ function applyPage(root, html) {
   }
   root.body.innerHTML = parsed.body.innerHTML;
   return root;
+}
+var STYLESHEET_SELECTOR = 'link[rel="stylesheet"]';
+var HEAD_SYNC_SELECTOR = [
+  'link[rel="canonical"]',
+  'link[rel="alternate"][hreflang]',
+  "meta[name]",
+  "meta[property]",
+  'script[type="application/ld+json"]'
+].join(", ");
+function syncHead(root, parsed) {
+  syncStylesheets(root, parsed);
+  syncHeadElementsByKey(root, parsed);
+}
+function syncStylesheets(root, parsed) {
+  const currentLinks = Array.from(root.head.querySelectorAll(STYLESHEET_SELECTOR));
+  const incomingLinks = Array.from(parsed.head.querySelectorAll(STYLESHEET_SELECTOR));
+  const currentHrefs = new Set(currentLinks.map((link) => link.href));
+  const incomingHrefs = new Set(incomingLinks.map((link) => link.href));
+  for (const link of incomingLinks) {
+    if (!currentHrefs.has(link.href)) {
+      root.head.appendChild(link.cloneNode(true));
+    }
+  }
+  for (const link of currentLinks) {
+    if (!incomingHrefs.has(link.href)) {
+      link.remove();
+    }
+  }
+}
+function headElementKey(el) {
+  const tag = el.tagName.toLowerCase();
+  if (tag === "link") {
+    const rel = el.getAttribute("rel");
+    if (rel === "canonical") return "link:canonical";
+    if (rel === "alternate") return `link:alternate:${el.getAttribute("hreflang") ?? ""}`;
+    return null;
+  }
+  if (tag === "meta") {
+    const name = el.getAttribute("name");
+    if (name) return `meta:name:${name}`;
+    const property = el.getAttribute("property");
+    if (property) return `meta:property:${property}`;
+    return null;
+  }
+  if (tag === "script" && el.getAttribute("type") === "application/ld+json") {
+    return "script:ld-json";
+  }
+  return null;
+}
+function syncHeadElementsByKey(root, parsed) {
+  const current = /* @__PURE__ */ new Map();
+  for (const el of Array.from(root.head.querySelectorAll(HEAD_SYNC_SELECTOR))) {
+    const key = headElementKey(el);
+    if (key) current.set(key, el);
+  }
+  const seen = /* @__PURE__ */ new Set();
+  for (const el of Array.from(parsed.head.querySelectorAll(HEAD_SYNC_SELECTOR))) {
+    const key = headElementKey(el);
+    if (!key) continue;
+    seen.add(key);
+    const existing = current.get(key);
+    if (existing) {
+      existing.replaceWith(el.cloneNode(true));
+    } else {
+      root.head.appendChild(el.cloneNode(true));
+    }
+  }
+  for (const [key, el] of current) {
+    if (!seen.has(key)) el.remove();
+  }
 }
 function syncManifestScript(root, parsed) {
   const current = root.querySelector(MANIFEST_SELECTOR);

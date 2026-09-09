@@ -5,6 +5,10 @@ function pageHtml(title: string, bodyHtml: string): string {
     return `<!doctype html><html><head><title>${title}</title></head><body>${bodyHtml}</body></html>`;
 }
 
+function pageHtmlWithHead(title: string, headExtra: string, bodyHtml: string): string {
+    return `<!doctype html><html><head><title>${title}</title>${headExtra}</head><body>${bodyHtml}</body></html>`;
+}
+
 function link(href: string, attrs: Record<string, string> = {}): HTMLAnchorElement {
     const a = document.createElement("a");
     a.href = href;
@@ -25,6 +29,7 @@ describe("initRouter — Fase 6, criterio de salida", () => {
         dispose?.();
         dispose = undefined;
         document.body.innerHTML = "";
+        document.head.innerHTML = "";
     });
 
     it("un clic en un enlace interno no recarga la página pero sí actualiza la URL", async () => {
@@ -234,6 +239,141 @@ describe("initRouter — Fase 6, criterio de salida", () => {
         await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
 
         expect(document.body.innerHTML).toContain("<h1>Página 2</h1>");
+    });
+
+    it("Bug #26: agrega el <link rel=stylesheet> de la página de destino que la actual no tenía", async () => {
+        document.head.innerHTML = '<link rel="stylesheet" href="/assets/nexa-ui.aaa.css">';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead("Otra", '<link rel="stylesheet" href="/assets/nexa-ui.bbb.css">', "<p>x</p>"),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        const hrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map((l) =>
+            l.getAttribute("href"),
+        );
+        expect(hrefs).toContain("/assets/nexa-ui.bbb.css");
+    });
+
+    it("Bug #26: quita el <link rel=stylesheet> de la página anterior que ya no está en la nueva", async () => {
+        document.head.innerHTML = '<link rel="stylesheet" href="/assets/nexa-ui.aaa.css">';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead("Otra", '<link rel="stylesheet" href="/assets/nexa-ui.bbb.css">', "<p>x</p>"),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        const hrefs = Array.from(document.head.querySelectorAll('link[rel="stylesheet"]')).map((l) =>
+            l.getAttribute("href"),
+        );
+        expect(hrefs).not.toContain("/assets/nexa-ui.aaa.css");
+    });
+
+    it("Bug #26: una hoja de estilo compartida (mismo href en ambas páginas) no se toca — sigue siendo el mismo nodo", async () => {
+        document.head.innerHTML = '<link rel="stylesheet" href="/static/site.css">';
+        const shared = document.head.querySelector("link");
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead("Otra", '<link rel="stylesheet" href="/static/site.css">', "<p>x</p>"),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.head.querySelector('link[rel="stylesheet"]')).toBe(shared);
+    });
+
+    it("Bug #26: actualiza canonical al de la página de destino", async () => {
+        document.head.innerHTML = '<link rel="canonical" href="/es/pagina-vieja">';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead("Otra", '<link rel="canonical" href="/es/pagina-nueva">', "<p>x</p>"),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.querySelector('link[rel="canonical"]')?.getAttribute("href")).toBe("/es/pagina-nueva");
+    });
+
+    it("Bug #26: actualiza meta description y Open Graph al contenido de la página de destino", async () => {
+        document.head.innerHTML =
+            '<meta name="description" content="descripción vieja">' +
+            '<meta property="og:title" content="Título viejo">';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead(
+                "Otra",
+                '<meta name="description" content="descripción nueva"><meta property="og:title" content="Título nuevo">',
+                "<p>x</p>",
+            ),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.querySelector('meta[name="description"]')?.getAttribute("content")).toBe("descripción nueva");
+        expect(document.querySelector('meta[property="og:title"]')?.getAttribute("content")).toBe("Título nuevo");
+    });
+
+    it("Bug #26: agrega un meta que la página anterior no tenía, y quita uno que ya no está en la nueva", async () => {
+        document.head.innerHTML = '<meta name="robots" content="noindex">';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead("Otra", '<meta property="og:image" content="/img/otra.jpg">', "<p>x</p>"),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.querySelector('meta[name="robots"]')).toBeNull();
+        expect(document.querySelector('meta[property="og:image"]')?.getAttribute("content")).toBe("/img/otra.jpg");
+    });
+
+    it("Bug #26: sincroniza el JSON-LD (schema) al de la página de destino", async () => {
+        document.head.innerHTML = '<script type="application/ld+json">{"@type":"WebPage"}</script>';
+        const fetchPage = vi.fn<PageFetcher>().mockResolvedValue(
+            pageHtmlWithHead("Otra", '<script type="application/ld+json">{"@type":"Product"}</script>', "<p>x</p>"),
+        );
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        expect(document.querySelector('script[type="application/ld+json"]')?.textContent).toBe('{"@type":"Product"}');
+    });
+
+    it("Bug #26: nunca toca <meta charset> — no tiene name/property, ningún selector de sincronización lo mira", async () => {
+        document.head.innerHTML = '<meta charset="UTF-8"><meta name="viewport" content="width=device-width">';
+        const charsetBefore = document.head.querySelector("meta[charset]");
+        const fetchPage = vi
+            .fn<PageFetcher>()
+            .mockResolvedValue(pageHtmlWithHead("Otra", '<meta name="viewport" content="width=device-width">', "<p>x</p>"));
+        const a = link("/otra");
+        dispose = initRouter({ fetchPage });
+
+        click(a);
+        await vi.waitFor(() => expect(fetchPage).toHaveBeenCalled());
+
+        // El charset ni se mira (no tiene name/property) — sigue siendo
+        // el mismo nodo. El viewport sí pasa por meta[name], pero toda
+        // página real de Nexa lo declara igual, así que el resultado es
+        // un reemplazo por un clon idéntico.
+        expect(document.head.querySelector("meta[charset]")).toBe(charsetBefore);
+        expect(document.head.querySelector('meta[name="viewport"]')?.getAttribute("content")).toBe(
+            "width=device-width",
+        );
     });
 
     it("dispose() deja de interceptar clics", async () => {

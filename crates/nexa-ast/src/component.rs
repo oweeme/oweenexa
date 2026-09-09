@@ -1,6 +1,6 @@
 use std::collections::BTreeMap;
 
-use crate::{JsonTemplate, Loader, Node, SeoConfig};
+use crate::{JsonTemplate, Loader, Node, SeoConfig, TopLevelConst};
 
 /// Un componente Nexa: por ahora, un único árbol raíz sin props ni estado.
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +22,9 @@ pub struct Component {
     /// evento (`onClick={buy}`) en vez de un placeholder — sin que Rust
     /// llegue nunca a *ejecutar* ese código, solo a copiarlo.
     pub handlers: BTreeMap<String, String>,
+    /// `const NOMBRE = <valor>;` de nivel superior, indexado por nombre
+    /// (Fase 58, bug #27) — ver [`TopLevelConst`].
+    pub consts: BTreeMap<String, TopLevelConst>,
     /// `export const seo = { title: ..., ... }`, si la página lo declara.
     pub seo: Option<SeoConfig>,
     /// `export const schema = { type: "Product", ... }` (JSON-LD), si la

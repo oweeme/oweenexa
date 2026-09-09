@@ -266,6 +266,86 @@ export default function ProductPage() {
 }
 
 #[test]
+fn extracts_a_simple_top_level_const() {
+    let source = r#"
+const API_BASE = "https://api.oweeme.com";
+
+async function handleLogin() {
+    await fetch(`${API_BASE}/auth/login`);
+}
+
+export default function LoginPage() {
+    return (
+        <button onClick={handleLogin}>Entrar</button>
+    );
+}
+"#;
+    let component = parse_component("login.tsx", source).expect("should parse");
+    let value = component.consts.get("API_BASE").expect("expected an API_BASE const");
+    assert!(value.is_simple);
+    assert_eq!(value.source, "const API_BASE = \"https://api.oweeme.com\";");
+}
+
+#[test]
+fn a_const_whose_value_is_a_function_call_is_not_simple() {
+    let source = r#"
+const CONFIG = buildConfig();
+
+function handleLogin() {
+    console.log(CONFIG);
+}
+
+export default function LoginPage() {
+    return (
+        <button onClick={handleLogin}>Entrar</button>
+    );
+}
+"#;
+    let component = parse_component("login.tsx", source).expect("should parse");
+    let value = component.consts.get("CONFIG").expect("expected a CONFIG const");
+    assert!(!value.is_simple);
+}
+
+#[test]
+fn a_const_that_is_an_array_or_object_of_only_literals_is_simple() {
+    let source = r#"
+const LIMITS = { min: 1, max: 10 };
+const TAGS = ["a", "b", 3];
+
+function handleSubmit() {
+    console.log(LIMITS, TAGS);
+}
+
+export default function Page() {
+    return (
+        <button onClick={handleSubmit}>Enviar</button>
+    );
+}
+"#;
+    let component = parse_component("page.tsx", source).expect("should parse");
+    assert!(component.consts.get("LIMITS").unwrap().is_simple);
+    assert!(component.consts.get("TAGS").unwrap().is_simple);
+}
+
+#[test]
+fn an_arrow_function_const_is_a_handler_not_a_top_level_const() {
+    let source = r#"
+const buy = () => {
+    console.log("comprando");
+};
+
+export default function ProductPage() {
+    return (
+        <button onClick={buy}>Comprar</button>
+    );
+}
+"#;
+    let component = parse_component("product.tsx", source).expect("should parse");
+    assert!(component.handlers.contains_key("buy"));
+    assert!(!component.consts.contains_key("buy"));
+}
+
+#[test]
 fn parses_seo_with_static_and_dynamic_fields() {
     let source = r#"
 export const seo = {

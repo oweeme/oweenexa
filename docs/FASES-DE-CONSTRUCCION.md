@@ -3716,6 +3716,117 @@ código.
 
 ---
 
+## Fase 59 — Dos bugs reales más, encontrados usando Nexa en Oweeme (misma sesión que la Fase 58)
+
+### Bug #26 — La navegación SPA no actualizaba `<head>`
+
+`packages/router/src/navigate.ts`, función `applyPage`: sincronizaba
+`<title>` y el manifiesto de activación, pero nunca tocaba `<head>` —
+`canonical`, `meta` (description/Open Graph/Twitter), el JSON-LD de
+`schema`, y el `<link rel="stylesheet">` de `@nexa/ui` de la página de
+destino se quedaban con los valores de la página anterior después de
+una navegación de cliente.
+
+**Fix:** nueva función `syncHead(root, parsed)`, llamada desde
+`applyPage` antes del swap del slot/body — mismo patrón que
+`syncManifestScript` (comparar viejo vs. nuevo, actualizar solo lo que
+cambió), aplicado a los nodos de `<head>` que sí varían por página:
+
+- `syncStylesheets`: diff por `href` — agrega los `<link
+  rel="stylesheet">` nuevos, quita los que ya no están.
+- `syncHeadElementsByKey`: diff por una identidad estable (`canonical`,
+  `hreflang` + su valor, `meta[name]`, `meta[property]`, el
+  `<script type="application/ld+json">`) — reemplaza el nodo si cambió
+  de contenido, agrega el que falte, quita el que sobre.
+- Deliberadamente no toca `<meta charset>` (no tiene `name`/`property`)
+  ni favicons — no varían por página. `viewport`/`generator` sí entran
+  por `meta[name]`, pero en la práctica es un reemplazo por un clon
+  idéntico (toda página real los declara igual).
+
+**Nota real del reporte, verificada:** en `nexa build` (producción),
+el CSS de `@nexa/ui` es un único archivo compartido para todo el
+sitio, así que el bug del CSS específicamente no se nota en producción
+— solo en `nexa dev`, donde el hash del archivo es por página
+(`page.ui_used_classes`, ver `page_resolver.rs`). El de
+`canonical`/`meta` sí es real en ambos entornos.
+
+> **Verificado con `vitest` real** (`packages/router/test/navigate.test.ts`,
+> 8 tests nuevos, happy-dom): agrega una hoja de estilo nueva, quita la
+> vieja, no toca una compartida (mismo nodo del DOM), actualiza
+> `canonical`, actualiza `meta` description/Open Graph, agrega/quita
+> metas sueltos, sincroniza el JSON-LD, y confirma que `<meta
+> charset>` nunca se toca.
+
+### Bug #27 — Un handler que usa una constante del archivo se rompía en silencio
+
+```tsx
+const API_BASE = "https://api.oweeme.com";
+
+async function handleLogin() {
+    const res = await fetch(`${API_BASE}/auth/login`, { ... });
+}
+```
+
+`nexa-parser` extrae el código fuente de `handleLogin` para su chunk,
+pero nunca incluía el `const API_BASE` que la función referencia — el
+chunk quedaba con `API_BASE` sin definir, `ReferenceError` en el
+navegador, sin ningún aviso en el build. Si el handler tiene un
+`try/catch` alrededor (común, para mostrar un error lindo), el
+`ReferenceError` queda enmascarado con un mensaje genérico que no
+tiene nada que ver con la causa real — así lo encontró el usuario.
+
+**Fix, en cuatro capas:**
+
+1. `nexa-ast`: nuevo tipo `TopLevelConst { source, is_simple }` y un
+   campo `Component::consts: BTreeMap<String, TopLevelConst>`.
+2. `nexa-parser::handlers::find_top_level_consts`: recorre
+   `program.body` buscando `const NOMBRE = <valor>;` que NO sea un
+   handler (arrow function) — ya cubierto por `find_handlers`. Clasifica
+   `<valor>` como "simple" (string/número/booleano/null, plantilla sin
+   interpolación, o array/objeto compuesto solo de esos) o no, sin
+   ejecutar nada — solo mirando la forma del AST.
+3. `nexa-activation::chunk::real_chunk`: si el handler usa el nombre de
+   una constante conocida (identificador aislado, no parte de un
+   nombre más largo — `MY_API_BASE_URL` no matchea `API_BASE`), y es
+   simple, antepone la declaración completa al chunk. Si no es simple,
+   `real_chunk` devuelve `Err` con un mensaje que nombra el handler y
+   la constante — `nexa_activation::build` ahora devuelve
+   `Result<(ActivationManifest, Vec<Chunk>), String>`, y
+   `nexa-cli::pipeline::compile_page` lo propaga como un error de
+   build explícito (mismo patrón que `validate_translate_calls`, Fase
+   45).
+4. `mask_non_code_text` (dentro de `chunk.rs`): antes de buscar el
+   nombre de la constante, enmascara el contenido de strings/
+   comentarios del handler — sin esto, un handler que solo *menciona*
+   el nombre dentro de un mensaje (`console.log("no se pudo conectar a
+   CONFIG")`) rompía el build por un falso positivo, algo mucho más
+   grave acá que en la detección de imports (`uses_identifier`), donde
+   un falso positivo solo agrega un import de más. Un `${...}` de un
+   template literal queda intacto a propósito — ahí sí puede haber un
+   identificador real (`` `${API_BASE}/login` ``).
+
+> **Bug real encontrado verificando el propio fix, antes de darlo por
+> bueno:** la primera versión (sin `mask_non_code_text`) rompía el
+> build de una página cuyo handler nunca usaba `CONFIG` de verdad —
+> solo tenía un `console.log("click, sin tocar CONFIG")`. Encontrado
+> con un proyecto de scratch real (`nexa build` real, no una
+> inspección de código), antes de documentar el fix como terminado.
+> Quedó como test de regresión:
+> `bug_27_a_const_name_that_only_appears_inside_a_string_or_comment_is_not_a_real_usage`.
+>
+> **Verificado con `cargo test` real** (8 tests nuevos entre
+> `nexa-parser` y `nexa-activation`) y tres proyectos de scratch:
+> (1) una constante simple usada de verdad en un handler, con un
+> backend HTTP real y un click real en Chromium — el fetch llegó con
+> la URL correcta y mostró la respuesta real, sin `ReferenceError`;
+> (2) una constante no simple (`buildConfig()`) usada de verdad — `nexa
+> build`/`nexa lint` fallan con el mensaje exacto, nombrando el handler
+> y la constante; (3) la misma constante no simple, pero mencionada
+> solo dentro de un string — el build pasa limpio, confirmando que el
+> fix no rompe páginas que no tienen el problema.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

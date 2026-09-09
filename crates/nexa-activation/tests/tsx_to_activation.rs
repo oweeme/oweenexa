@@ -16,7 +16,7 @@ export default function About() {
 
     let component = nexa_parser::parse_component("about.tsx", source).expect("should parse");
     let ir = nexa_analyzer::analyze(&component);
-    let (manifest, chunks) = nexa_activation::build(&ir, "About", &component.handlers, &Default::default());
+    let (manifest, chunks) = nexa_activation::build(&ir, "About", &component.handlers, &component.consts, &Default::default()).unwrap();
 
     assert!(manifest.is_empty(), "una página 100% estática no debe generar manifiesto");
     assert!(chunks.is_empty(), "una página 100% estática no debe generar ningún chunk JS");
@@ -38,7 +38,7 @@ export default function ProductPage() {
 
     let component = nexa_parser::parse_component("product.tsx", source).expect("should parse");
     let ir = nexa_analyzer::analyze(&component);
-    let (manifest, chunks) = nexa_activation::build(&ir, "ProductPage", &component.handlers, &Default::default());
+    let (manifest, chunks) = nexa_activation::build(&ir, "ProductPage", &component.handlers, &component.consts, &Default::default()).unwrap();
 
     assert_eq!(manifest.len(), 1, "solo el botón es interactivo");
     assert_eq!(chunks.len(), 1, "solo el botón debe generar su propio chunk JS");
@@ -70,7 +70,7 @@ export default function ProductPage() {
 
     let component = nexa_parser::parse_component("product.tsx", source).expect("should parse");
     let ir = nexa_analyzer::analyze(&component);
-    let (_manifest, chunks) = nexa_activation::build(&ir, "ProductPage", &component.handlers, &Default::default());
+    let (_manifest, chunks) = nexa_activation::build(&ir, "ProductPage", &component.handlers, &component.consts, &Default::default()).unwrap();
 
     assert_eq!(chunks.len(), 1);
     assert!(chunks[0].content.contains("function buy()"));
