@@ -2345,6 +2345,65 @@ nginx real, sirviendo una ruta dinámica sin `paths` reenviada a un
 
 ---
 
+## Fase 35 — Reconexión con backoff en `connectSSE`/`connectSocket` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #5 del backlog — `@nexa/http` documentaba
+explícitamente que un `WebSocket` cortado queda `"closed"` para
+siempre, sin reconectar. Para cualquier feature de tiempo real real
+(chat en vivo, notificaciones, un dashboard con datos live) una red
+inestable mata la conexión hasta que el usuario refresca a mano.
+
+**Entregables (`packages/http/src/realtime.ts`):**
+- `reconnect?: boolean | ReconnectOptions` en ambos, `connectSSE` y
+  `connectSocket` — `true` usa defaults (`maxAttempts: 10, baseDelayMs:
+  500, maxDelayMs: 15000`), un objeto parcial completa lo que falte con
+  esos mismos defaults. Sin `reconnect`, comportamiento idéntico a
+  antes (retrocompatible).
+- `status` gana `"reconnecting"` en ambas conexiones — `connectSSE` no
+  tenía ningún `status` antes de esta fase, se agregó como parte de
+  "unificar el comportamiento" que pedía el issue.
+- Backoff exponencial con jitter (`backoffDelay`): mitad fija + mitad
+  aleatoria del delay calculado, para que muchos clientes reconectando
+  a la vez no lo hagan todos en el mismo instante.
+- Para `connectSocket`: cada reconexión crea un `WebSocket` nuevo (uno
+  cerrado no se puede reabrir) — `send()` sigue operando sobre la
+  conexión vigente porque `socket` es una variable mutable capturada
+  por referencia en el closure, no copiada al momento de crear `send`.
+- Para `connectSSE`: el `EventSource` nativo ya reconecta solo sin
+  `reconnect` configurado (comportamiento de siempre) — con
+  `reconnect`, se cierra el nativo en `onerror` (para que no reintente
+  por su cuenta sin backoff ni límite) y se maneja la reconexión a
+  mano, mismo mecanismo que `connectSocket`.
+- Un `closedByUser` interno distingue una desconexión deliberada
+  (`close()`) de un corte real — solo el segundo dispara reconexión.
+
+**Criterio de salida:** con `reconnect` declarado, cortar la conexión
+dispara reintentos con backoff; `status` refleja `"reconnecting"` y
+vuelve a `"open"` al reconectar; agotado `maxAttempts`, `status` pasa a
+`"closed"` definitivo.
+
+> **Verificado con `vitest` + fake timers (deterministico) Y con un
+> servidor WebSocket real, matado y reiniciado de verdad, y un
+> navegador real (no solo mocks) — los dos niveles, no uno solo:**
+> con fake timers: 9 tests nuevos cubriendo backoff creciente, éxito
+> reinicia el contador, agotar intentos cierra definitivo, `close()` a
+> mano nunca reconecta, y `reconnect: true` usa los defaults. Con un
+> servidor `ws` real (Node) + `nexa preview` real + Chromium real: una
+> isla real con `connectSocket({ reconnect: {...} })`, conectada de
+> verdad — matar el proceso del servidor (`kill -9`, no un mock) hizo
+> que `status` pasara a `"reconnecting"` en el navegador real; con el
+> servidor todavía caído por más tiempo del presupuesto de reintentos,
+> `status` llegó a `"closed"` definitivo; en una corrida separada,
+> reiniciando el servidor real *dentro* de la ventana de reintentos,
+> `status` volvió a `"open"` un segundo después de que el servidor
+> volviera a estar arriba — reconexión real de punta a punta, no
+> simulada.
+>
+> Los 32 tests de `packages/http` (+9 sobre los 23 de antes) siguen en
+> verde.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

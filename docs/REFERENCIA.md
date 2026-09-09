@@ -741,7 +741,7 @@ notifications.error  // Signal<unknown>
 notifications.close();
 
 const chat = connectSocket<{ from: string; text: string }>({ url: "wss://miapp.com/chat" });
-chat.status  // Signal<"connecting" | "open" | "closed">
+chat.status  // Signal<"connecting" | "open" | "reconnecting" | "closed">
 chat.data    // Signal<T | undefined> — el último mensaje recibido
 chat.send({ text: "hola" });   // objetos se serializan como JSON; un string se manda tal cual
 chat.close();
@@ -754,12 +754,43 @@ WebSocket/SSE ni de ningún protocolo — no hay nada que compilar ni
 analizar del lado del servidor para esto, es una librería de cliente
 como cualquier otra.
 
-**Fuera de alcance de esta fase:** sin reconexión automática si la
-conexión se cae (`status` pasa a `"closed"` y se queda ahí — reconectar
-es responsabilidad del proyecto, llamando `connectSSE`/`connectSocket`
-de nuevo), sin backoff, sin un canal del lado del servidor en Rust (el
-backend real del proyecto es quien implementa el endpoint SSE/WS —
-Nexa no trae uno).
+### Reconexión con backoff (Fase 35)
+
+Sin declarar `reconnect`, el comportamiento es exactamente el de antes
+— retrocompatible: un `WebSocket` que se corta queda `"closed"` para
+siempre; un `EventSource` reintenta solo con el mecanismo nativo del
+navegador (sin backoff configurable ni límite). Para reconexión
+controlada:
+
+```ts
+const chat = connectSocket({
+    url: "wss://miapp.com/chat",
+    reconnect: true, // o un objeto para ajustar los valores por defecto
+});
+
+const notifications = connectSSE({
+    url: "/events",
+    reconnect: { maxAttempts: 10, baseDelayMs: 500, maxDelayMs: 15000 }, // estos son los defaults de `reconnect: true`
+});
+```
+
+- `reconnect: true` usa los defaults (`maxAttempts: 10`, `baseDelayMs:
+  500`, `maxDelayMs: 15000`) — un objeto parcial completa lo que falte
+  con esos mismos defaults.
+- `status` gana `"reconnecting"` (ambas conexiones, `connectSSE`
+  también gana un `status` que antes no tenía) mientras se reintenta,
+  con backoff exponencial + jitter entre intentos.
+- Un reintento exitoso reinicia el contador — agotar `maxAttempts`
+  requiere esa cantidad de fallos *consecutivos*, no acumulados a lo
+  largo de toda la conexión.
+- Agotados los intentos, `status` pasa a `"closed"` definitivo — mismo
+  final que sin `reconnect`, solo que después de intentarlo.
+- Llamar `close()` a mano nunca dispara un reintento, sin importar si
+  hay `reconnect` configurado — es una desconexión deliberada, no un
+  corte de red.
+- `send()` (en `connectSocket`) siempre opera sobre la conexión
+  vigente — si hubo una reconexión de por medio, es el `WebSocket`
+  nuevo, nunca el que se cortó.
 
 ## `@nexa/test`
 
