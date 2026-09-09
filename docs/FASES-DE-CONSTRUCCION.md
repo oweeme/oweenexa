@@ -3161,6 +3161,59 @@ alcance documentado explícitamente; tests reales.
 > prerrequisito de esto, pero fuera de este issue — no se abre ese
 > issue todavía, tal como pide el texto original.
 
+## Fase 51 — `platform.geolocation` (Hito 12) — ✅ completada
+
+**Objetivo:** issue #20 — tercer plugin de la lista incremental
+(geolocalización, siguiente en el orden sugerido tras
+`platform.network`/`platform.lifecycle`).
+
+**Entregables:**
+
+- `packages/platform/src/geolocation.ts` (nuevo): `getCurrentPosition(options?)`
+  y `watchPosition(callback, options?)` (mismo contrato de cancelación
+  que `platform.network.onChange`/`platform.lifecycle.onChange`).
+  Capacitor nativo: el plugin real `@capacitor/geolocation`
+  (`getCurrentPosition`/`watchPosition`/`clearWatch` — forma verificada
+  instalando el paquete real y leyendo sus `.d.ts`). Web/Tauri: la
+  Geolocation API estándar del navegador (`navigator.geolocation`) — la
+  misma API que usa la propia rama web de `@capacitor/geolocation` por
+  dentro. La forma de `Position` (`coords.{latitude,longitude,accuracy,
+  altitude,altitudeAccuracy,heading,speed}` + `timestamp`) coincide en
+  ambas ramas, así que no hizo falta normalizar nada entre ellas.
+- Expuesto como `platform.geolocation.getCurrentPosition`/
+  `platform.geolocation.watchPosition` en `packages/platform/src/index.ts`.
+- 10 tests nuevos en `packages/platform/test/geolocation.test.ts` (81
+  totales en el paquete).
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** mismos tres criterios del issue por plugin —
+las dos ramas reales sin inventar la forma del plugin nativo, tests,
+documentado.
+
+> **Bug real encontrado por los propios tests, no en producción:**
+> `getCurrentPosition` estaba declarada como función normal (no
+> `async`) que arma un `new Promise(...)` solo en la rama web — en la
+> rama de error (`@capacitor/geolocation` no instalado, o la API no
+> disponible), el `throw` ocurría *antes* de que existiera ninguna
+> promesa, así que el error salía sincrónico en vez de como un rechazo
+> — rompía cualquier `await`/`.catch()` del lado del que llama. Los
+> tests con `.rejects.toThrow(...)` lo encontraron de inmediato;
+> declarar la función `async` (envolviendo todo el cuerpo en una
+> promesa real desde el principio) lo arregló.
+>
+> **Verificado con posición GPS real emulada en Chromium (Playwright),
+> no simulada a mano:** `context.setGeolocation({ latitude, longitude })`
+> con permiso de geolocalización real otorgado — `getCurrentPosition()`
+> devolvió las coordenadas reales del Obelisco de Buenos Aires;
+> `watchPosition()` recibió el callback nativo real del navegador
+> (que dispara casi de inmediato con la posición actual, misma
+> semántica que la API real) y volvió a dispararse al mover la
+> posición emulada a Madrid; cancelar la suscripción de verdad dejó de
+> recibir el cambio siguiente (a Tokio).
+>
+> **Quedan pendientes, mismo issue:** deep links, push real, biometría,
+> haptics.
+
 ---
 
 ## Regla de disciplina para todas las fases

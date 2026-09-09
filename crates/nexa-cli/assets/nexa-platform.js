@@ -320,6 +320,60 @@ function onLifecycleChange(callback, deps = {}) {
 }
 var lifecycle = { getState: getLifecycleState, onChange: onLifecycleChange };
 
+// packages/platform/src/geolocation.ts
+async function getCurrentPosition(options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Geolocation");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/geolocation no est\xE1 instalado en esta app.");
+    }
+    return plugin.getCurrentPosition(options);
+  }
+  const nav = deps.navigatorObject ?? (typeof navigator !== "undefined" ? navigator : void 0);
+  if (!nav?.geolocation) {
+    throw new Error("[nexa/platform] la Geolocation API no est\xE1 disponible en este entorno.");
+  }
+  return new Promise((resolve, reject) => {
+    nav.geolocation.getCurrentPosition(
+      (position) => resolve(position),
+      (err) => reject(new Error(`[nexa/platform] no se pudo obtener la posici\xF3n: ${err.message}`)),
+      options
+    );
+  });
+}
+function watchPosition(callback, options = {}, deps = {}) {
+  const environment = deps.environment ?? currentGlobal();
+  if (isCapacitor(environment)) {
+    const plugin = deps.capacitorPlugin ?? capacitorPlugin(environment, "Geolocation");
+    if (!plugin) {
+      throw new Error("[nexa/platform] @capacitor/geolocation no est\xE1 instalado en esta app.");
+    }
+    let cancelled = false;
+    let watchId;
+    plugin.watchPosition(options, (position) => {
+      if (position) callback(position);
+    }).then((id2) => {
+      if (cancelled) {
+        void plugin.clearWatch({ id: id2 });
+      } else {
+        watchId = id2;
+      }
+    });
+    return () => {
+      cancelled = true;
+      if (watchId) void plugin.clearWatch({ id: watchId });
+    };
+  }
+  const nav = deps.navigatorObject ?? (typeof navigator !== "undefined" ? navigator : void 0);
+  if (!nav?.geolocation) {
+    throw new Error("[nexa/platform] la Geolocation API no est\xE1 disponible en este entorno.");
+  }
+  const id = nav.geolocation.watchPosition((position) => callback(position), void 0, options);
+  return () => nav.geolocation.clearWatch(id);
+}
+var geolocation = { getCurrentPosition, watchPosition };
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -334,7 +388,8 @@ var platform = {
   db: openCollection,
   theme,
   network,
-  lifecycle
+  lifecycle,
+  geolocation
 };
 export {
   capacitorPlugin,
@@ -342,6 +397,8 @@ export {
   createSessionStorage,
   createStorage,
   currentGlobal,
+  geolocation,
+  getCurrentPosition,
   getLifecycleState,
   getNetworkStatus,
   isCapacitor,
@@ -356,5 +413,6 @@ export {
   openCollection,
   platform,
   share,
-  theme
+  theme,
+  watchPosition
 };

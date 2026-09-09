@@ -804,6 +804,9 @@ const unsubscribe = platform.network.onChange((status) => { ... })   // suscripc
 
 const state = await platform.lifecycle.getState()    // Fase 49 — { active: boolean }: false mientras la app está en segundo plano
 const stop = platform.lifecycle.onChange((state) => { ... })   // suscripción a resume/pause; llamar stop() para cancelarla
+
+const position = await platform.geolocation.getCurrentPosition()   // Fase 51 — { coords: { latitude, longitude, accuracy, ... }, timestamp }
+const stopWatch = platform.geolocation.watchPosition((position) => { ... })   // suscripción a cambios de posición; llamar stopWatch() para cancelarla
 ```
 
 `platform.theme` funciona junto a los tokens de `@nexa/ui`
@@ -838,6 +841,13 @@ nativo usa `@capacitor/app` (`getState`/`appStateChange`); Web/Tauri
 usan `document.hidden` + el evento estándar `visibilitychange` —
 exactamente la misma señal que la propia documentación de
 `@capacitor/app` dice que usa su rama web, no una aproximación propia.
+
+`platform.geolocation` (Fase 51, tercer plugin del issue #20): Capacitor
+nativo usa el plugin real `@capacitor/geolocation`; Web/Tauri usan la
+Geolocation API estándar del navegador (`navigator.geolocation`) — la
+misma API que usa la propia rama web de `@capacitor/geolocation` por
+dentro. La forma de `Position` coincide en ambos casos, sin necesidad
+de normalizar nada entre ramas.
 
 ## `@nexa/reactivity`
 
