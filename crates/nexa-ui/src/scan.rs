@@ -25,6 +25,11 @@ pub fn collect_used_classes(root: &IrNode) -> BTreeSet<String> {
 }
 
 fn walk(node: &IrNode, classes: &mut BTreeSet<String>) {
+    if let IrNodeKind::For { body, .. } = &node.kind {
+        walk(body, classes);
+        return;
+    }
+
     let IrNodeKind::Element { attrs, children, .. } = &node.kind else {
         return;
     };

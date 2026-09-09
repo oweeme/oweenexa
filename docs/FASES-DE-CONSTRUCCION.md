@@ -1898,6 +1898,154 @@ proyecto, en vez de placeholders inertes.
 
 ---
 
+## Fase 30 — Iteración de listas (`<For>`) (Hito 12) — ✅ completada
+
+**Objetivo:** cerrar el gap más grave del framework, señalado en un
+análisis de gaps hecho por el propio usuario intentando migrar su
+proyecto real (Oweeme) a Nexa: *"Nexa hoy no tiene ninguna forma de
+iterar una lista dentro de una página"* — confirmado literal en
+"Límites conocidos" (`sin bucles (.map())`). Sin esto, un listado de
+artículos, un catálogo de productos, un directorio — el caso de uso
+insignia que el propio README promociona — no se podía escribir como
+página real de Nexa (HTML estático, SEO real); la única salida
+documentada era una isla, perdiendo exactamente el beneficio de
+SEO/HTML-real que es la razón de ser del framework. Trackeado como
+issue #1 en `oweenexa` (ver también #9-#21, el resto del backlog que
+salió de ese mismo análisis).
+
+**Diseño:** un primitivo de iteración literal y segura, resuelto por el
+compilador igual que `t()` — nunca un `.map()` real ni código
+arbitrario del desarrollador:
+
+```tsx
+<For each={data.items}>
+    {(item) => (<li>{item.title}</li>)}
+</For>
+```
+
+`<For>` no reabre la composición de componentes rechazada desde la
+Fase 2: no es un componente, es un patrón sintáctico reconocido por
+nombre exacto. El cuerpo del callback se clasifica **una sola vez**
+(es una plantilla, un único `NodeId` por nodo interactivo adentro) — el
+*renderer*, no el *analyzer*, es quien produce una copia de HTML por
+cada elemento real del array, en tiempo de build/request. Esto evita
+por completo la pregunta de "¿cómo le doy un `NodeId` distinto a cada
+copia?": no hace falta, todas comparten el mismo, y es el runtime de
+activación quien las activa una por una.
+
+**Entregables:**
+- `nexa-ast`: `Node::For(ForLoop { each, item_name, body })` —
+  `each: Expr` (mismo tipo limitado de siempre), `body: Box<Node>` (el
+  callback de cuerpo conciso solo puede devolver una expresión, nunca
+  múltiples hermanos).
+- `crates/nexa-parser/src/for_loop.rs` (nuevo): reconoce `<For>` en
+  `jsx.rs` **antes** del match que rechaza "composición de
+  componentes" — un nombre JSX capitalizado llega como
+  `JSXElementName::IdentifierReference`, no `Identifier` (bug real
+  encontrado por los tests: mi primer intento interceptaba el nombre
+  equivocado y ningún `<For>`, ni siquiera el caso feliz, parseaba).
+  Valida en tiempo de parseo: `each` debe tener `data`/`params` como
+  raíz; el hijo debe ser exactamente un arrow function de cuerpo
+  conciso con un único parámetro sin destructuring/default, cuyo
+  cuerpo es un único elemento JSX — cualquier otra forma es un
+  `ParseError::Unsupported` explícito, nunca un compilado a medias.
+- `nexa-ir::IrNodeKind::For { each, item_name, body: Box<IrNode> }` +
+  `IrNode::walk()` actualizado para bajar a `body` — sin esto, todo lo
+  que recorre el IR manualmente (no vía `walk()`) se queda ciego a lo
+  que hay dentro de un `<For>`.
+- `nexa-analyzer::classify_node`: clasifica el `For` como `Dynamic`
+  (depende de `data`/`params`, se resuelve sin JS) y agrega
+  `for_loop.each.root_identifier()` al grafo de dependencias — el
+  cuerpo se clasifica recursivamente una sola vez.
+- `nexa-renderer`: `RenderContext` gana `loop_binding:
+  Option<(&str, &Value)>` — un solo nivel a propósito, `<For>` anidado
+  queda fuera de alcance. `resolve()`/`resolve_expr_json()` prueban
+  `data`/`params` primero, y si la raíz de la expresión coincide con el
+  `item_name` del `loop_binding` activo, resuelven contra ese valor —
+  cualquier otro identificador (o el mismo nombre fuera de su propio
+  `<For>`) sigue siendo un marcador inerte, sin cambios. `render_for`
+  resuelve `each` a un array real (`Vec::new()` si no es un array —
+  nunca se inventa un elemento) y concatena el HTML de renderizar
+  `body` una vez por elemento, cada vez con un `RenderContext` nuevo
+  apuntando a ese elemento.
+- Cuatro sitios con recursión manual sobre el IR (no exhaustiva, el
+  compilador no los detecta al agregar la variante) necesitaron un
+  brazo `For` explícito para no quedarse ciegos a lo que hay dentro de
+  un `<For>`: `nexa-activation::build::collect` (sin esto, un
+  `onClick` dentro de un `<For>` quedaba completamente ausente del
+  manifiesto — el bug más serio de los cinco, encontrado por un test
+  real antes de llegar a producción), `nexa-seo::analyzer::check_tree`
+  (un `<img>` sin `alt` dentro de un `<For>` no generaba aviso),
+  `nexa-cli::pipeline::has_forms`, `nexa-cli::image_scan::visit`,
+  `nexa-ui::scan::walk`.
+- `packages/runtime/src/activate.ts`: `initActivation` cambia
+  `querySelector` (un solo elemento) por `querySelectorAll` + activar
+  cada uno por separado — un mismo `data-nexa="<id>"` ahora puede
+  aparecer en más de un elemento (todas las copias que produce un
+  `<For>` comparten id). Cada copia recibe su propio `el` real vía su
+  propio closure `trigger()`, así que un handler que lee
+  `event.currentTarget` actúa sobre el elemento correcto — sin
+  necesitar ningún mecanismo nuevo de "closures por índice": el modelo
+  de activación de Nexa nunca pasó contexto además del elemento, así
+  que ya alcanzaba con activar cada copia de verdad.
+
+**Criterio de salida:** una página con `<For each={data.items}>`
+compila a HTML real en `nexa build`, un nodo por cada elemento real del
+array; un `onClick` dentro del callback se activa de forma
+independiente por copia; `nexa build` falla con un mensaje explícito
+ante cualquier forma no reconocida.
+
+> **Ajuste de alcance, decidido antes de empezar:** sin soporte para
+> `<For>` anidado (un solo `loop_binding` en `RenderContext`, sin
+> pila) — no había ningún caso de uso real pidiéndolo todavía. Sin
+> `index`/segunda variable del callback (`(item, i) => ...`) — el
+> parser rechaza explícitamente más de un parámetro; se puede agregar
+> después si hace falta, sin romper nada de esto. `each={params.x}`
+> se acepta sintácticamente (mismo `Expr` que `data.x`) pero
+> `params` nunca es un array real (viene de segmentos de URL) — itera
+> cero veces siempre hoy, documentado como comportamiento explícito en
+> el test correspondiente, no como caso soportado de verdad.
+>
+> **Dos bugs reales encontrados por los tests, no por revisión de
+> código:** (1) mi primera versión de `for_loop.rs`/`jsx.rs`
+> interceptaba `<For>` con el patrón de nombre equivocado
+> (`JSXElementName::Identifier`, reservado a tags en minúscula como
+> `<div>`) — cualquier nombre JSX capitalizado llega como
+> `IdentifierReference`, así que ni el caso feliz parseaba hasta que
+> los dos primeros tests de `nexa-parser` fallaron y señalaron
+> exactamente por qué. (2) `nexa-activation::build::collect` hacía
+> early-return en cualquier `IrNodeKind` que no fuera `Element` — sin
+> el brazo `For` explícito, un `onClick` dentro de un `<For>` nunca
+> llegaba al manifiesto de activación en absoluto (no un bug de
+> "solo se activa la primera copia": ni siquiera existía la entrada).
+> Atrapado por un test de `nexa-activation` escrito a propósito para
+> este caso, antes de llegar a verificación E2E.
+>
+> **Verificado con un proyecto real y un navegador real, no solo
+> `cargo test`:** un proyecto de prueba con `load()` real (HTTP a un
+> `.json` servido por `python3 -m http.server`) y tres artículos reales
+> — `nexa build` generó las tres `<li>` reales con sus `href`/título
+> resueltos, `nexa lint` sin avisos. En Chromium real (Playwright): un
+> botón "Quitar" dentro de cada `<li>` del `<For>`, clickeado en el
+> del medio primero — **solo ese** `<li>` desapareció (no el primero,
+> no los tres), confirmando que las N copias se activan de forma
+> verdaderamente independiente, no que "la primera acapara todos los
+> clics". El ejemplo de referencia `examples/oweeme-shop` migró su
+> catálogo de dos productos hardcodeados a `<For each={data.products}>`
+> sobre el backend PHP real — verificado con el mismo backend
+> corriendo de verdad (`podman run ... php:8.3-cli`) + Playwright,
+> confirmando además que la isla `productFilter` (Fase 16) sigue
+> recibiendo el array completo sin romperse.
+>
+> Los 270 tests del workspace de Rust (+17 sobre los 253 de la Fase 29:
+> 9 en `nexa-parser`, 5 en `nexa-renderer`, 1 en `nexa-analyzer`, 1 en
+> `nexa-seo`, 1 en `nexa-activation`, más los que ya existían
+> actualizados) siguen en verde, más 13 tests en `packages/runtime`
+> (+1 sobre los 12 de antes, cubriendo el caso de varios elementos con
+> el mismo id activándose por separado).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

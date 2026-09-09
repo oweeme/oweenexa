@@ -37,6 +37,7 @@ mod component;
 mod declaration;
 mod error;
 mod expr;
+mod for_loop;
 mod handlers;
 mod head;
 mod jsx;

@@ -364,3 +364,145 @@ export default function Home() {
     assert!(component.seo.is_none());
     assert!(component.schema.is_none());
 }
+
+// Fase 30 — `<For each={...}>{(item) => (...)}</For>`.
+
+#[test]
+fn parses_a_for_loop_over_data() {
+    let source = r#"
+export default function Articles() {
+    return (
+        <ul>
+            <For each={data.items}>
+                {(item) => (
+                    <li>
+                        <a href={item.slug}>{item.title}</a>
+                    </li>
+                )}
+            </For>
+        </ul>
+    );
+}
+"#;
+    let component = parse_component("articles.tsx", source).expect("should parse");
+    let Node::Element(root) = &component.root else {
+        panic!("expected root element")
+    };
+    let Node::For(for_loop) = &root.children[0] else {
+        panic!("expected a For node, got {:?}", root.children[0])
+    };
+
+    assert_eq!(for_loop.each.path(), "data.items");
+    assert_eq!(for_loop.item_name, "item");
+
+    let Node::Element(li) = for_loop.body.as_ref() else {
+        panic!("expected the For body to be a single element")
+    };
+    assert_eq!(li.tag, "li");
+    let Node::Element(a) = &li.children[0] else {
+        panic!("expected an anchor inside li")
+    };
+    let href = a.attrs.iter().find(|attr| attr.name == "href").expect("expected href");
+    assert_eq!(single_dynamic_path(&href.value), "item.slug");
+    let Node::Expression(title_expr) = &a.children[0] else {
+        panic!("expected {{item.title}} as the anchor's text")
+    };
+    assert_eq!(title_expr.path(), "item.title");
+}
+
+#[test]
+fn parses_a_for_loop_over_params() {
+    let source = r#"
+export default function Gallery() {
+    return (
+        <For each={params.tags}>{(tag) => (<span>{tag}</span>)}</For>
+    );
+}
+"#;
+    let component = parse_component("gallery.tsx", source).expect("should parse");
+    let Node::For(for_loop) = &component.root else {
+        panic!("expected a top-level For node")
+    };
+    assert_eq!(for_loop.each.path(), "params.tags");
+    assert_eq!(for_loop.item_name, "tag");
+}
+
+#[test]
+fn for_loop_without_each_attribute_is_a_parse_error() {
+    let source = r#"
+export default function Articles() {
+    return <For>{(item) => (<li>{item.title}</li>)}</For>;
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}
+
+#[test]
+fn for_loop_with_each_on_an_unknown_root_is_a_parse_error() {
+    let source = r#"
+export default function Articles() {
+    return <For each={articles}>{(item) => (<li>{item.title}</li>)}</For>;
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}
+
+#[test]
+fn for_loop_with_an_extra_attribute_is_a_parse_error() {
+    let source = r#"
+export default function Articles() {
+    return <For each={data.items} class="grid">{(item) => (<li>{item.title}</li>)}</For>;
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}
+
+#[test]
+fn for_loop_whose_callback_is_not_an_arrow_function_is_a_parse_error() {
+    let source = r#"
+function renderItem(item) {
+    return <li>{item.title}</li>;
+}
+
+export default function Articles() {
+    return <For each={data.items}>{renderItem}</For>;
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}
+
+#[test]
+fn for_loop_with_a_block_bodied_callback_is_a_parse_error() {
+    let source = r#"
+export default function Articles() {
+    return (
+        <For each={data.items}>
+            {(item) => {
+                return <li>{item.title}</li>;
+            }}
+        </For>
+    );
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}
+
+#[test]
+fn for_loop_with_a_destructured_param_is_a_parse_error() {
+    let source = r#"
+export default function Articles() {
+    return <For each={data.items}>{({ title }) => (<li>{title}</li>)}</For>;
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}
+
+#[test]
+fn for_loop_with_more_than_one_param_is_a_parse_error() {
+    let source = r#"
+export default function Articles() {
+    return <For each={data.items}>{(item, index) => (<li>{item.title}</li>)}</For>;
+}
+"#;
+    assert!(parse_component("articles.tsx", source).is_err());
+}

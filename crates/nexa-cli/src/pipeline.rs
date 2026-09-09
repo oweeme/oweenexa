@@ -166,7 +166,8 @@ pub fn compile_page(
 
     let ir = nexa_analyzer::analyze(&component);
 
-    let render_ctx = RenderContext { data: data.as_ref(), params, translations: translations.as_ref() };
+    let render_ctx =
+        RenderContext { data: data.as_ref(), params, translations: translations.as_ref(), loop_binding: None };
     let body = nexa_renderer::render_node(&ir.root, &render_ctx);
 
     // `src/layout.tsx` (Fase 25), opcional: envuelve el HTML que la
@@ -302,6 +303,10 @@ fn initial_js_bytes(
 /// aplica `@nexa/ui` (Fase 9) y la activación (Fase 5).
 fn has_forms(root: &nexa_ir::IrNode) -> bool {
     use nexa_ir::IrNodeKind;
+
+    if let IrNodeKind::For { body, .. } = &root.kind {
+        return has_forms(body);
+    }
 
     let IrNodeKind::Element { attrs, children, .. } = &root.kind else {
         return false;

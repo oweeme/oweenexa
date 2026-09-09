@@ -43,6 +43,11 @@ fn check_seo_config(seo: Option<&SeoConfig>, warnings: &mut Vec<Warning>) {
 }
 
 fn check_tree(node: &IrNode, warnings: &mut Vec<Warning>) {
+    if let IrNodeKind::For { body, .. } = &node.kind {
+        check_tree(body, warnings);
+        return;
+    }
+
     let IrNodeKind::Element { tag, attrs, children, .. } = &node.kind else {
         return;
     };

@@ -64,6 +64,37 @@ describe("initActivation — Fase 5, criterio de salida", () => {
         expect(loadModule).not.toHaveBeenCalled();
     });
 
+    it("varios elementos con el mismo id (Fase 30, <For>) se activan por separado, cada uno con su propio el", async () => {
+        // Un `<For>` clasifica su cuerpo una sola vez — todas las copias
+        // que produce el renderer comparten el mismo `data-nexa="<id>"`.
+        const first = makeEl("7");
+        const second = makeEl("7");
+        const third = makeEl("7");
+
+        const activateFn = vi.fn();
+        const loadModule = vi.fn<ModuleLoader>().mockResolvedValue({ default: activateFn });
+
+        const manifest: ActivationManifest = {
+            "7": { event: "click", handler: "remove", module: "/assets/Catalog-7.js", strategy: "interaction" },
+        };
+
+        initActivation(manifest, { loadModule });
+        expect(loadModule).not.toHaveBeenCalled();
+
+        // Clickear el del medio solo debe activar (y pasar) ESE elemento —
+        // no el primero de la lista, no los tres.
+        second.dispatchEvent(new Event("click", { bubbles: true }));
+        await vi.waitFor(() => expect(activateFn).toHaveBeenCalledTimes(1));
+        expect(activateFn).toHaveBeenCalledWith(second);
+
+        // Los otros dos siguen sin activar hasta que reciban su propio evento.
+        first.dispatchEvent(new Event("click", { bubbles: true }));
+        third.dispatchEvent(new Event("click", { bubbles: true }));
+        await vi.waitFor(() => expect(activateFn).toHaveBeenCalledTimes(3));
+        expect(activateFn).toHaveBeenCalledWith(first);
+        expect(activateFn).toHaveBeenCalledWith(third);
+    });
+
     it("dispose() cancela las activaciones pendientes", async () => {
         const el = makeEl("1");
         const loadModule = vi.fn<ModuleLoader>().mockResolvedValue({ default: vi.fn() });

@@ -36,16 +36,25 @@ export function initActivation(
     const disposers: Array<() => void> = [];
 
     for (const [id, entry] of Object.entries(manifest)) {
-        const el = root.querySelector(`[data-nexa="${id}"]`);
-        if (!el) continue;
+        // `querySelectorAll`, no `querySelector`: un mismo id puede
+        // aparecer en más de un elemento cuando sale de un `<For>` (Fase
+        // 30) — el body se clasifica una sola vez, así que todas las
+        // copias que produce el renderer comparten el mismo
+        // `data-nexa="<id>"`. Cada copia se activa por separado, con su
+        // propio `el` (y por lo tanto su propio `event.currentTarget`
+        // cuando el handler necesita saber sobre qué elemento actuó).
+        const elements = root.querySelectorAll(`[data-nexa="${id}"]`);
+        if (elements.length === 0) continue;
 
-        const trigger = async () => {
-            const mod = await loadModule(entry.module);
-            mod.default(el);
-        };
+        for (const el of Array.from(elements)) {
+            const trigger = async () => {
+                const mod = await loadModule(entry.module);
+                mod.default(el);
+            };
 
-        const runner = runners[entry.strategy] ?? interaction;
-        disposers.push(runner(el, entry.event, trigger));
+            const runner = runners[entry.strategy] ?? interaction;
+            disposers.push(runner(el, entry.event, trigger));
+        }
     }
 
     return () => {

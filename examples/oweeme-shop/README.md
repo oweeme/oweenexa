@@ -37,10 +37,11 @@ Luego abre `http://127.0.0.1:4950/es` (o `/en`).
 - `src/pages/[locale]/index.tsx` — home, i18n + `@nexa/platform`
   (compartir) + `@nexa/ui` (tarjeta/botones) + la isla `productFilter`
   (Fase 16): el `<ul>` de productos que ves sin JS es contenido real,
-  escrito a mano (Nexa no tiene bucles/composición todavía — ver
-  `docs/FASES-DE-CONSTRUCCION.md`, Fase 16); las mismas props
-  (`data.products`, el array real que devolvió `load()`) se le pasan a
-  la isla para el filtro en el cliente, sin volver a pedirlas.
+  generado con `<For each={data.products}>` (Fase 30) — un `<li>` real
+  por cada producto que devolvió `load()`, sin código a mano ni límite
+  de dos productos hardcodeados; las mismas props (`data.products`) se
+  le pasan además a la isla para el filtro en el cliente, sin volver a
+  pedirlas.
 - `src/pages/[locale]/dashboard.tsx` — una página que NO es superficie
   SEO a propósito: monta la isla `dashboardIsland`, un componente **Vue
   3 real** (`src/islands/Dashboard.ts`) vía `@nexa/vue-island` — la

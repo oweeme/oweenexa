@@ -34,16 +34,29 @@ pub enum IrNodeKind {
     Expression(Expr),
     /// `t("home.title")` (Fase 10): la clave de traducción, sin resolver.
     Translate(String),
+    /// `<For each={data.items}>{(item) => (...)}</For>` (Fase 30): `body`
+    /// se clasifica una sola vez (es una plantilla, no N copias) — el
+    /// renderer es quien produce una copia de su HTML por cada elemento
+    /// real del array, en tiempo de render/build.
+    For {
+        each: Expr,
+        item_name: String,
+        body: Box<IrNode>,
+    },
 }
 
 impl IrNode {
     /// Recorre el nodo y todos sus descendientes en preorden.
     pub fn walk(&self, f: &mut impl FnMut(&IrNode)) {
         f(self);
-        if let IrNodeKind::Element { children, .. } = &self.kind {
-            for child in children {
-                child.walk(f);
+        match &self.kind {
+            IrNodeKind::Element { children, .. } => {
+                for child in children {
+                    child.walk(f);
+                }
             }
+            IrNodeKind::For { body, .. } => body.walk(f),
+            _ => {}
         }
     }
 

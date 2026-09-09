@@ -56,5 +56,29 @@ pub fn render_node(node: &IrNode, ctx: &RenderContext) -> String {
             None => format!("<!--nexa:t({key})-->"),
         },
         IrNodeKind::Element { .. } => html::render_element(node, ctx),
+        IrNodeKind::For { each, item_name, body } => render_for(each, item_name, body, ctx),
     }
+}
+
+/// `<For each={data.items}>{(item) => (...)}</For>` (Fase 30): el `body`
+/// es una plantilla clasificada una sola vez (un solo `NodeId` por nodo
+/// interactivo adentro, ver `nexa-activation`) — acá se renderiza una
+/// copia de su HTML por cada elemento real del array, cada una con
+/// `item_name` apuntando a ese elemento. Todas las copias comparten el
+/// mismo `data-nexa="<id>"` si el cuerpo tiene algo interactivo; el
+/// runtime de activación (`packages/runtime`) activa cada copia por
+/// separado, no solo la primera.
+fn render_for(each: &nexa_ast::Expr, item_name: &str, body: &IrNode, ctx: &RenderContext) -> String {
+    context::resolve_each(each, ctx)
+        .iter()
+        .map(|item| {
+            let item_ctx = RenderContext {
+                data: ctx.data,
+                params: ctx.params,
+                translations: ctx.translations,
+                loop_binding: Some((item_name, item)),
+            };
+            render_node(body, &item_ctx)
+        })
+        .collect()
 }

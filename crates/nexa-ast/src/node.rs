@@ -13,6 +13,25 @@ pub enum Node {
     /// resolver todavía — se guarda tal cual el string literal que el
     /// desarrollador escribió como único argumento de `t(...)`.
     Translate(String),
+    /// `<For each={data.items}>{(item) => (...)}</For>` (Fase 30):
+    /// iteración literal, resuelta por el compilador igual que `t()` o
+    /// `data.*` — nunca un `.map()` ni código arbitrario del
+    /// desarrollador.
+    For(ForLoop),
+}
+
+/// Cuerpo de un `<For>`. `each` solo puede tener `data`/`params` como raíz
+/// (mismo `Expr` limitado que el resto de Nexa); `item_name` es el único
+/// identificador del parámetro del callback (sin destructuring); `body`
+/// es el único nodo JSX que devuelve el callback — un arrow function de
+/// cuerpo conciso solo puede devolver una expresión, así que esto nunca
+/// admite múltiples hermanos en la raíz (fragmentos ya están fuera de
+/// alcance en todo Nexa, ver `jsx.rs`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct ForLoop {
+    pub each: Expr,
+    pub item_name: String,
+    pub body: Box<Node>,
 }
 
 #[derive(Debug, Clone, PartialEq)]

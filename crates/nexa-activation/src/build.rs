@@ -39,6 +39,16 @@ fn collect(
     manifest: &mut ActivationManifest,
     chunks: &mut Vec<Chunk>,
 ) {
+    if let IrNodeKind::For { body, .. } = &node.kind {
+        // El cuerpo de un `<For>` (Fase 30) es una plantilla que se
+        // clasifica una sola vez — un evento interactivo adentro recibe
+        // un único `NodeId`/entrada de manifiesto, aunque el renderer
+        // termine produciendo N copias de su HTML. El runtime de
+        // activación (`packages/runtime`) es quien activa cada copia.
+        collect(body, component_name, handlers, import_names, manifest, chunks);
+        return;
+    }
+
     let IrNodeKind::Element { events, children, .. } = &node.kind else {
         return;
     };

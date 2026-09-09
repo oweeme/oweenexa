@@ -24,6 +24,13 @@ pub struct RenderContext<'a> {
     /// ya cargado por `nexa-i18n` — `None` si la página no vive bajo un
     /// segmento `[locale]`.
     pub translations: Option<&'a serde_json::Value>,
+    /// `Some((item_name, valor))` mientras se renderiza el cuerpo de un
+    /// `<For>` (Fase 30) — el nombre es el identificador del callback
+    /// (`item` en `(item) => ...`) y el valor es el elemento del array
+    /// que le toca a *esta* copia concreta. `None` fuera de un `<For>`.
+    /// Un solo nivel a propósito: `<For>` anidado queda fuera de alcance
+    /// (ver `nexa-parser`), así que no hace falta una pila.
+    pub loop_binding: Option<(&'a str, &'a serde_json::Value)>,
 }
 
 impl RenderContext<'_> {
@@ -35,6 +42,7 @@ impl RenderContext<'_> {
             data: None,
             params: &NO_PARAMS,
             translations: None,
+            loop_binding: None,
         }
     }
 }
@@ -43,8 +51,24 @@ pub(crate) fn resolve(expr: &Expr, ctx: &RenderContext) -> Option<String> {
     match expr.root_identifier() {
         "data" => resolve_by_path(ctx.data, &expr.property_path()),
         "params" => resolve_params(expr, ctx.params),
-        _ => None,
+        root => resolve_loop_binding(root, expr, ctx).map(json_value_to_text),
     }
+}
+
+/// `item.foo` dentro de un `<For>` — solo si `root` coincide exactamente
+/// con el `item_name` que declaró ese `<For>` en particular (nunca
+/// cualquier otro identificador suelto, que sigue siendo un marcador
+/// inerte como siempre).
+fn resolve_loop_binding<'a>(root: &str, expr: &Expr, ctx: &RenderContext<'a>) -> Option<&'a serde_json::Value> {
+    let (item_name, item_value) = ctx.loop_binding?;
+    if root != item_name {
+        return None;
+    }
+    let mut value = item_value;
+    for segment in expr.property_path() {
+        value = value.get(segment)?;
+    }
+    Some(value)
 }
 
 /// Concatena los fragmentos de un `AttrValue::Dynamic`/valor de atributo
@@ -97,11 +121,22 @@ fn resolve_params(expr: &Expr, params: &BTreeMap<String, String>) -> Option<Stri
 /// `nexa-seo/src/resolve.rs::resolve_expr` (se duplica aquí en vez de
 /// crear una dependencia entre crates, siguiendo el mismo patrón que ya
 /// existe con `resolve_template`).
+/// El array real que itera un `<For each={...}>` (Fase 30). Cualquier
+/// cosa que no sea un array real (falta el dato, es `null`, es un
+/// objeto...) itera cero veces — nunca se inventa un elemento, mismo
+/// criterio que el resto del renderer.
+pub(crate) fn resolve_each(expr: &Expr, ctx: &RenderContext) -> Vec<serde_json::Value> {
+    match resolve_expr_json(expr, ctx) {
+        Some(serde_json::Value::Array(items)) => items,
+        _ => Vec::new(),
+    }
+}
+
 fn resolve_expr_json(expr: &Expr, ctx: &RenderContext) -> Option<serde_json::Value> {
     match expr.root_identifier() {
         "data" => resolve_json_by_path(ctx.data, &expr.property_path()),
         "params" => resolve_params(expr, ctx.params).map(serde_json::Value::String),
-        _ => None,
+        root => resolve_loop_binding(root, expr, ctx).cloned(),
     }
 }
 

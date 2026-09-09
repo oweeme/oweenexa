@@ -140,3 +140,41 @@ fn distinguishes_static_dynamic_and_interactive_siblings() {
     assert_eq!(ir.dependencies.dependents_of("product"), &[h1_children[0].id]);
     assert_eq!(ir.dependencies.dependents_of("buy"), &[children[1].id]);
 }
+
+#[test]
+fn classifies_a_for_loop_as_dynamic_and_tracks_its_each_dependency() {
+    use nexa_ast::ForLoop;
+
+    let each = Expr::Member { object: Box::new(Expr::Identifier("data".into())), property: "items".into() };
+    let item_title = Expr::Member { object: Box::new(Expr::Identifier("item".into())), property: "title".into() };
+
+    let component = Component {
+        name: "Articles".into(),
+        loader: None,
+        paths: None,
+        handlers: Default::default(),
+        seo: None,
+        schema: None,
+        head: None,
+        root: Node::For(ForLoop {
+            each: each.clone(),
+            item_name: "item".into(),
+            body: Box::new(Node::Expression(item_title)),
+        }),
+    };
+
+    let ir = analyze(&component);
+    assert_eq!(ir.root.classification, Classification::Dynamic);
+    assert_eq!(ir.dependencies.dependents_of("data"), &[ir.root.id]);
+
+    let IrNodeKind::For { each: ir_each, item_name, body } = &ir.root.kind else {
+        panic!("expected an IrNodeKind::For")
+    };
+    assert_eq!(ir_each.path(), each.path());
+    assert_eq!(item_name, "item");
+    // El cuerpo se clasifica una sola vez (es una plantilla, no N copias)
+    // y depende de `item`, no de `data` — ambos identificadores quedan
+    // en el mismo grafo de dependencias, sin tratamiento especial.
+    assert_eq!(body.classification, Classification::Dynamic);
+    assert_eq!(ir.dependencies.dependents_of("item"), &[body.id]);
+}

@@ -69,7 +69,7 @@ pub fn render_for_page(
     let ir = nexa_analyzer::analyze(&component);
     validate(&ir.root)?;
 
-    let render_ctx = RenderContext { data: None, params, translations };
+    let render_ctx = RenderContext { data: None, params, translations, loop_binding: None };
     let layout_html = nexa_renderer::render_node(&ir.root, &render_ctx);
     let html = splice_slot(&layout_html, body)?;
     let ui_used_classes = nexa_ui::collect_used_classes(&ir.root);

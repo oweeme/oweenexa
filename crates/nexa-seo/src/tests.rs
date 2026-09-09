@@ -179,3 +179,25 @@ fn analyze_is_clean_when_everything_is_declared() {
     let warnings = analyze(&img_with_alt(0), Some(&seo));
     assert!(warnings.is_empty());
 }
+
+#[test]
+fn analyze_finds_a_missing_alt_inside_a_for_loop_body() {
+    // Fase 30: `check_tree` hacía early-return en cualquier nodo que no
+    // fuera `IrNodeKind::Element` — sin el arreglo, un `<img>` sin `alt`
+    // dentro de un `<For>` no generaba ningún aviso.
+    let for_node = IrNode {
+        id: 1,
+        classification: Classification::Dynamic,
+        kind: IrNodeKind::For {
+            each: nexa_ast::Expr::Member {
+                object: Box::new(nexa_ast::Expr::Identifier("data".into())),
+                property: "items".into(),
+            },
+            item_name: "item".into(),
+            body: Box::new(img_without_alt(2)),
+        },
+    };
+
+    let warnings = analyze(&for_node, None);
+    assert!(warnings.iter().any(|w| w.code == "NEXA-A11Y-001"));
+}

@@ -4,7 +4,7 @@ pub fn run() -> Result<()> {
     println!("Nexa CLI");
     println!("Version: {}", env!("CARGO_PKG_VERSION"));
     println!();
-    println!("Fase actual: 29 — locale por defecto fuera de [locale]");
+    println!("Fase actual: 30 — iteración de listas (<For>)");
     println!("Ver docs/FASES-DE-CONSTRUCCION.md para el roadmap completo.");
     Ok(())
 }

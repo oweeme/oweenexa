@@ -38,20 +38,26 @@ export default function Home() {
             <a class="nx-btn" href={`/${params.locale}/contact`}>{t("home.contact")}</a>
 
             {/*
-              Isla interactiva (Fase 16): Nexa no tiene composición ni
-              bucles todavía, así que el fallback SSR de abajo no se
-              genera desde `data.products` — se escribe a mano, igual
-              que el resto de esta página (contenido real, indexable,
-              con enlaces reales a cada página de producto). Las props
-              sí llevan el array completo que devolvió `load()`: la isla
-              usa esos mismos datos para el filtro en el cliente, sin
-              volver a pedirlos.
+              Isla interactiva (Fase 16) + iteración real (Fase 30): el
+              fallback SSR de abajo ahora sí sale de `data.products` con
+              `<For>` — HTML real, indexable, con un <li> por producto de
+              verdad (antes de la Fase 30 esto se escribía a mano, con
+              solo dos productos hardcodeados). Las props de la isla
+              llevan el mismo array completo: el filtro del cliente usa
+              esos mismos datos, sin volver a pedirlos.
             */}
             <section class="nx-card" data-nexa-island="productFilter" data-nexa-props={{ products: data.products }}>
                 <h2 class="nx-card-title">{t("home.catalog")}</h2>
                 <ul>
-                    <li><a href={`/${params.locale}/products/iphone-17`}>iPhone 17 — $999</a></li>
-                    <li><a href={`/${params.locale}/products/pixel-10`}>Pixel 10 — $799</a></li>
+                    <For each={data.products}>
+                        {(product) => (
+                            <li>
+                                <a href={`/${params.locale}/products/${product.slug}`}>
+                                    {product.name}{" "}— ${product.price}
+                                </a>
+                            </li>
+                        )}
+                    </For>
                 </ul>
             </section>
         </main>

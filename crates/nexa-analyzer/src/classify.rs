@@ -33,6 +33,21 @@ pub(crate) fn classify_node(
             }
         }
 
+        Node::For(for_loop) => {
+            let id = alloc_id(next_id);
+            dependencies.add(for_loop.each.root_identifier(), id);
+            let body = Box::new(classify_node(&for_loop.body, next_id, dependencies));
+            IrNode {
+                id,
+                classification: Classification::Dynamic,
+                kind: IrNodeKind::For {
+                    each: for_loop.each.clone(),
+                    item_name: for_loop.item_name.clone(),
+                    body,
+                },
+            }
+        }
+
         Node::Element(el) => {
             let id = alloc_id(next_id);
 

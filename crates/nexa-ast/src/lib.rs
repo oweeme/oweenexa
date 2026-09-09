@@ -17,6 +17,6 @@ pub use component::Component;
 pub use expr::Expr;
 pub use json_template::JsonTemplate;
 pub use loader::Loader;
-pub use node::{Attr, AttrValue, Element, Event, Island, Node};
+pub use node::{Attr, AttrValue, Element, Event, ForLoop, Island, Node};
 pub use seo::SeoConfig;
 pub use template::{Template, TemplatePart};

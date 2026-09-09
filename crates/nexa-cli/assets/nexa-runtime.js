@@ -67,14 +67,16 @@ function initActivation(manifest, options = {}) {
   const loadModule = options.loadModule ?? defaultLoader;
   const disposers = [];
   for (const [id, entry] of Object.entries(manifest)) {
-    const el = root.querySelector(`[data-nexa="${id}"]`);
-    if (!el) continue;
-    const trigger = async () => {
-      const mod = await loadModule(entry.module);
-      mod.default(el);
-    };
-    const runner = runners[entry.strategy] ?? interaction;
-    disposers.push(runner(el, entry.event, trigger));
+    const elements = root.querySelectorAll(`[data-nexa="${id}"]`);
+    if (elements.length === 0) continue;
+    for (const el of Array.from(elements)) {
+      const trigger = async () => {
+        const mod = await loadModule(entry.module);
+        mod.default(el);
+      };
+      const runner = runners[entry.strategy] ?? interaction;
+      disposers.push(runner(el, entry.event, trigger));
+    }
   }
   return () => {
     for (const dispose of disposers) dispose();

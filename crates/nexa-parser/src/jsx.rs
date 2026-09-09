@@ -15,6 +15,20 @@ use crate::text::{expression_container_to_string, normalize_jsx_text};
 use crate::translate;
 
 pub(crate) fn convert_element(jsx: &JSXElement) -> Result<Node, ParseError> {
+    // `<For>` (Fase 30): un nombre capitalizado en JSX siempre llega como
+    // `IdentifierReference` (`<Apple/>` referencia un binding de JS), no
+    // como `Identifier` (reservado a tags en minúscula, `<div/>`) — por
+    // eso se intercepta ANTES del match de abajo, que de otro modo
+    // rechazaría cualquier nombre capitalizado como "composición de
+    // componentes". `<For>` no es un componente ni un elemento HTML: es
+    // un patrón sintáctico reconocido por nombre exacto, igual que
+    // `t(...)` se reconoce por ser una llamada a un identificador exacto.
+    if let JSXElementName::IdentifierReference(id) = &jsx.opening_element.name {
+        if id.name.as_str() == "For" {
+            return crate::for_loop::convert_for(jsx);
+        }
+    }
+
     let tag = match &jsx.opening_element.name {
         JSXElementName::Identifier(id) => id.name.as_str().to_string(),
         other => {

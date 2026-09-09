@@ -336,6 +336,57 @@ viewport), `idle` (`requestIdleCallback`), `load` (de inmediato),
 `manual` (solo si algo más llama a `activateManually(el)`
 explícitamente).
 
+## Iteración de listas (`<For>`)
+
+```tsx
+export const load = { url: "/articles" };
+
+export default function Articles() {
+    return (
+        <ul>
+            <For each={data.items}>
+                {(item) => (
+                    <li>
+                        <a href={`/articles/${item.slug}`}>{item.title}</a>
+                    </li>
+                )}
+            </For>
+        </ul>
+    );
+}
+```
+
+`<For>` no es un componente ni un elemento HTML — es un patrón
+sintáctico fijo que el compilador reconoce por nombre exacto, igual que
+reconoce `t("clave")`. Nunca se ejecuta un `.map()` de verdad: Rust
+clasifica el cuerpo del callback **una sola vez** (es una plantilla) y
+lo renderiza como HTML real una vez por cada elemento del array que
+`each` resolvió, en `nexa build`/`nexa preview`.
+
+- `each={data.items}` o `each={params.x}` — mismo `Expr` limitado que
+  el resto de Nexa (`data.x`/`params.x`, sin expresiones arbitrarias).
+  Es el único atributo que `<For>` admite.
+- El callback debe ser un arrow function de **cuerpo conciso** —
+  `(item) => (<jsx/>)`, nunca `(item) => { return <jsx/>; }` — con
+  **un único parámetro sin destructuring** (`(item) =>`, nunca
+  `({ title }) =>`) que devuelve **un único elemento JSX**.
+- Dentro del cuerpo, `item.propiedad` (con el nombre que hayas elegido
+  para el parámetro) se resuelve igual que `data.propiedad` — mismo
+  mecanismo, alcance limitado a ese `<For>` en particular.
+- Si `each` no resuelve a un array real (falta el dato, es `null`, es
+  otro tipo) el `<For>` itera cero veces — nunca se inventa un
+  elemento, mismo criterio que el resto del renderer.
+- `nexa build` falla con un mensaje explícito ante cualquier forma no
+  reconocida (`each` con otra raíz, más de un parámetro, destructuring,
+  cuerpo con bloque, más de un hijo) — nunca compila "a medias".
+- Un `onClick`/isla dentro del cuerpo del `<For>` recibe un único
+  `NodeId`/entrada de manifiesto (el cuerpo se clasifica una sola vez),
+  compartido por todas las copias que produce el renderer — el runtime
+  de activación (`packages/runtime`) activa cada copia por separado con
+  su propio elemento real, no solo la primera.
+- Sin anidar: un `<For>` dentro de otro `<For>` no está soportado
+  todavía.
+
 ## Islas interactivas
 
 ```tsx
@@ -832,9 +883,11 @@ Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
 
 ## Límites conocidos
 
-- Un componente por página: sin `<Otro/>`, sin props, sin composición,
-  sin bucles (`.map()`) — es deliberado, no un pendiente. Una lista
-  dinámica hay que escribirla a mano, o resolverla dentro de una isla.
+- Un componente por página: sin `<Otro/>`, sin props, sin composición —
+  es deliberado, no un pendiente. Iterar una lista sí tiene un
+  primitivo real (`<For>`, Fase 30 — ver "El cuerpo de la página" más
+  abajo); lo que sigue sin existir es un modelo de componentes para
+  compartir UI entre páginas.
 - `load`/`paths`/`seo`/`schema` son literales estáticos, nunca
   funciones — sin headers, sin autenticación, sin mutaciones en el
   servidor.

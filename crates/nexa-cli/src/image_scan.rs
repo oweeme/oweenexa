@@ -14,6 +14,11 @@ pub fn collect_image_srcs(root: &IrNode) -> Vec<String> {
 }
 
 fn visit(node: &IrNode, out: &mut Vec<String>) {
+    if let IrNodeKind::For { body, .. } = &node.kind {
+        visit(body, out);
+        return;
+    }
+
     let IrNodeKind::Element { tag, attrs, children, .. } = &node.kind else {
         return;
     };

@@ -52,6 +52,18 @@ fn static_element(id: usize, tag: &str, children: Vec<IrNode>) -> IrNode {
     }
 }
 
+fn for_loop(id: usize, item_name: &str, body: IrNode) -> IrNode {
+    IrNode {
+        id,
+        classification: Classification::Dynamic,
+        kind: IrNodeKind::For {
+            each: Expr::Member { object: Box::new(Expr::Identifier("data".into())), property: "items".into() },
+            item_name: item_name.into(),
+            body: Box::new(body),
+        },
+    }
+}
+
 #[test]
 fn strategy_parses_known_values_and_falls_back_to_interaction() {
     assert_eq!(Strategy::parse(Some("idle")), Strategy::Idle);
@@ -111,6 +123,33 @@ fn interactive_button_gets_one_manifest_entry_and_one_chunk() {
     assert!(chunks[0].filename.starts_with("ProductPage-3."));
     assert!(chunks[0].content.contains("addEventListener(\"click\""));
     assert!(chunks[0].content.contains("buy"));
+}
+
+#[test]
+fn an_interactive_element_inside_a_for_loop_body_gets_a_manifest_entry() {
+    // Fase 30: el cuerpo de un `<For>` se clasifica una sola vez (es una
+    // plantilla, no N copias) — un solo `NodeId`/entrada de manifiesto
+    // cubre todas las copias que el renderer termine produciendo en
+    // tiempo de render. Sin este caso, un `onClick` dentro de un
+    // `<For>` quedaría completamente ausente del manifiesto (bug real:
+    // `build::collect` hacía early-return en cualquier nodo que no
+    // fuera `IrNodeKind::Element`, así que nunca bajaba a `body`).
+    let component = IrComponent {
+        name: "Catalog".into(),
+        root: static_element(
+            0,
+            "ul",
+            vec![for_loop(1, "item", button_with_click(2, "remove", None, vec![static_text(3, "Quitar")]))],
+        ),
+        dependencies: DependencyGraph::new(),
+    };
+
+    let (manifest, chunks) = build(&component, "Catalog", &BTreeMap::new(), &no_imports());
+
+    assert_eq!(manifest.len(), 1);
+    assert_eq!(chunks.len(), 1);
+    let entry = manifest.get(2).expect("el botón dentro del <For> (id 2) debe estar en el manifiesto");
+    assert_eq!(entry.handler, "remove");
 }
 
 #[test]

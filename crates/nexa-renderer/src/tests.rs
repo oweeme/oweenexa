@@ -50,6 +50,14 @@ fn element(
     }
 }
 
+fn for_loop(id: usize, each: Expr, item_name: &str, body: IrNode) -> IrNode {
+    IrNode {
+        id,
+        classification: Classification::Dynamic,
+        kind: IrNodeKind::For { each, item_name: item_name.to_string(), body: Box::new(body) },
+    }
+}
+
 fn island_element(
     id: usize,
     tag: &str,
@@ -81,15 +89,16 @@ fn ctx_with_data(data: &serde_json::Value) -> RenderContext<'_> {
         data: Some(data),
         params: empty_params(),
         translations: None,
+        loop_binding: None,
     }
 }
 
 fn ctx_with_params(params: &BTreeMap<String, String>) -> RenderContext<'_> {
-    RenderContext { data: None, params, translations: None }
+    RenderContext { data: None, params, translations: None, loop_binding: None }
 }
 
 fn ctx_with_translations(translations: &serde_json::Value) -> RenderContext<'_> {
-    RenderContext { data: None, params: empty_params(), translations: Some(translations) }
+    RenderContext { data: None, params: empty_params(), translations: Some(translations), loop_binding: None }
 }
 
 fn empty_params() -> &'static BTreeMap<String, String> {
@@ -409,4 +418,77 @@ fn an_island_is_not_marked_as_an_activation_target() {
     );
 
     assert!(!render_node(&node, &RenderContext::empty()).contains("data-nexa=\""));
+}
+
+// Fase 30 — `<For each={...}>{(item) => (...)}</For>`.
+
+#[test]
+fn a_for_loop_renders_one_copy_per_real_array_item() {
+    let body = element(1, Classification::Static, "li", vec![], vec![], vec![expression(2, dotted("item", "name"))]);
+    let node = for_loop(0, dotted("data", "items"), "item", body);
+
+    let data = json!({ "items": [{ "name": "Uno" }, { "name": "Dos" }, { "name": "Tres" }] });
+    let html = render_node(&node, &ctx_with_data(&data));
+
+    assert_eq!(html, "<li>Uno</li><li>Dos</li><li>Tres</li>");
+}
+
+#[test]
+fn a_for_loop_over_a_missing_or_non_array_value_renders_nothing() {
+    let body = element(1, Classification::Static, "li", vec![], vec![], vec![text(2, "x")]);
+    let node = for_loop(0, dotted("data", "items"), "item", body);
+
+    assert_eq!(render_node(&node, &RenderContext::empty()), "");
+
+    let not_an_array = json!({ "items": "oops" });
+    assert_eq!(render_node(&node, &ctx_with_data(&not_an_array)), "");
+}
+
+#[test]
+fn item_property_access_resolves_only_inside_its_own_for_loop() {
+    // `{item.x}` fuera de cualquier `<For>` (o con un `item_name`
+    // distinto) sigue siendo un marcador inerte, igual que cualquier
+    // identificador que no sea `data`/`params`.
+    let stray = expression(0, dotted("item", "name"));
+    assert_eq!(render_node(&stray, &RenderContext::empty()), "<!--nexa:item.name-->");
+
+    let body = element(
+        1,
+        Classification::Static,
+        "li",
+        vec![],
+        vec![],
+        vec![expression(2, dotted("otherName", "x"))],
+    );
+    let node = for_loop(0, dotted("data", "items"), "item", body);
+    let data = json!({ "items": [{ "x": "no debería resolver" }] });
+    assert_eq!(render_node(&node, &ctx_with_data(&data)), "<li><!--nexa:otherName.x--></li>");
+}
+
+#[test]
+fn a_dynamic_attribute_can_read_item_inside_a_for_loop() {
+    let href_attr = Attr {
+        name: "href".into(),
+        value: Some(AttrValue::Dynamic(Template::from_expr(dotted("item", "slug")))),
+    };
+    let body = element(1, Classification::Static, "a", vec![href_attr], vec![], vec![]);
+    let node = for_loop(0, dotted("data", "items"), "item", body);
+
+    let data = json!({ "items": [{ "slug": "hola-mundo" }] });
+    assert_eq!(render_node(&node, &ctx_with_data(&data)), "<a href=\"hola-mundo\"></a>");
+}
+
+#[test]
+fn a_for_loop_can_iterate_params_too() {
+    let body = element(1, Classification::Static, "span", vec![], vec![], vec![expression(2, dotted("tag", "self"))]);
+    // `params` es plano (`Expr::Identifier`, sin propiedad) — el item de
+    // cada iteración es el string del segmento de ruta en sí.
+    let node = for_loop(0, Expr::Identifier("params".into()), "tag", body);
+
+    let mut params = BTreeMap::new();
+    params.insert("tags".to_string(), "no-se-usa".to_string());
+    // `params` no es un array real nunca (viene de segmentos de URL) — un
+    // `<For each={params.x}>` siempre itera cero veces hoy. Documentado
+    // acá como comportamiento explícito, no como caso soportado de verdad.
+    assert_eq!(render_node(&node, &ctx_with_params(&params)), "");
 }
