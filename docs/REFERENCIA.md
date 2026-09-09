@@ -742,6 +742,25 @@ const users = platform.db("users")   // Fase 40 — wrapper mínimo sobre Indexe
 await users.get(id) / await users.set(id, valor) / await users.delete(id) / await users.list()
 // Cada nombre de colección es su propia base IndexedDB — sin declarar nada de antemano.
 // Web: IndexedDB real. Tauri/Capacitor: el IndexedDB del propio webview, sin rama nativa distinta.
+
+platform.theme.get()          // Fase 43 — "dark" | "light" | "system" (default si nunca se guardó nada)
+platform.theme.set("dark")    // persiste con platform.storage() y pone data-theme="dark" en <html>
+```
+
+`platform.theme` funciona junto a los tokens de `@nexa/ui`
+(`tokens.css`): sin llamar nunca `platform.theme.set()`, el sitio ya
+respeta `prefers-color-scheme` del sistema operativo — el helper es
+solo para dejar que el usuario elija explícitamente y esa elección le
+gane al sistema. Para que la preferencia se vea también después de
+recargar la página (no solo tras el primer click), el toggle de tema
+necesita `data-nexa-strategy="load"` (Fase 5) — así el chunk de
+`@nexa/platform` se importa en cada carga, y `theme.ts` reaplica lo
+guardado apenas se evalúa:
+
+```tsx
+<button class="nx-btn" data-nexa-strategy="load" onClick={() => platform.theme.set("dark")}>
+    Oscuro
+</button>
 ```
 
 Cada función lanza un `Error` con mensaje claro (`[nexa/platform] ...`)

@@ -97,6 +97,27 @@ fn full_source_includes_tokens_and_every_component_regardless_of_usage() {
 }
 
 #[test]
+fn full_source_includes_the_dark_theme_variant_of_the_tokens() {
+    let css = full_source();
+
+    assert!(css.contains("prefers-color-scheme: dark"), "debe respetar el tema del sistema sin JS");
+    assert!(css.contains(r#":root[data-theme="dark"]"#), "debe permitir forzar dark con JS");
+    assert!(css.contains(r#":root:not([data-theme="light"])"#), "el override manual a light debe ganarle al sistema");
+}
+
+#[test]
+fn a_page_using_only_the_button_still_ships_the_dark_variant_of_the_tokens() {
+    // Los tokens (con su variante dark) se incluyen siempre que se use
+    // cualquier componente, no solo si la página "usa dark mode"
+    // explícitamente — no hay forma de saber en build time si el
+    // visitante tiene `prefers-color-scheme: dark`.
+    let root = element("button", vec![static_class("nx-btn")], vec![]);
+    let css = build_stylesheet(&root).expect("expected some css");
+
+    assert!(css.contains(r#":root[data-theme="dark"]"#));
+}
+
+#[test]
 fn full_source_is_deterministic() {
     assert_eq!(full_source(), full_source());
 }

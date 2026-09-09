@@ -2705,6 +2705,66 @@ Chromium real.
 > y `ui.alert()` independiente se abre, resuelve y se remueve del DOM
 > al aceptar.
 
+## Fase 43 — Tema light/dark de primera clase (Hito 12) — ✅ completada
+
+**Objetivo:** issue #11 — sin andamiaje de tema, cualquier proyecto que
+quería un switch light/dark tenía que duplicar a mano cada color de
+`@nexa/ui` en su variante oscura, y armar su propio `data-theme` +
+persistencia.
+
+**Entregables:**
+
+- `packages/ui/src/tokens.css`: variante oscura de todos los tokens de
+  color, en dos capas — `@media (prefers-color-scheme: dark)` (sin JS,
+  respeta el sistema operativo, salvo override manual a `light`) y
+  `:root[data-theme="dark"]` (con JS, gana siempre). Se comprobó
+  leyendo cada `.css` de componente que `Button`/`Input`/`Card`/
+  `Dialog`/`Drawer` ya usan 100% tokens para sus colores — cero cambios
+  en esos archivos, la variante oscura de los tokens les alcanza sola.
+- `packages/platform/src/theme.ts` (nuevo): `platform.theme.get()`/
+  `platform.theme.set("dark"|"light"|"system")`, persistido con
+  `platform.storage()` (Fase 38, reutilizado tal cual, sin cambios) y
+  aplicado como `document.documentElement.dataset.theme`.
+- Expuesto en `packages/platform/src/index.ts` (`platform.theme`).
+- 8 tests nuevos en `packages/platform/test/theme.test.ts` (51 totales
+  en el paquete) + 2 tests nuevos en `crates/nexa-ui/src/tests.rs`
+  verificando que `full_source()`/`build_stylesheet()` incluyen la
+  variante oscura.
+- Documentado en `docs/REFERENCIA.md`.
+
+**Criterio de salida:** con `[data-theme="dark"]` en `<html>`, los 4
+componentes existentes se ven correctos en oscuro sin CSS propio del
+proyecto; `platform.theme.set("dark")` persiste entre recargas reales;
+sin JS, el tema por defecto respeta `prefers-color-scheme` — todo
+verificado con Playwright/Chromium real (contextos con
+`colorScheme`/`javaScriptEnabled` emulados, no solo aserciones sobre el
+CSS fuente).
+
+> **Cómo persiste sin tocar el compilador (ajuste de diseño explícito):**
+> `theme.ts` reaplica la preferencia guardada como efecto de nivel de
+> módulo, apenas el chunk de `@nexa/platform` se evalúa — no hace falta
+> que el desarrollador llame nada al cargar la página. Para que ese
+> chunk se importe en cada carga (no solo al hacer click, que es el
+> default de activación por interacción, Fase 5) el toggle de tema debe
+> usar `data-nexa-strategy="load"`, mecanismo que ya existe desde la
+> Fase 5 — se documentó el patrón en `docs/REFERENCIA.md` en vez de
+> tocar `bootstrap.rs`/`pipeline.rs` para inyectar un script bloqueante
+> de pre-paint (la solución "clásica" contra el flash de tema, pero
+> fuera del tamaño S–M que pedía el propio issue). Costo aceptado:
+> puede haber un breve flash del tema por defecto antes de que el chunk
+> cargue en la recarga — no cero-flash, pero sí "el tema elegido se ve
+> sin que el proyecto escriba nada".
+>
+> **Verificado con Chromium real (Playwright), variando el tema real
+> del sistema operativo emulado (`colorScheme` del contexto), no solo
+> forzando el atributo a mano:** sin JS (`javaScriptEnabled: false`)
+> con el SO en dark, `--nx-color-primary` y el `background-color`
+> computado del botón primario son los tonos oscuros; con el SO en
+> light, los claros. Con JS: `platform.theme.set("dark")` aplica el
+> token oscuro de inmediato, sobrevive a un `page.reload()` real,
+> cambiar a `"light"` le gana al `prefers-color-scheme` del sistema, y
+> `"system"` quita el atributo y vuelve a ceder el control al sistema.
+
 ---
 
 ## Regla de disciplina para todas las fases

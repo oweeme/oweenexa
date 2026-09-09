@@ -188,6 +188,35 @@ function createSessionStorage(backend) {
   return wrapStorage(store);
 }
 
+// packages/platform/src/theme.ts
+var STORAGE_KEY = "nexa-theme";
+function applyTheme(value) {
+  if (typeof document === "undefined") return;
+  if (value === "system") {
+    document.documentElement.removeAttribute("data-theme");
+  } else {
+    document.documentElement.setAttribute("data-theme", value);
+  }
+}
+function readStoredTheme() {
+  try {
+    const stored = createStorage().get(STORAGE_KEY);
+    return stored === "dark" || stored === "light" ? stored : "system";
+  } catch {
+    return "system";
+  }
+}
+var theme = {
+  get() {
+    return readStoredTheme();
+  },
+  set(value) {
+    createStorage().set(STORAGE_KEY, value);
+    applyTheme(value);
+  }
+};
+applyTheme(readStoredTheme());
+
 // packages/platform/src/index.ts
 var platform = {
   isTauri,
@@ -199,7 +228,8 @@ var platform = {
   storage: createStorage,
   sessionStorage: createSessionStorage,
   cache: openCache,
-  db: openCollection
+  db: openCollection,
+  theme
 };
 export {
   capacitorPlugin,
@@ -214,5 +244,6 @@ export {
   openCache,
   openCollection,
   platform,
-  share
+  share,
+  theme
 };

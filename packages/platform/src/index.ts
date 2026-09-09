@@ -5,6 +5,7 @@ import { openCollection } from "./db";
 import { notify } from "./notifications";
 import { share } from "./share";
 import { createSessionStorage, createStorage } from "./storage";
+import { theme } from "./theme";
 
 export { isTauri, isCapacitor, isWeb, currentGlobal, capacitorPlugin } from "./environment";
 export type { NexaPlatformGlobal } from "./environment";
@@ -20,6 +21,8 @@ export { openCache } from "./cache";
 export type { CacheStore } from "./cache";
 export { openCollection } from "./db";
 export type { Collection } from "./db";
+export { theme } from "./theme";
+export type { Theme } from "./theme";
 
 /**
  * El objeto que de verdad se usa desde un handler de una página Nexa
@@ -40,4 +43,5 @@ export const platform = {
     sessionStorage: createSessionStorage,
     cache: openCache,
     db: openCollection,
+    theme,
 };
