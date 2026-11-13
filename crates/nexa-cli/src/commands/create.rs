@@ -87,7 +87,7 @@ pub fn run(name: &str, template: &str) -> Result<()> {
     write(&root.join("src/pages/index.tsx"), if template == "app" { APP_HOME } else { CORE_HOME })?;
     write(&root.join("tsconfig.json"), TSCONFIG)?;
     write(&root.join("nexa-env.d.ts"), ENV_DTS)?;
-    write(&root.join(".gitignore"), "dist/\nnode_modules/\n")?;
+    write(&root.join(".gitignore"), "dist/\nnode_modules/\n.nexa/\n.env.local\n")?;
 
     println!("Creado proyecto Nexa ({template}) en {}", root.display());
     println!();

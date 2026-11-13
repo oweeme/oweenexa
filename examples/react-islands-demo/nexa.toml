@@ -4,8 +4,5 @@ version = "0.1.0"
 
 [dependencies]
 
-# Los módulos de las islas, ya empaquetados por `npm run vendor`.
-[imports]
-productFilter = "/vendor/filter.js"
-tsIsland = "/vendor/ts-island.js"
-reactMount = "/vendor/react-mount.js"
+# Las islas de `islands/*.island.ts(x)` las empaqueta Nexa solo (esbuild): el nombre del archivo
+# (`productFilter`, `tsIsland`, `reactMount`) es el que se usa en `data-nexa-island` y en `import`.

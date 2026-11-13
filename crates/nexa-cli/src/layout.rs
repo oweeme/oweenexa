@@ -43,6 +43,30 @@ pub fn find() -> Option<PathBuf> {
     path.is_file().then(|| path.to_path_buf())
 }
 
+/// Los layouts que envuelven a `page_file`, del más interno al más externo (Fase 77): cada
+/// `_layout.tsx` de las carpetas de `src/pages/` por las que pasa la página, y al final el
+/// `src/layout.tsx` global.
+pub fn chain(page_file: &Path) -> Vec<PathBuf> {
+    let pages = Path::new("src/pages");
+    let mut out = Vec::new();
+    let mut dir = page_file.parent();
+    while let Some(d) = dir {
+        if !d.starts_with(pages) {
+            break;
+        }
+        let nested = d.join("_layout.tsx");
+        if nested.is_file() {
+            out.push(nested);
+        }
+        if d == pages {
+            break;
+        }
+        dir = d.parent();
+    }
+    out.extend(find());
+    out
+}
+
 pub struct RenderedLayout {
     pub html: String,
     pub ui_used_classes: std::collections::BTreeSet<String>,

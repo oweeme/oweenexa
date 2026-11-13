@@ -96,3 +96,36 @@ fn root_route_matches_only_the_empty_path() {
     assert!(match_route(&routes, "/about").is_some());
     assert!(match_route(&routes, "/about/extra").is_none());
 }
+
+#[test]
+fn catch_all_captures_the_rest_and_is_the_last_resort() {
+    let dir = pages_dir(&["docs/index.tsx", "docs/intro.tsx", "docs/[section]/index.tsx", "docs/[...rest].tsx", "[...all].tsx"]);
+    let routes = scan_pages(&dir).unwrap();
+    assert!(patterns(&routes).contains(&"/docs/:rest*"));
+    let at = |p: &str| match_route(&routes, p).map(|(r, params)| (r.pattern.clone(), params));
+    // una ruta exacta o de un solo segmento dinámico gana al comodín
+    assert_eq!(at("/docs/intro").unwrap().0, "/docs/intro");
+    assert_eq!(at("/docs/guias").unwrap().0, "/docs/:section");
+    // el comodín recoge uno o más segmentos
+    let (pattern, params) = at("/docs/guias/avanzado/x").unwrap();
+    assert_eq!(pattern, "/docs/:rest*");
+    assert_eq!(params["rest"], "guias/avanzado/x");
+    // `/docs` exacto es su index, no el comodín (que pide al menos un segmento)
+    assert_eq!(at("/docs").unwrap().0, "/docs");
+    // el comodín de la raíz recoge cualquier cosa
+    assert_eq!(at("/otra/cosa").unwrap().1["all"], "otra/cosa");
+}
+
+#[test]
+fn a_catch_all_needs_at_least_one_segment() {
+    let dir = pages_dir(&["wiki/[...path].tsx"]);
+    let routes = scan_pages(&dir).unwrap();
+    assert!(match_route(&routes, "/wiki").is_none());
+    assert_eq!(match_route(&routes, "/wiki/a").unwrap().1["path"], "a");
+}
+
+#[test]
+fn files_starting_with_an_underscore_are_not_pages() {
+    let dir = pages_dir(&["index.tsx", "_layout.tsx", "docs/_layout.tsx", "docs/_helper.tsx", "docs/intro.tsx"]);
+    assert_eq!(patterns(&scan_pages(&dir).unwrap()), vec!["/", "/docs/intro"]);
+}

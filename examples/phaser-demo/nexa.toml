@@ -4,5 +4,4 @@ version = "0.1.0"
 
 [dependencies]
 
-[imports]
-phaser = "/vendor/phaser.js"
+# `islands/phaser.island.js` re-exporta Phaser: Nexa lo empaqueta solo y `import Phaser from "phaser"` funciona.

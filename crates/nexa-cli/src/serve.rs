@@ -13,6 +13,26 @@ pub fn respond(status: u16, content_type: Header, body: String) -> Response<std:
     with_security_headers(Response::from_string(body).with_status_code(status).with_header(content_type))
 }
 
+/// `[redirects]` / `[headers]` de `nexa.toml` (Fase 75) para `nexa dev` y `nexa preview`.
+pub fn answer_with_rules(
+    path: &str,
+    handle: impl FnOnce() -> Response<std::io::Cursor<Vec<u8>>>,
+) -> Response<std::io::Cursor<Vec<u8>>> {
+    let manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
+    let Ok((redirects, headers)) = manifest.rules() else { return handle() };
+    if let Some((to, status)) = crate::rules::redirect_for(&redirects, path) {
+        let location = Header::from_bytes(&b"Location"[..], to.as_bytes()).expect("destino validado");
+        return respond(status, text_content_type(), String::new()).with_header(location);
+    }
+    let mut response = handle();
+    for (name, value) in crate::rules::headers_for(&headers, path) {
+        if let Ok(h) = Header::from_bytes(name.as_bytes(), value.as_bytes()) {
+            response.add_header(h);
+        }
+    }
+    response
+}
+
 /// Como `respond`, pero para contenido binario (imágenes, fuentes...) —
 /// `Response::from_string` asumiría UTF-8 y corrompería esos bytes.
 pub fn respond_bytes(status: u16, content_type: Header, body: Vec<u8>) -> Response<std::io::Cursor<Vec<u8>>> {

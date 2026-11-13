@@ -37,6 +37,7 @@ pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool, static_
     let dynamic = has_dynamic_routes && !static_only;
     let sources = if dynamic { crate::bundle::collect_sources(Path::new("."))? } else { Vec::new() };
 
+    let (redirects, headers) = manifest.rules()?;
     let config = Config {
         name: name.clone(),
         app_base: crate::app_mode::is_enabled().then(|| crate::app_mode::base_path(&manifest)),
@@ -44,6 +45,8 @@ pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool, static_
         default_port: 8080,
         dynamic,
         revalidate: manifest.bundle.as_ref().and_then(|b| b.revalidate).unwrap_or(60),
+        redirects,
+        headers,
     };
 
     println!("[2/3] empaquetando dist/");

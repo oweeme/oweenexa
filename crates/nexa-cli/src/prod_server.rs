@@ -68,6 +68,8 @@ pub struct Site {
     dynamic: Option<Dynamic>,
     /// Donde el renderizado deja los archivos que genera (chunks, CSS).
     workdir: Option<PathBuf>,
+    /// Nombres de cabecera propios (`[headers]`) con vida `'static`: se crean una vez al arrancar.
+    header_names: HashMap<String, &'static str>,
 }
 
 impl Site {
@@ -87,7 +89,14 @@ impl Site {
             })
             .collect();
         let app_base = payload.config.app_base.clone();
-        Site { payload, entries, app_base, dynamic: None, workdir: None }
+        let header_names = payload
+            .config
+            .headers
+            .iter()
+            .flat_map(|r| r.headers.keys())
+            .map(|k| (k.clone(), &*Box::leak(k.clone().into_boxed_str())))
+            .collect();
+        Site { payload, entries, app_base, dynamic: None, workdir: None, header_names }
     }
 
     /// Activa el renderizado bajo demanda de las rutas no pre-renderizadas.
@@ -185,6 +194,19 @@ fn find<'a>(site: &'a Site, path: &str) -> Option<(&'a Entry, u16)> {
 }
 
 pub fn route(site: &Site, req: &Req) -> Reply {
+    let mut reply = route_inner(site, req);
+    // `[headers]` (Fase 75): las del proyecto pisan las de serie.
+    let path = req.url.split(['?', '#']).next().and_then(decode_path).unwrap_or_default();
+    for (name, value) in crate::rules::headers_for(&site.payload.config.headers, &path) {
+        if let Some(name) = site.header_names.get(&name) {
+            reply.headers.retain(|(n, _)| !n.eq_ignore_ascii_case(name));
+            reply.headers.push((name, value));
+        }
+    }
+    reply
+}
+
+fn route_inner(site: &Site, req: &Req) -> Reply {
     if req.method != "GET" && req.method != "HEAD" {
         let mut r = text_reply(405, "405 — método no permitido");
         r.headers.push(("Allow", "GET, HEAD".to_string()));
@@ -195,6 +217,13 @@ pub fn route(site: &Site, req: &Req) -> Reply {
     let Some(path) = decode_path(raw_path) else { return text_reply(400, "400 — ruta inválida") };
     if path.contains('\0') || path.split('/').any(|seg| seg == "..") {
         return text_reply(400, "400 — ruta inválida");
+    }
+
+    // `[redirects]` (Fase 75)
+    if let Some((to, status)) = crate::rules::redirect_for(&site.payload.config.redirects, &path) {
+        let mut r = text_reply(status, "");
+        r.headers.push(("Location", to));
+        return r;
     }
 
     let Some((entry, status)) = find(site, &path) else {
@@ -525,7 +554,7 @@ pub fn prepare_workdir(payload: &Payload) -> Result<PathBuf> {
         let rel = Path::new(&source.path);
         // Defensa en profundidad: un paquete manipulado no puede escribir fuera.
         if rel.components().any(|c| !matches!(c, Component::Normal(_)))
-            || !(source.path.starts_with("src/") || source.path == "nexa.toml" || source.path == "nexa.lock")
+            || !(source.path.starts_with("src/") || source.path == "nexa.toml" || source.path == ".nexa/gen/assets.json" || source.path == "nexa.lock")
         {
             anyhow::bail!("el paquete trae una fuente con una ruta no permitida: {}", source.path);
         }
@@ -761,7 +790,7 @@ mod tests {
             ("app/200.html".into(), b"<div id=app>SHELL</div>".to_vec()),
             ("sw.js".into(), b"self.skipWaiting()".to_vec()),
         ];
-        let config = Config { name: "t".into(), app_base: app_base.map(String::from), proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60 };
+        let config = Config { name: "t".into(), app_base: app_base.map(String::from), proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60, redirects: vec![], headers: vec![] };
         Site::new(unpack(&pack(&files, &[], config).unwrap()).unwrap())
     }
 
@@ -770,6 +799,44 @@ mod tests {
     }
     fn header<'a>(r: &'a Reply, name: &str) -> Option<&'a str> {
         r.headers.iter().find(|(n, _)| n.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str())
+    }
+
+    fn site_with_rules(redirects: Vec<crate::rules::Redirect>, headers: Vec<crate::rules::HeaderRule>) -> Site {
+        let files: Vec<(String, Vec<u8>)> = vec![("index.html".into(), b"<h1>hi</h1>".to_vec()), ("about/index.html".into(), b"<h1>about</h1>".to_vec())];
+        let config = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60, redirects, headers };
+        Site::new(unpack(&pack(&files, &[], config).unwrap()).unwrap())
+    }
+
+    #[test]
+    fn redirects_answer_with_location_and_status() {
+        let s = site_with_rules(
+            vec![crate::rules::Redirect { from: "/viejo".into(), to: "/about".into(), status: 308 }, crate::rules::Redirect { from: "/go/*".into(), to: "/*".into(), status: 302 }],
+            vec![],
+        );
+        let r = get(&s, "/viejo?x=1");
+        assert_eq!((r.status, header(&r, "Location")), (308, Some("/about")));
+        let r = get(&s, "/go//evil.com");
+        assert_eq!((r.status, header(&r, "Location")), (302, Some("/evil.com")), "nunca `//evil.com`");
+        assert_eq!(get(&s, "/about").status, 200);
+    }
+
+    #[test]
+    fn custom_headers_apply_by_path_and_override_the_defaults() {
+        let rules = crate::rules::headers_from(
+            &[
+                ("/*".to_string(), [("Content-Security-Policy".to_string(), "default-src 'self'".to_string()), ("X-Frame-Options".to_string(), "DENY".to_string())].into()),
+                ("/about".to_string(), [("X-Extra".to_string(), "1".to_string())].into()),
+            ]
+            .into(),
+        )
+        .unwrap();
+        let s = site_with_rules(vec![], rules);
+        let home = get(&s, "/");
+        assert_eq!(header(&home, "Content-Security-Policy"), Some("default-src 'self'"));
+        assert_eq!(header(&home, "X-Frame-Options"), Some("DENY"));
+        assert_eq!(home.headers.iter().filter(|(n, _)| n.eq_ignore_ascii_case("x-frame-options")).count(), 1);
+        assert_eq!(header(&home, "X-Extra"), None);
+        assert_eq!(header(&get(&s, "/about"), "X-Extra"), Some("1"));
     }
 
     #[test]
@@ -892,7 +959,7 @@ mod tests {
 
     #[test]
     fn options_use_defaults_flags_and_a_proxy_flag_replaces_the_embedded_table() {
-        let cfg = Config { name: "t".into(), app_base: None, proxy: [("/api".to_string(), "http://old".to_string())].into(), default_port: 9000, dynamic: false, revalidate: 60 };
+        let cfg = Config { name: "t".into(), app_base: None, proxy: [("/api".to_string(), "http://old".to_string())].into(), default_port: 9000, dynamic: false, revalidate: 60, redirects: vec![], headers: vec![] };
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
         let o = parse_options(&a(&[]), &cfg).unwrap().unwrap();
@@ -1112,7 +1179,7 @@ mod tests {
 
     fn payload_with_sources(sources: Vec<(&str, &str)>) -> Payload {
         let sources: Vec<(String, Vec<u8>)> = sources.into_iter().map(|(p, c)| (p.to_string(), c.as_bytes().to_vec())).collect();
-        let config = Config { name: "mi sitio!".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: true, revalidate: 60 };
+        let config = Config { name: "mi sitio!".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: true, revalidate: 60, redirects: vec![], headers: vec![] };
         unpack(&pack(&[], &sources, config).unwrap()).unwrap()
     }
 
@@ -1139,7 +1206,7 @@ mod tests {
 
     #[test]
     fn options_accept_revalidate_and_api_url() {
-        let cfg = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 9000, dynamic: true, revalidate: 60 };
+        let cfg = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 9000, dynamic: true, revalidate: 60, redirects: vec![], headers: vec![] };
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let o = parse_options(&a(&["--revalidate", "5", "--api-url", "https://api.miapp.com/"]), &cfg).unwrap().unwrap();
         assert_eq!((o.revalidate, o.api_url.as_str()), (5, "https://api.miapp.com"));

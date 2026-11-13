@@ -1,18 +1,23 @@
 mod assets;
+mod assets_pipeline;
 mod bootstrap;
 mod bundle;
 mod components;
+mod csp;
 mod capacitor_scaffold;
 mod commands;
 mod copy_dir;
 mod devtools;
 mod dev_watch;
+mod docker_scaffold;
 mod document;
+mod dotenv;
 mod image_pipeline;
 mod image_scan;
 mod app_mode;
 mod import_map;
 mod proxy;
+mod rules;
 mod layout;
 mod locale_gate;
 mod lockfile;
@@ -114,6 +119,8 @@ fn main() -> Result<()> {
     }
 
     let cli = Cli::parse();
+    // `.env` / `.env.local` del proyecto (Fase 76)
+    dotenv::load(std::path::Path::new("."));
 
     match cli.command.unwrap_or(Command::Info) {
         Command::Info => commands::info::run(),

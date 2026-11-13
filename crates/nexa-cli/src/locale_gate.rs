@@ -40,7 +40,7 @@ pub fn for_project(routes: &[Route]) -> Option<String> {
         return None;
     }
     let default = default_locale(&available);
-    Some(render(&default, &available))
+    Some(crate::csp::reapply(&render(&default, &available)))
 }
 
 /// El HTML de la puerta. `default` y `locales` ya son códigos seguros

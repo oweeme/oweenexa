@@ -30,6 +30,10 @@ fn walk(root: &Path, dir: &Path, routes: &mut Vec<Route>) -> std::io::Result<()>
         if path.extension().and_then(|e| e.to_str()) != Some("tsx") {
             continue;
         }
+        // `_layout.tsx`, `_algo.tsx`: archivos de apoyo, no páginas (Fase 77)
+        if path.file_name().and_then(|n| n.to_str()).is_some_and(|n| n.starts_with('_')) {
+            continue;
+        }
 
         let relative = path.strip_prefix(root).unwrap_or(&path);
         routes.push(route_from_relative_path(relative, &path));
@@ -69,6 +73,7 @@ fn pattern_from_segments(segments: &[Segment]) -> String {
         .map(|s| match s {
             Segment::Static(name) => name.clone(),
             Segment::Dynamic(name) => format!(":{name}"),
+            Segment::CatchAll(name) => format!(":{name}*"),
         })
         .collect::<Vec<_>>()
         .join("/");

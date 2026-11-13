@@ -282,6 +282,11 @@ pub fn shell_html(manifest: &Manifest, build: &AppBuild, base: &str, runtime_url
     // los builtin (`platform`...) se resuelven igual que en una página Nexa.
     let importmap = crate::import_map::script_tag(&imports).unwrap_or_default();
 
+    let styles_links = {
+        let s = crate::assets_pipeline::styles_head();
+        if s.is_empty() { s } else { format!("{s}\n") }
+    };
+
     // Fase 63: en una app de escritorio la API no es del mismo origen.
     let proxy_table = if desktop { desktop_proxy(manifest) } else { BTreeMap::new() };
     let proxy_script = if proxy_table.is_empty() {
@@ -305,23 +310,25 @@ pub fn shell_html(manifest: &Manifest, build: &AppBuild, base: &str, runtime_url
         (String::new(), "")
     };
 
-    format!(
+    let html = format!(
         "<!doctype html>\n<html lang=\"es\">\n<head>\n<meta charset=\"UTF-8\">\n\
          <meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n\
-         <link rel=\"icon\" href=\"data:,\">\n<title>{title}</title>\n{importmap}\n{proxy_script}</head>\n<body>\n<div id=\"app\"></div>\n\
+         <link rel=\"icon\" href=\"data:,\">\n<title>{title}</title>\n{importmap}\n{styles}{proxy_script}</head>\n<body>\n<div id=\"app\"></div>\n\
          <script type=\"module\">\n\
          import {{ startApp }} from {runtime};\n{config_import}\
          startApp({{\n  base: {base},\n  routes: [\n{routes}\n  ],\n{config_use}}});\n\
          </script>\n</body>\n</html>\n",
         title = html_escape(&title),
         importmap = importmap,
+        styles = styles_links,
         proxy_script = proxy_script,
         runtime = js_str(runtime_url),
         config_import = config_import,
         base = js_str(base),
         routes = route_lines.join("\n"),
         config_use = config_use,
-    )
+    );
+    crate::csp::reapply(&html)
 }
 
 /// `[desktop.proxy]`, o `[proxy]` si el proyecto no declara una tabla propia.

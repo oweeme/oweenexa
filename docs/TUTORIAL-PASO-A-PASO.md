@@ -185,10 +185,6 @@ title = "Panel"
 # `nexa dev`, `nexa preview` y el ejecutable reenvían /api/* a tu backend: mismo origen, sin CORS.
 [proxy]
 "/api" = "http://127.0.0.1:9500"
-
-# El módulo de la isla del buscador (lo genera `npm run vendor`).
-[imports]
-search = "/vendor/search.js"
 ```
 
 Qué hace cada sección:
@@ -196,7 +192,8 @@ Qué hace cada sección:
 - **`[i18n] default`**: el idioma por defecto. Una clave sin traducir en otro idioma cae a este.
 - **`[app] base`**: la SPA vivirá en `/panel`.
 - **`[proxy]`**: reenvía `/api/*` a tu backend. El navegador cree que la API es del mismo origen: **no hay CORS** y las cookies funcionan.
-- **`[imports]`**: el nombre `search` apunta al módulo de la isla (lo generamos en el paso 8).
+
+No hay más que configurar: las islas (`islands/*.island.ts`) y los estilos (`src/styles/*.css`) los **empaqueta Nexa solo**, sin pasos manuales.
 
 ## Paso 4 · Textos y diseño general
 
@@ -229,10 +226,6 @@ El **layout** envuelve *todas* las páginas (cabecera y pie). El único elemento
 
 ```tsx title="src/layout.tsx"
 // Se envuelve TODA página con esto. El único elemento `data-nexa-slot` (vacío) es donde va la página.
-export const head = {
-    stylesheets: ["/site.css"],
-};
-
 export default function Layout() {
     return (
         <div class="shell">
@@ -252,9 +245,10 @@ export default function Layout() {
 }
 ```
 
-Y un poco de estilo, que se copia tal cual al sitio:
+Y un poco de estilo. Todo `.css` de `src/styles/` se empaqueta (con `@import` y minificado), se le pone un hash en el nombre
+y se enlaza **solo** en el `<head>` de cada página: no hay que escribir ningún `<link>`.
 
-```css title="public/site.css"
+```css title="src/styles/site.css"
 :root { --fg: #252223; --bg: #faf7ee; --muted: #5f5a55; --accent: #488c54; --line: #d6cfbb; }
 @media (prefers-color-scheme: dark) { :root { --fg: #ece6d6; --bg: #262325; --muted: #b8b0a1; --accent: #93cf9b; --line: #55514f; } }
 body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
@@ -356,7 +350,7 @@ export default function Blog() {
 }
 ```
 
-(El `<div data-nexa-island>` lo explicamos en el paso 8. Hasta entonces verás un aviso 404 de `/vendor/search.js` en la consola del navegador: es normal, la isla aún no existe.)
+(El `<div data-nexa-island>` lo explicamos en el paso 8; hasta entonces es solo un hueco vacío.)
 
 Y la página de **un** artículo: una ruta **dinámica**. `[slug]` es el parámetro, y estas tres líneas hacen el trabajo:
 
@@ -440,7 +434,9 @@ export default function mount(el: Element, props: Record<string, unknown>) {
 
 Fíjate en que **mejora algo que ya existe**: la lista del blog es HTML completo. Si el JavaScript falla, el blog sigue funcionando.
 
-Hay que empaquetarla a un único archivo con [esbuild](https://esbuild.github.io/). Crea el `package.json`:
+Nexa la empaqueta **sola** con [esbuild](https://esbuild.github.io/): todo archivo `islands/<nombre>.island.ts` (o `.tsx`, `.js`) se convierte
+en un módulo con hash en el nombre, y `<nombre>` queda disponible en `data-nexa-island="<nombre>"`. Dentro de una isla puedes
+`import` otros archivos, paquetes de npm y CSS. Lo único que necesitas es tener esbuild en el proyecto. Crea el `package.json`:
 
 ```json title="package.json"
 {
@@ -448,8 +444,7 @@ Hay que empaquetarla a un único archivo con [esbuild](https://esbuild.github.io
   "private": true,
   "type": "module",
   "scripts": {
-    "api": "node api.mjs",
-    "vendor": "esbuild islands/search.island.ts --bundle --format=esm --target=es2022 --minify --outfile=public/vendor/search.js"
+    "api": "node api.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2"
@@ -459,12 +454,11 @@ Hay que empaquetarla a un único archivo con [esbuild](https://esbuild.github.io
 
 ```bash
 npm install
-npm run vendor
-# public/vendor/search.js  425b
 ```
 
-Eso genera `public/vendor/search.js`, el módulo que declaramos en `[imports]` (paso 3). En la página, el `<div data-nexa-island="search">`
-(paso 6) lo carga cuando hace falta (`data-nexa-strategy="load"`) y le pasa `props` ya resueltos en el servidor, incluido el texto traducido.
+Ya está. `nexa dev` empaqueta al arrancar y **vuelve a hacerlo cuando cambias** una isla o un CSS; `nexa build` lo deja en `dist/assets/`.
+En la página, el `<div data-nexa-island="search">` (paso 6) carga el módulo cuando hace falta (`data-nexa-strategy="load"`) y le pasa
+`props` ya resueltos en el servidor, incluido el texto traducido.
 
 **Compruébalo.** En <http://127.0.0.1:4321/es/blog> aparece un campo de búsqueda; escribe «isla» y solo queda un artículo.
 

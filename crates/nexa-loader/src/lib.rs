@@ -8,6 +8,7 @@
 //! Python, Rust...). Nexa nunca ejecuta el JS del desarrollador para
 //! obtener datos; solo sabe pedirlos por HTTP.
 
+mod content;
 mod error;
 mod url;
 
@@ -28,6 +29,10 @@ pub fn load(
     api_base: &str,
 ) -> Result<serde_json::Value, LoaderError> {
     let path = resolve_url(&loader.url_template, params)?;
+    // Contenido local (`content:/posts`): archivos de `src/content/`, sin red.
+    if content::is_content(&path) {
+        return content::load(&path);
+    }
     let full_url = format!("{api_base}{path}");
 
     agent()

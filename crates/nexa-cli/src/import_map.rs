@@ -30,6 +30,8 @@ fn builtin_imports() -> Vec<(String, String)> {
 /// ignorarla).
 pub fn resolved(project_manifest: &Manifest) -> BTreeMap<String, String> {
     let mut map: BTreeMap<String, String> = builtin_imports().into_iter().collect();
+    // Islas empaquetadas por `nexa` (`islands/*.island.ts`, Fase 72)
+    map.extend(crate::assets_pipeline::generated().imports);
     map.extend(project_manifest.imports.clone());
     map
 }

@@ -68,6 +68,44 @@ pub struct Manifest {
     /// `[i18n]` (Fase 66) — el idioma por defecto del sitio.
     #[serde(default)]
     pub i18n: Option<I18nSection>,
+    /// `[build]` (Fase 72) — pasos propios del proyecto.
+    #[serde(default)]
+    pub build: Option<BuildSection>,
+    /// `[redirects]` (Fase 75): origen -> destino (o `{ to, status }`).
+    #[serde(default)]
+    pub redirects: BTreeMap<String, crate::rules::RedirectTarget>,
+    /// `[headers."/ruta/*"]` (Fase 75): cabeceras HTTP propias por ruta.
+    #[serde(default)]
+    pub headers: BTreeMap<String, BTreeMap<String, String>>,
+    /// `[security]` (Fase 75).
+    #[serde(default)]
+    pub security: Option<SecuritySection>,
+}
+
+/// `[security] csp = "default-src 'self'; img-src 'self' data:"`: Content-Security-Policy por
+/// página, con el hash de cada script en línea (sin `'unsafe-inline'`). Ver `csp.rs`.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct SecuritySection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub csp: Option<String>,
+}
+
+impl Manifest {
+    /// Redirecciones y cabeceras ya validadas.
+    pub fn rules(&self) -> anyhow::Result<(Vec<crate::rules::Redirect>, Vec<crate::rules::HeaderRule>)> {
+        let r = crate::rules::redirects_from(&self.redirects).map_err(|e| anyhow::anyhow!(e))?;
+        let h = crate::rules::headers_from(&self.headers).map_err(|e| anyhow::anyhow!(e))?;
+        Ok((r, h))
+    }
+}
+
+/// `[build] before = ["npx tailwindcss -i src/styles/tw.css -o src/styles/app.css"]`:
+/// comandos que `nexa build`/`nexa dev` ejecutan antes de empaquetar (Tailwind,
+/// Sass, generar datos…). Si uno falla, el build se detiene.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct BuildSection {
+    #[serde(default)]
+    pub before: Vec<String>,
 }
 
 /// `[i18n] default = "es"`: el idioma de las páginas que no viven bajo

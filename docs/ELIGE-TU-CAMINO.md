@@ -59,6 +59,14 @@ interactivo *dentro* de esa página (un filtro, un botón de "añadir al carrito
 No: es nativo de Core. `src/pages/[locale]/...` + `src/locales/<idioma>.json` + `t("clave")`. Nexa
 genera `hreflang` y pre-renderiza cada idioma (incluso sin ningún endpoint: lee `src/locales/`).
 
+**¿Necesito un backend para un blog o documentación?**
+No. Pon archivos Markdown en `src/content/` y usa `load = { url: "content:/posts" }`: es HTML real, con SEO, sin
+servidor de datos. Un ejemplo completo: `examples/content-demo` (con ruta comodín, 404 propio, redirecciones y CSP).
+
+**¿Cómo uso CSS, Tailwind o un paquete de npm?**
+Deja tus `.css` en `src/styles/` y tus islas en `islands/*.island.ts`: Nexa los empaqueta solo (esbuild) y los enlaza
+en todas las páginas. Las islas pueden importar paquetes de npm y CSS. Para Tailwind o Sass, `[build] before` en `nexa.toml`.
+
 **¿Puedo usar React / Vue?**
 Sí, pero no en las páginas de Core (esas son TSX de Nexa, sin hooks): en una **isla**, o montado con
 `ref` dentro del Modo App. Ver `examples/react-islands-demo`. TypeScript puro funciona en cualquiera de las tres.
@@ -97,6 +105,8 @@ recompilas para lo que publicas después.
 | Opción | Comando | Notas |
 |---|---|---|
 | Un ejecutable | `nexa bundle` | Sin Node ni nginx; gzip, caché, SPA, proxy y renderizado bajo demanda incluidos. Sin HTTPS propio: ponlo detrás de un proxy/balanceador. |
+| Contenedor | `nexa add docker` | Un `Dockerfile` que solo copia ese ejecutable. |
+| Hosting estático (Netlify, Cloudflare Pages, GitHub Pages) | `nexa build` | `dist/` lleva también `_redirects` y `_headers`, y la página 404. |
 | Estáticos + nginx | `nexa build` + `nexa add nginx` | Solo lo pre-renderizado; para renderizado bajo demanda hace falta el ejecutable. |
 | Escritorio | `nexa add tauri` + `nexa build --target desktop` | Binario nativo con el webview del sistema. |
 | Móvil | `nexa add capacitor` | Sin verificar en este repositorio. |

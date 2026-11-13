@@ -91,6 +91,12 @@ pub const ADDABLE: &[ModuleInfo] = &[
         stability: Stability::Experimental,
         description: "Genera deploy/nginx.conf para servir dist/ — gzip, cabeceras de seguridad, fallback de rutas dinámicas.",
     },
+    ModuleInfo {
+        name: "docker",
+        version: "0.1.0",
+        stability: Stability::Experimental,
+        description: "Genera un Dockerfile para el ejecutable de `nexa bundle` (imagen mínima, sin Node ni nginx).",
+    },
 ];
 
 /// Módulos que existen pero que **no** se declaran con `nexa add`: son

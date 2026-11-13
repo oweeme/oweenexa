@@ -16,7 +16,3 @@ title = "Panel"
 # `nexa dev`, `nexa preview` y el ejecutable reenvían /api/* a tu backend: mismo origen, sin CORS.
 [proxy]
 "/api" = "http://127.0.0.1:9500"
-
-# El módulo de la isla del buscador (lo genera `npm run vendor`).
-[imports]
-search = "/vendor/search.js"

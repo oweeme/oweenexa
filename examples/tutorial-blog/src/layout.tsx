@@ -1,8 +1,4 @@
 // Se envuelve TODA página con esto. El único elemento `data-nexa-slot` (vacío) es donde va la página.
-export const head = {
-    stylesheets: ["/site.css"],
-};
-
 export default function Layout() {
     return (
         <div class="shell">

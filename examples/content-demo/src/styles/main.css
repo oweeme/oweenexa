@@ -1,0 +1,7 @@
+@import "./_vars.css";
+body { font: 17px/1.6 system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; }
+.shell { max-width: 46rem; margin: 0 auto; padding: 1rem; }
+nav a { margin-right: 1rem; color: var(--accent); }
+.meta { color: #667; font-size: .9rem; }
+.docs { display: grid; grid-template-columns: 12rem 1fr; gap: 1.5rem; }
+.docs-nav { display: flex; flex-direction: column; gap: .3rem; }

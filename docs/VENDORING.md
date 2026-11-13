@@ -1,5 +1,10 @@
 # Vendoring de paquetes npm para `[imports]`
 
+> **Desde la Fase 72 casi nunca hace falta.** Crea `islands/<nombre>.island.js` con `export { default } from "paquete"`
+> (o el `import` que necesites) y Nexa lo empaqueta solo con esbuild y lo declara en el import map: ver
+> "Recursos: islas, CSS y pasos propios" en la [referencia](REFERENCIA.md). Esta guía sigue valiendo si prefieres
+> empaquetar tú (otro bundler, un paquete en una URL de CDN…).
+
 `nexa.toml [imports]` (Fase 15) solo declara un nombre y una URL:
 
 ```toml

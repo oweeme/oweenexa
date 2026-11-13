@@ -1,0 +1,16 @@
+[project]
+name = "content-demo"
+version = "0.1.0"
+
+# Redirecciones: un enlace viejo sigue funcionando.
+[redirects]
+"/articulos" = "/blog"
+"/guia/:pagina" = { to = "/docs/guia/:pagina", status = 302 }
+
+# Content-Security-Policy SIN 'unsafe-inline': cada página lleva el hash de sus scripts en línea.
+[security]
+csp = "default-src 'self'; img-src 'self' data:"
+
+# Cabeceras propias por ruta.
+[headers."/*"]
+X-Demo = "content-demo"

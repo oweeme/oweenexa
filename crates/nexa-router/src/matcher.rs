@@ -19,7 +19,16 @@ pub fn match_route<'a>(
         .or_else(|| {
             routes
                 .iter()
-                .filter(|r| r.is_dynamic())
+                .filter(|r| r.is_dynamic() && !r.has_catch_all())
                 .find_map(|r| r.matches(path).map(|params| (r, params)))
+        })
+        // `[...rest]` es el último recurso: lo que ninguna otra ruta reclama.
+        .or_else(|| {
+            routes
+                .iter()
+                .filter(|r| r.has_catch_all())
+                .filter_map(|r| r.matches(path).map(|params| (r, params)))
+                // el comodín más específico (el de prefijo más largo) gana
+                .max_by_key(|(r, _)| r.segments.len())
         })
 }

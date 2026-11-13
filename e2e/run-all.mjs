@@ -122,7 +122,6 @@ try {
     // phaser-demo
     if (want("phaser")) {
         install(ex("phaser-demo"));
-        run(npm, ["run", "vendor"], { cwd: ex("phaser-demo") });
         nexaIn(ex("phaser-demo"), ["build"]);
         const p = await serve(ex("phaser-demo"), 4331);
         await suite("phaser-demo · juego dentro del Modo App", "phaser.mjs", "http://127.0.0.1:4331");
@@ -134,7 +133,6 @@ try {
         const api = start(python, [join(ex("app-demo"), "backend.py")], { cwd: ex("app-demo") });
         await waitFor("http://127.0.0.1:9100/api/catalog", "API de app-demo");
         install(ex("react-islands-demo"));
-        run(npm, ["run", "vendor"], { cwd: ex("react-islands-demo") });
         const e = { NEXA_API_URL: "http://127.0.0.1:9100" };
         nexaIn(ex("react-islands-demo"), ["build"], e);
         const p = await serve(ex("react-islands-demo"), 4341, e);
@@ -159,7 +157,6 @@ try {
         const api = start(process.execPath, [join(ex("tutorial-blog"), "api.mjs")], { cwd: ex("tutorial-blog") });
         await waitFor("http://127.0.0.1:9500/api/posts", "API del tutorial");
         install(ex("tutorial-blog"));
-        run(npm, ["run", "vendor"], { cwd: ex("tutorial-blog") });
         const e = { NEXA_API_URL: "http://127.0.0.1:9500" };
         nexaIn(ex("tutorial-blog"), ["build"], e);
         nexaIn(ex("tutorial-blog"), ["lint"], e);
@@ -167,6 +164,15 @@ try {
         await suite("tutorial-blog · el proyecto del tutorial, de punta a punta", "tutorial.mjs", "http://127.0.0.1:4600");
         b.kill();
         api.kill();
+    }
+
+    // content-demo: sitio sin backend (Markdown local, comodín, 404, redirecciones, cabeceras, esbuild integrado)
+    if (want("content")) {
+        install(ex("content-demo"));
+        nexaIn(ex("content-demo"), ["build"]);
+        const b = await serveBundle(ex("content-demo"), "content-site", 4700, []);
+        await suite("content-demo · sitio sin backend, de punta a punta (ejecutable único)", "content-site.mjs", "http://127.0.0.1:4700");
+        b.kill();
     }
 
     // blog-store-demo: contenido enriquecido saneado + renderizado bajo demanda

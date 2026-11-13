@@ -53,6 +53,10 @@ pub fn run(name: &str) -> Result<()> {
     // ya pre-llenado con el nombre del proyecto, directo en nexa.toml
     // (vía el propio `Manifest`, no texto suelto) para que el usuario
     // solo tenga que completar el ícono y, si quiere, `[pwa.cache]`.
+    if name == "docker" {
+        crate::docker_scaffold::scaffold(Path::new("."), &project.project.name)?;
+        println!("Generado Dockerfile y .dockerignore.");
+    }
     if name == "pwa" && project.pwa.is_none() {
         project.pwa = Some(manifest::PwaSection {
             name: project.project.name.clone(),
@@ -115,6 +119,14 @@ pub fn run(name: &str) -> Result<()> {
         println!("  [pwa.cache]                # opcional — sin esto, todo cae a network-first");
         println!("  \"/assets\" = \"cache-first\"");
         println!("`nexa build` genera dist/manifest.webmanifest y dist/sw.js automáticamente.");
+    }
+
+    if name == "docker" {
+        println!();
+        println!("Siguientes pasos (el ejecutable se compila en Linux, que es lo que corre la imagen):");
+        println!("  nexa bundle --out {}-server", project.project.name);
+        println!("  docker build -t {} .", project.project.name);
+        println!("  docker run -p 8080:8080 -e NEXA_API_URL=https://tu-api {}", project.project.name);
     }
 
     if name == "nginx" {

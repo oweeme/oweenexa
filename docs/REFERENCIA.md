@@ -35,7 +35,10 @@ bitácora de cómo se construyó (esa es
 25. [`nexa.toml` — referencia completa](#nexatoml--referencia-completa)
 26. [Límites conocidos](#límites-conocidos)
 
-Además: [Componentes y `<Show>`](#componentes-y-show-fase-62) ·
+Además: [Recursos: islas y CSS](#recursos-islas-css-y-pasos-propios-fase-72) ·
+[Contenido local](#contenido-local-content--un-sitio-sin-backend-fase-73) ·
+[Redirecciones, cabeceras y CSP](#redirecciones-cabeceras-y-csp-fase-75) ·
+[Docker](#despliegue-en-contenedor-docker) · [Componentes y `<Show>`](#componentes-y-show-fase-62) ·
 [Modo App (SPA)](#modo-app-spa) · [Backend, proxy y sesión](#backend-proxy-y-sesión-proxy-createapi-persisted) ·
 [Un solo ejecutable (`nexa bundle`)](#un-solo-ejecutable-nexa-bundle). Guías: [Elige tu camino](ELIGE-TU-CAMINO.md) ·
 [Tutorial: blog y tienda](TUTORIAL-BLOG-TIENDA.md) · [Vendoring de terceros](VENDORING.md).
@@ -51,7 +54,7 @@ nexa build             Compila src/pages/**/*.tsx (y src/app/) -> dist/. --targe
 nexa bundle            nexa build + UN ejecutable con servidor, caché y renderizado bajo demanda.
 nexa preview [--port]  Sirve dist/; lo que falte se renderiza al vuelo. Puerto: 4321.
 nexa dev [--port]      Recompila cada página en cada request + auto-reload. Puerto: 4321.
-nexa add <módulo>      Declara un módulo oficial en nexa.toml/nexa.lock.
+nexa add <módulo>      Declara un módulo oficial en nexa.toml/nexa.lock (`docker`, `nginx`, `tauri`, …).
 nexa lint              Compila sin escribir dist/ (Core y Modo App); falla si hay avisos SEO/paquetes.
 nexa test              Compila (dist/ fresco) y corre el script "test" de package.json.
 ```
@@ -63,6 +66,10 @@ Variables de entorno que el CLI lee:
   se piden tal cual (útil si `load.url` ya es absoluta).
 - `NEXA_SITE_URL` — si está definida, `sitemap.xml`/`robots.txt` usan
   URLs absolutas; si no, quedan relativas y `nexa build` avisa.
+
+Las dos (y cualquier otra) se pueden poner en un archivo **`.env`** de la raíz del proyecto; `.env.local`
+(que no se sube a git) manda sobre `.env`, y una variable ya definida en el entorno real manda sobre ambos.
+El ejecutable de `nexa bundle` **no** lleva tu `.env`: en producción usa las variables reales del entorno.
 
 `nexa dev` sirve además un panel de diagnóstico flotante (clasificación
 de cada nodo, manifiesto de activación, avisos) y recarga el navegador
@@ -79,12 +86,17 @@ mi-sitio/
 ├── src/
 │   ├── layout.tsx      Opcional — envuelve toda página con header/footer (ver "Layouts").
 │   ├── pages/          Cada .tsx es una ruta de Nexa Core (HTML con SEO) — ver "Rutas".
+│   │   ├── 404.tsx     Opcional — tu página de error 404.
+│   │   ├── docs/_layout.tsx   Opcional — layout SOLO de las páginas de esa carpeta (anidado).
 │   │   └── [locale]/   Segmento dinámico especial para i18n (opcional).
+│   ├── content/        Opcional — Markdown y JSON locales: `load = { url: "content:/posts" }`.
+│   ├── styles/         Opcional — *.css: se empaquetan y se enlazan solos.
 │   ├── app/pages/      Opcional — rutas de la SPA (Modo App); + app/components, app/config.ts.
 │   ├── components/     Opcional — componentes de Nexa Core (se expanden al compilar).
 │   ├── locales/        <locale>.json — diccionarios planos para t().
-│   └── islands/        Convención libre — donde pongas tus *.island.ts.
+│   └── islands/        Opcional — *.island.ts (también vale `islands/` en la raíz): se empaquetan solas.
 ├── public/              Se copia tal cual a dist/ (imágenes, íconos, vendor/*.js de terceros).
+├── .env                 Opcional — variables (NEXA_API_URL…); `.env.local` no va a git.
 └── dist/                Salida de `nexa build` — 100% archivos estáticos servibles por cualquier servidor.
 ```
 
@@ -100,6 +112,9 @@ File-based routing sobre `src/pages/`:
 | `pages/products/[slug].tsx` | `/products/:slug` |
 | `pages/[locale]/index.tsx` | `/:locale` |
 | `pages/[locale]/products/[slug].tsx` | `/:locale/products/:slug` |
+| `pages/docs/[...path].tsx` | `/docs/a`, `/docs/a/b/c` (uno o más segmentos; `path = "a/b/c"`) |
+| `pages/404.tsx` | tu página de error 404 (ver abajo) |
+| `pages/docs/_layout.tsx` | no es una ruta: un layout (ver "Layouts anidados") |
 
 Una ruta puede tener varios segmentos dinámicos. `nexa build` compila
 directo a HTML cualquier ruta **sin** segmentos dinámicos; una ruta
@@ -108,6 +123,23 @@ si no, se sirve al vuelo con `nexa preview`/`nexa dev` — o, en producción,
 **bajo demanda con `nexa bundle`** (ver "Un solo ejecutable"). Un ejemplo con
 dos segmentos dinámicos, `src/pages/blog/[author]/[slug].tsx`, atiende
 `/blog/hectorarchitect/desarrollando-oweelinux-conlinux`.
+
+### Ruta comodín `[...nombre]`
+
+`[...path]` captura **uno o más** segmentos finales: `src/pages/docs/[...path].tsx` atiende `/docs/guia/instalar`
+con `params.path = "guia/instalar"`. Es el último recurso: una ruta exacta (`docs/intro.tsx`) o de un solo segmento
+(`docs/[seccion]/index.tsx`) siempre gana. Con `paths`, cada entrada trae `{"path": "guia/instalar"}` y se genera
+`dist/docs/guia/instalar/index.html` (los valores no pueden contener `..`, `\` ni segmentos vacíos). Sin `paths`, se
+renderiza bajo demanda (`nexa bundle`, `nexa preview`).
+
+Un `[...nombre]` dentro de `load` viaja codificado (`a%2Fb`) hacia tu API; con `content:` se decodifica a carpetas.
+
+### Página 404 propia
+
+`src/pages/404.tsx` es tu página «no encontrada». `nexa build` la publica como `dist/404.html` (no entra en el
+sitemap), y `nexa dev`, `nexa preview` y `nexa bundle` la sirven **con estado 404**: para una ruta que no existe, o
+cuando tu API respondió 404 para esos datos. Lleva el layout y el SEO como cualquier página. Sin ella, se usa una
+página mínima.
 
 ## Layouts compartidos
 
@@ -139,6 +171,21 @@ Puede usar `{params.x}`/`t(...)` igual que cualquier página (recibe los
 mismos `params`/traducciones que la página a la que envuelve). Sus
 clases `nx-*` de `@nexa/ui`, si las usa, se suman a las de cada página
 para decidir qué entra en `nexa-ui.css`.
+
+### Layouts anidados (`_layout.tsx`)
+
+Un `_layout.tsx` dentro de una carpeta de `src/pages/` envuelve **solo las páginas de esa carpeta** (y sus subcarpetas),
+dentro del `src/layout.tsx` global. Se anidan de fuera hacia dentro:
+
+```
+src/layout.tsx                  cabecera y pie del sitio
+src/pages/docs/_layout.tsx      barra lateral de la documentación
+src/pages/docs/guia/x.tsx       → x dentro de la barra, dentro de la cabecera
+```
+
+Las mismas reglas que el layout global: un único `data-nexa-slot` vacío, sin eventos propios (sí islas). Los
+archivos que empiezan por `_` no son páginas. La navegación sin recarga reemplaza el `data-nexa-slot` más externo,
+así que cambiar de sección siempre muestra el layout correcto.
 
 ### `export const head` — lo único que SÍ llega a `<head>` de verdad
 
@@ -1452,6 +1499,104 @@ archivo ESM servible, con dos ejemplos reales ya probados:
 `examples/oweeme-shop/src/pages/[locale]/articles.tsx` (vendorizado
 directo, sin wrapper).
 
+## Recursos: islas, CSS y pasos propios (Fase 72)
+
+Nexa trae esbuild integrado para lo que escribes tú. **Sin configuración**: las convenciones bastan.
+
+| Archivo | Resultado |
+|---|---|
+| `islands/<nombre>.island.ts` (o `.tsx`, `.js`, `.jsx`; también en `src/islands/`) | `/assets/islands/<nombre>.<hash>.js`. `<nombre>` se puede usar ya en `data-nexa-island="<nombre>"` (entra solo al import map). |
+| `src/styles/<nombre>.css` (los que empiezan por `_` son parciales) | `/assets/styles/<nombre>.<hash>.css`, enlazado **solo** en el `<head>` de todas las páginas y del shell del Modo App. |
+
+Una isla puede importar otros archivos, **paquetes de npm** y CSS (`import "./counter.css"`: ese CSS se enlaza también).
+Un CSS puede usar `@import`, y se minifica. Los archivos llevan hash en el nombre: caché inmutable.
+
+Requisito único: `esbuild` en el proyecto (`npm install -D esbuild`; o en el `PATH`). Si hay islas o estilos y no está,
+`nexa` lo dice con ese mismo comando. Sin islas ni estilos no se necesita nada.
+
+- `nexa build` deja los archivos en `dist/assets/`; lo generado vive en `.nexa/` (ponlo en `.gitignore`, `nexa create` ya lo hace).
+- `nexa dev` empaqueta al arrancar y **otra vez cuando cambias** una isla o un CSS.
+- Para Tailwind, Sass o cualquier generador: `[build] before = ["comando", …]` en `nexa.toml` corre esos comandos antes
+  de empaquetar. Si uno falla, el build se detiene. Ejemplo con Tailwind v4: `before = ["npx @tailwindcss/cli -i src/styles/tw.css -o src/styles/app.css"]`
+  (y `src/styles/tw.css` empieza con `@import "tailwindcss";`; `app.css` es el que se empaqueta, así que ignora `tw.css` con `_tw.css`).
+- Lo que ya escribías a mano (`public/vendor/x.js` + `[imports]`) **sigue funcionando**; un `[imports]` con el mismo nombre gana.
+
+## Contenido local (`content:`) — un sitio sin backend (Fase 73)
+
+`load` y `paths` aceptan, en lugar de una URL de API, un camino bajo `src/content/`:
+
+```tsx
+export const load = { url: "content:/posts" };          // lista de src/content/posts/*.md|json
+export const load = { url: "content:/posts/:slug" };    // una entrada (404 si no existe)
+export const paths = { url: "content:/posts" };         // pre-renderizar todas
+```
+
+Cada `.md` es **cabecera + cuerpo**:
+
+```md
+---
+title: Hola desde un archivo
+date: 2025-03-10
+tags: [nexa, markdown]
+draft: false
+---
+## Sin backend
+Texto en **Markdown**.
+```
+
+La entrada que recibe la página tiene los campos de la cabecera, más `slug` (el nombre del archivo), `path` (la ruta
+dentro de la colección, útil para `[...path]`) y `body` (el Markdown: pásalo a `<Markdown text={data.body} />`, que lo
+convierte y **sanea**). Un `.json` con un objeto aporta sus campos; con cualquier otro valor se devuelve tal cual
+(`content:/site` → `src/content/site.json`).
+
+- **Cabecera**: un YAML sencillo — `clave: valor`, cadenas con o sin comillas, números, `true`/`false`/`null`, listas
+  `[a, b]` o con `- elemento`. Nada de objetos anidados.
+- **Orden**: por `date` (más reciente primero) si todas la tienen; si no, por nombre.
+- **Borradores**: `draft: true` no existe (ni en la lista ni como página).
+- **Anidado**: `content:/docs` lista también las subcarpetas; `docs/guia/index.md` es la página `guia`.
+- **Paginación**: `content:/posts?perPage=5&page=:n` trae una página; `content:/posts?perPage=5&pages` devuelve
+  `[{"n":"1"},{"n":"2"},…]`, que es justo lo que `paths` necesita para `src/pages/blog/page/[n].tsx`.
+- **Seguridad**: los nombres solo admiten letras, números, `-`, `_` y `.`; `..`, `%2e%2e`, rutas absolutas y `\`
+  son 404, nunca leen fuera de `src/content/`.
+- `nexa bundle` embebe `src/content/` con las fuentes: cambiar un archivo = volver a empaquetar.
+
+Ejemplo completo y probado en Chrome: `examples/content-demo`.
+
+**Paginar contra una API** es igual de simple y no necesita nada especial: `paths` devuelve `[{"n":"1"},{"n":"2"}]` y
+`load = { url: "/api/posts?page=:n" }`. (Un `?page=2` en la URL del visitante no cambia una página ya pre-renderizada:
+la paginación de Nexa es por ruta, `/blog/page/2`, que además es lo que indexan los buscadores.)
+
+## Redirecciones, cabeceras y CSP (Fase 75)
+
+```toml
+[redirects]
+"/articulos" = "/blog"                                   # 301
+"/tienda/:slug" = { to = "/shop/:slug", status = 302 }   # :nombre captura un segmento
+"/docs/v1/*" = "/docs/*"                                 # * captura el resto
+
+[headers."/*"]                                           # cabeceras por ruta (`*` final = el resto)
+X-Robots-Tag = "noindex"
+[headers."/assets/*"]
+Cache-Control = "public, max-age=31536000, immutable"
+
+[security]
+csp = "default-src 'self'; img-src 'self' data:"
+```
+
+- **Redirecciones**: estados 301, 302, 303, 307 o 308. El destino debe empezar por `/`, `http://` o `https://`; lo
+  capturado se codifica y nunca puede convertir `/x` en `//otro-sitio` (redirección abierta). Las aplican `nexa dev`,
+  `nexa preview` y el ejecutable de `nexa bundle`. `nexa build` escribe además `dist/_redirects` (Netlify, Cloudflare
+  Pages) y, para las exactas, una página con `<meta refresh>` que funciona hasta en GitHub Pages.
+- **Cabeceras**: las del proyecto pisan las de serie. `nexa build` escribe `dist/_headers` (Netlify, Cloudflare Pages).
+  Se rechazan nombres o valores con saltos de línea.
+- **`[security] csp`**: una Content-Security-Policy **sin `'unsafe-inline'`**. Nexa pone scripts en línea (el import
+  map, el arranque de la página), así que una CSP normal los bloquearía. Con `csp`, cada página lleva un
+  `<meta http-equiv="Content-Security-Policy">` con tu política más `script-src 'self'` y el **hash SHA-256 de cada script
+  en línea de esa página**: un script inyectado (XSS) no tiene hash y el navegador no lo ejecuta. Si tu política ya trae
+  `script-src`, se amplía. Una `<meta>` no admite `frame-ancestors`, `report-uri` ni `sandbox`: esas van por `[headers]`.
+  Comprobado en Chrome (`e2e/content-site.mjs`): la página funciona sin errores de consola. Ojo con **tus** recursos: si tu
+  página usa `style="..."` o una fuente externa, tu política tiene que permitirlos (`style-src 'self' 'unsafe-inline'`…).
+
 ## Imágenes optimizadas automáticamente
 
 Sin configuración: `nexa build` optimiza todo `<img src="/foto.jpg">`
@@ -1657,6 +1802,19 @@ en las páginas renderizadas bajo demanda (sí en las pre-renderizadas). `sitema
 lista solo lo pre-renderizado. Tampoco hay reinicio sin cortes: un redeploy es
 reemplazar el ejecutable.
 
+## Despliegue en contenedor (`docker`)
+
+`nexa add docker` genera un `Dockerfile` y un `.dockerignore` para el ejecutable de `nexa bundle`:
+
+```
+nexa bundle --out mi-sitio-server        # en Linux
+docker build -t mi-sitio .
+docker run -p 8080:8080 -e NEXA_API_URL=https://tu-api mi-sitio
+```
+
+La imagen solo copia ese archivo (sin Node, sin nginx) y corre sin privilegios. Compílalo en una distribución con una
+glibc igual o más antigua que la de la imagen base.
+
 ## Despliegue (`nginx`)
 
 ```bash
@@ -1748,6 +1906,18 @@ default = "es"           # idioma por defecto y de respaldo
 
 [bundle]
 revalidate = 60          # nexa bundle: segundos de caché de lo renderizado bajo demanda
+
+[build]
+before = ["npx @tailwindcss/cli -i src/styles/_tw.css -o src/styles/app.css"]   # comandos previos (Fase 72)
+
+[redirects]              # Fase 75
+"/viejo" = "/nuevo"
+
+[headers."/*"]           # Fase 75
+X-Robots-Tag = "noindex"
+
+[security]               # Fase 75
+csp = "default-src 'self'"
 ```
 
 Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
@@ -1846,8 +2016,7 @@ archivo. Ver `examples/app-demo` y la Fase 60 en
 
 - Componentes (Fase 62): se expanden en tiempo de compilación — sin
   recursión, sin spread de props, y un prop solo puede ser un valor
-  simbólico (ver "Componentes y `<Show>`"). Sin layouts anidados por
-  directorio todavía.
+  simbólico (ver "Componentes y `<Show>`").
 - `load`/`paths`/`seo`/`schema` son literales estáticos, nunca
   funciones — sin headers, sin autenticación, sin mutaciones en el
   servidor.
@@ -1872,13 +2041,13 @@ archivo. Ver `examples/app-demo` y la Fase 60 en
   reactiva correctamente eventos, formularios e islas de la página de
   destino (Fase 22), y limpia los de la página anterior antes de
   hacerlo — todo esto acotado al contenedor real que cambió.
-- `t(...)` no soporta interpolación, pluralización, ni clave dinámica —
-  y no hay fallback automático a otro locale si falta una clave.
+- `t(...)` no soporta interpolación, pluralización, ni clave dinámica
+  (una clave sin traducir sí cae al idioma por defecto, ver "Internacionalización").
 - `@nexa/forms` valida solo con la Constraint Validation API nativa —
   sin reglas async o entre varios campos a la vez.
-- `src/layout.tsx` es único para todo el proyecto (sin anidar por
-  directorio) y no admite eventos interactivos propios (`onClick`,
+- Un layout (global o `_layout.tsx`) no admite eventos interactivos propios (`onClick`,
   etc.) — sí admite islas desde la Fase 31 — ver "Layouts compartidos".
+- Un `?parametro=` en la URL del visitante no llega a `load`: la página se renderiza (y se cachea) por ruta. Pagina por ruta (`/blog/page/2`).
 - WebSocket/SSE: `connectSSE`/`connectSocket` (`@nexa/http`, con
   reconexión) se usan desde el Modo App o una isla — una página de Nexa
   Core es HTML estático y no puede suscribirse a nada por sí misma.

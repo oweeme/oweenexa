@@ -45,6 +45,7 @@ pub fn run(port: u16) -> Result<()> {
     }
 
     let api_base = std::env::var("NEXA_API_URL").unwrap_or_default();
+    refresh_assets();
 
     let address = format!("127.0.0.1:{port}");
     let server = Server::http(&address)
@@ -76,7 +77,7 @@ pub fn run(port: u16) -> Result<()> {
             }
         }
         let url = request.url().to_string();
-        let response = handle(pages_dir, &url, &api_base);
+        let response = crate::serve::answer_with_rules(&request_path(&url), || handle(pages_dir, &url, &api_base));
 
         let _ = request.respond(response);
     }
@@ -84,9 +85,38 @@ pub fn run(port: u16) -> Result<()> {
     Ok(())
 }
 
+/// Empaqueta islas y CSS (Fase 72) al arrancar y cada vez que cambian sus
+/// fuentes. Un error se muestra en la terminal, no tumba el servidor.
+fn refresh_assets() {
+    use std::sync::Mutex;
+    static LAST: Mutex<Option<String>> = Mutex::new(None);
+    let marker = crate::assets_pipeline::watch_marker(Path::new("."));
+    let Ok(mut last) = LAST.lock() else { return };
+    if last.as_deref() == Some(marker.as_str()) {
+        return;
+    }
+    *last = Some(marker);
+    let manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
+    let before = manifest.build.map(|b| b.before).unwrap_or_default();
+    match crate::assets_pipeline::run(Path::new("."), &before) {
+        Ok(g) if g != Default::default() => {
+            println!("Empaquetado: {} isla(s), {} hoja(s) de estilo.", g.imports.len(), g.styles.len())
+        }
+        Ok(_) => {}
+        Err(e) => eprintln!("Error empaquetando recursos: {e:#}"),
+    }
+}
+
 fn handle(pages_dir: &Path, url: &str, api_base: &str) -> Response<std::io::Cursor<Vec<u8>>> {
     let path = request_path(url);
     let path = path.as_str();
+
+    refresh_assets();
+    if path.starts_with("/assets/") {
+        if let Some(bytes) = read_static_file(Path::new(crate::assets_pipeline::GEN_DIR), path) {
+            return respond_bytes(200, guess_static_content_type(path), bytes);
+        }
+    }
 
     if path == VERSION_ENDPOINT {
         return respond(200, text_content_type(), version_marker(Path::new("src")));
@@ -156,7 +186,10 @@ fn handle(pages_dir: &Path, url: &str, api_base: &str) -> Response<std::io::Curs
         Ok(html) => respond(200, html_content_type(), with_dev_client(&html)),
         Err(ResolveError::NotFound) => match (path == "/").then(|| crate::page_resolver::locale_gate_for_root(pages_dir)).flatten() {
             Some(gate) => respond(200, html_content_type(), with_dev_client(&gate)),
-            None => respond(404, html_content_type(), with_dev_client(&not_found_page(path))),
+            None => match crate::page_resolver::custom_404(pages_dir, api_base) {
+                Some(html) => respond(404, html_content_type(), with_dev_client(&html)),
+                None => respond(404, html_content_type(), with_dev_client(&not_found_page(path))),
+            },
         },
         Err(ResolveError::Failed(message)) => {
             respond(500, html_content_type(), with_dev_client(&compile_error_page(&message)))
@@ -189,7 +222,8 @@ fn with_dev_client(html: &str) -> String {
          initDevtools();\n\
          </script>\n"
     );
-    insert_before_closing_tag(html, "head", &script)
+    // el cliente de desarrollo también es un script en línea: se rehacen los hashes de la CSP
+    crate::csp::reapply(&insert_before_closing_tag(html, "head", &script))
 }
 
 fn not_found_page(path: &str) -> String {

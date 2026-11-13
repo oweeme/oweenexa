@@ -5,11 +5,15 @@ pub enum Segment {
     Static(String),
     /// El nombre es el del parámetro capturado (`[slug]` -> `"slug"`).
     Dynamic(String),
+    /// `[...rest]` (Fase 74): captura uno o más segmentos finales
+    /// (`/docs/a/b/c` → `rest = "a/b/c"`). Solo tiene sentido como último segmento.
+    CatchAll(String),
 }
 
 impl Segment {
     pub(crate) fn parse(raw: &str) -> Segment {
         match raw.strip_prefix('[').and_then(|s| s.strip_suffix(']')) {
+            Some(name) if name.starts_with("...") && name.len() > 3 => Segment::CatchAll(name[3..].to_string()),
             Some(name) => Segment::Dynamic(name.to_string()),
             None => Segment::Static(raw.to_string()),
         }

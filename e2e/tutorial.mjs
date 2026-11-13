@@ -21,7 +21,7 @@ const text = async (url) => (await fetch(base + url)).text();
 const post = await text("/es/blog/hola-nexa");
 ok("el post ya es HTML real: el Markdown de la API llegó convertido", post.includes("<h2>Un sitio con HTML real</h2>") && post.includes("<strong>Markdown</strong>"));
 ok("SEO: <title>, JSON-LD (Article) y hreflang con x-default", post.includes("<title>Hola, Nexa — Mi blog</title>") && post.includes('"@type":"Article"') && post.includes('hreflang="x-default"'));
-ok("el layout envuelve la página (cabecera, pie y hoja de estilo)", post.includes('class="brand"') && post.includes("Un sitio hecho con Nexa") && post.includes('href="/site.css"'));
+ok("el layout envuelve la página (cabecera, pie y hoja de estilo)", post.includes('class="brand"') && post.includes("Un sitio hecho con Nexa") && /href="\/assets\/styles\/site\.[0-9a-f]+\.css"/.test(post));
 const blogList = await text("/es/blog");
 ok("la lista del blog ya está en el HTML (sin JavaScript)", blogList.includes("Qué es una isla") && blogList.includes("Hola, Nexa"));
 

@@ -55,6 +55,11 @@ pub struct Config {
     /// de volver a pedirle los datos a la API (0 = nunca cachear).
     #[serde(default = "default_revalidate")]
     pub revalidate: u64,
+    /// `[redirects]` y `[headers]` de `nexa.toml` (Fase 75).
+    #[serde(default)]
+    pub redirects: Vec<crate::rules::Redirect>,
+    #[serde(default)]
+    pub headers: Vec<crate::rules::HeaderRule>,
 }
 
 fn default_revalidate() -> u64 {
@@ -233,7 +238,8 @@ pub fn collect_sources(project_root: &Path) -> Result<Vec<(String, Vec<u8>)>> {
     if src.is_dir() {
         walk(&src, project_root, &mut out)?;
     }
-    for name in ["nexa.toml", "nexa.lock"] {
+    // El índice de islas/estilos empaquetados (Fase 72): el render bajo demanda lo necesita.
+    for name in [".nexa/gen/assets.json", "nexa.toml", "nexa.lock"] {
         let file = project_root.join(name);
         if file.is_file() {
             out.push((name.to_string(), fs::read(&file)?));
@@ -268,7 +274,7 @@ mod tests {
     use super::*;
 
     fn config() -> Config {
-        Config { name: "demo".into(), app_base: Some("/app".into()), proxy: [("/api".to_string(), "http://x".to_string())].into(), default_port: 8080, dynamic: false, revalidate: 60 }
+        Config { name: "demo".into(), app_base: Some("/app".into()), proxy: [("/api".to_string(), "http://x".to_string())].into(), default_port: 8080, dynamic: false, revalidate: 60, redirects: vec![], headers: vec![] }
     }
 
     fn files() -> Vec<(String, Vec<u8>)> {

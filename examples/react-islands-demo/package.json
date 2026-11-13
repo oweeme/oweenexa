@@ -1,10 +1,7 @@
 {
   "name": "react-islands-demo",
   "private": true,
-  "description": "React y TypeScript puro dentro de Nexa: islas (Core) y `ref` (Modo App). `npm run vendor` empaqueta las islas a public/vendor/.",
-  "scripts": {
-    "vendor": "node vendor.mjs"
-  },
+  "description": "React y TypeScript puro dentro de Nexa: islas (Core) y `ref` (Modo App). Nexa empaqueta islands/*.island.ts(x) con esbuild.",
   "dependencies": {
     "react": "^19",
     "react-dom": "^19"

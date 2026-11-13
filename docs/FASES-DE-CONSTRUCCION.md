@@ -4594,6 +4594,46 @@ las suites de Chrome en Windows/macOS y `nexa bundle --runtime` entre sistemas o
 
 ---
 
+## Fases 72–77 — Lo que le faltaba a un framework de frontend completo
+
+**Por qué.** Tras la Fase 71, una revisión del código contra lo que se espera de un framework de frontend dejó una
+lista priorizada de huecos. Estas fases cierran los de prioridad alta; cada uno con pruebas y, donde aplica, probado
+en un Chrome real con `examples/content-demo` (`e2e/content-site.mjs`, 26 comprobaciones).
+
+**72 — Recursos integrados (esbuild).** `islands/*.island.{ts,tsx,js,jsx}` y `src/styles/*.css` se empaquetan solos
+(con `import` de archivos propios, paquetes de npm y CSS; `@import` en CSS), con hash en el nombre, y se enlazan en el
+`<head>` (CSS) o entran al import map (islas). `nexa dev` los rehace al cambiar. `[build] before = [...]` ejecuta
+comandos previos (Tailwind, Sass…). Antes: `npm run vendor` a mano + `[imports]`; el tutorial ya no lo necesita.
+Módulo `assets_pipeline.rs`; lo generado vive en `.nexa/gen/`.
+
+**73 — Contenido local (`content:`).** `load`/`paths` leen `src/content/` (Markdown con cabecera YAML, JSON):
+colecciones, entradas, anidado, borradores, orden por fecha, paginación (`?perPage=&page=` y `?pages` para `paths`).
+Nombres validados (sin `..`, `%2e`, absolutos). Sitio de blog o documentación sin backend. Módulo `nexa-loader/content.rs`.
+
+**74 — Rutas completas.** Comodín `[...nombre]` (uno o más segmentos; el más específico gana; solo el último recurso),
+`src/pages/404.tsx` (publicada como `dist/404.html`, servida con 404 en dev/preview/bundle) y layouts anidados
+`_layout.tsx` por carpeta. Los archivos `_*.tsx` no son rutas. Los valores de `paths` ya no pueden salirse de `dist/`.
+
+**75 — Redirecciones, cabeceras y CSP.** `[redirects]` (301/302/303/307/308, `:param` y `*`, sin redirección abierta),
+`[headers."/ruta"]` y `[security] csp`: una Content-Security-Policy sin `'unsafe-inline'` que añade el hash SHA-256 de
+cada script en línea de cada página (SHA-256 implementado sin dependencias y comprobado con los vectores estándar). Se
+aplican en dev, preview y el ejecutable; `nexa build` escribe `_redirects`, `_headers` y páginas `<meta refresh>`.
+
+**76 — `.env` y Docker.** `.env` y `.env.local` se cargan al entorno (lo real manda). `nexa add docker` genera un
+`Dockerfile` para el ejecutable de `nexa bundle`.
+
+**77 — Tutorial.** El proyecto del tutorial usa los recursos integrados: desaparecieron el `npm run vendor`, el
+`[imports]` y el `<link>` manual (el verificador del tutorial y la suite de Chrome siguen en verde).
+
+**Decisión consciente: sin `?param=` en `load`.** Las páginas se renderizan y se cachean por ruta; un parámetro de
+consulta del visitante no es parte de ella (una página pre-renderizada lo ignoraría). La paginación es por ruta
+(`/blog/page/2`), que es además lo que indexan los buscadores.
+
+**Pendiente (prioridad media y baja):** autenticación en `load` (cookies/cabeceras), i18n del Modo App y plurales,
+`stale-while-revalidate` y purga de caché, comando de comprobación de tipos, feed RSS, imágenes sociales generadas.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

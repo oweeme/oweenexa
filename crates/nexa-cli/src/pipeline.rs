@@ -238,22 +238,17 @@ pub fn compile_page(
     let mut layout_ui_used_classes = std::collections::BTreeSet::new();
     let mut layout_head_html = String::new();
     let mut layout_island_specifiers = std::collections::BTreeSet::new();
-    let body = match crate::layout::find() {
-        Some(layout_file) => {
-            let rendered = crate::layout::render_for_page(
-                &layout_file,
-                &body,
-                params,
-                translations.as_ref(),
-                current_path.as_deref(),
-            )?;
-            layout_ui_used_classes = rendered.ui_used_classes;
-            layout_head_html = rendered.head_html;
-            layout_island_specifiers = rendered.island_specifiers;
-            rendered.html
-        }
-        None => body,
-    };
+    // Layouts anidados (Fase 77): `src/pages/<carpeta>/_layout.tsx` envuelve las páginas de esa
+    // carpeta, y todos quedan dentro del `src/layout.tsx` global. De dentro hacia fuera.
+    let mut body = body;
+    for layout_file in crate::layout::chain(file) {
+        let rendered = crate::layout::render_for_page(&layout_file, &body, params, translations.as_ref(), current_path.as_deref())?;
+        layout_ui_used_classes.extend(rendered.ui_used_classes);
+        // el `<head>` del más externo va primero
+        layout_head_html = join_head_fragments(&rendered.head_html, &layout_head_html);
+        layout_island_specifiers.extend(rendered.island_specifiers);
+        body = rendered.html;
+    }
 
     let seo_ctx = SeoContext { data: data.as_ref(), params, translations: translations.as_ref() };
     let seo_head = nexa_seo::render_head(component.seo.as_ref(), &seo_ctx);
@@ -285,6 +280,8 @@ pub fn compile_page(
     // (ej. un `theme-color` distinto) sin que el orden en el HTML
     // final quede ambiguo sobre cuál "gana" para el navegador.
     let combined_head = join_head_fragments(&combined_head, &page_head_html);
+    // CSS empaquetado desde `src/styles/` (Fase 72)
+    let combined_head = join_head_fragments(&combined_head, &crate::assets_pipeline::styles_head());
 
     let mut ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
     ui_used_classes.extend(layout_ui_used_classes);
@@ -341,6 +338,11 @@ pub fn compile_page(
     let has_islands = !island_specifiers.is_empty();
     let has_pwa = project_manifest.pwa.is_some();
     let html = bootstrap::inject(&html, &activation_manifest, has_forms, has_islands, has_pwa, telemetry_endpoint);
+    // `[security] csp` (Fase 75): política con el hash de cada script en línea
+    let html = match project_manifest.security.as_ref().and_then(|s| s.csp.as_deref()).filter(|p| !p.trim().is_empty()) {
+        Some(policy) => crate::csp::apply(&html, policy),
+        None => html,
+    };
 
     let has_platform = component.handlers.values().any(|source| source.contains("platform."));
     let pkg_warnings = pkg_warnings::check(

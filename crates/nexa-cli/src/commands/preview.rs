@@ -51,7 +51,7 @@ pub fn run(port: u16) -> Result<()> {
             }
         }
         let path = request_path(request.url());
-        let response = handle(pages_dir, &path, &api_base);
+        let response = crate::serve::answer_with_rules(&path, || handle(pages_dir, &path, &api_base));
 
         let _ = request.respond(response);
     }
@@ -101,7 +101,10 @@ fn handle(pages_dir: &Path, path: &str, api_base: &str) -> Response<std::io::Cur
             Some(bytes) => respond_bytes(200, guess_static_content_type(path), bytes),
             None => match (path == "/").then(|| crate::page_resolver::locale_gate_for_root(pages_dir)).flatten() {
                 Some(gate) => respond(200, html_content_type(), gate),
-                None => respond(404, html_content_type(), not_found_page(path)),
+                None => match crate::page_resolver::custom_404(pages_dir, api_base) {
+                    Some(html) => respond(404, html_content_type(), html),
+                    None => respond(404, html_content_type(), not_found_page(path)),
+                },
             },
         },
         Err(ResolveError::Failed(message)) => {

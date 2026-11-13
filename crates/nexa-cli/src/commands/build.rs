@@ -48,6 +48,18 @@ pub fn run_for(desktop: bool) -> Result<()> {
         .context("copiando public/ a dist/")?;
 
     let project_manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
+    // Islas y CSS del proyecto (Fase 72): esbuild integrado.
+    let before = project_manifest.build.as_ref().map(|b| b.before.clone()).unwrap_or_default();
+    let generated = crate::assets_pipeline::run(Path::new("."), &before)?;
+    if generated != Default::default() {
+        crate::copy_dir::copy_recursive(Path::new(".nexa/gen/assets"), Path::new("dist/assets"))
+            .context("copiando los recursos empaquetados a dist/")?;
+        println!(
+            "Empaquetado: {} isla(s), {} hoja(s) de estilo (esbuild).",
+            generated.imports.len(),
+            generated.styles.len()
+        );
+    }
     if let Some(pwa) = &project_manifest.pwa {
         write_pwa_assets(pwa)?;
     }
@@ -155,14 +167,13 @@ pub fn run_for(desktop: bool) -> Result<()> {
         .context("optimizando imágenes")?;
 
         write_page_assets(route, &page)?;
-        pending_html.push((output_dir(route).join("index.html"), page.html.clone()));
+        // `src/pages/404.tsx` es tu página de error (Fase 74): se publica como
+        // `dist/404.html` (nginx y `nexa bundle` la sirven con estado 404) y no es una ruta más.
+        let is_404 = route.pattern == "/404";
+        let out_html = if is_404 { PathBuf::from("dist/404.html") } else { output_dir(route).join("index.html") };
+        pending_html.push((out_html.clone(), page.html.clone()));
 
-        println!(
-            "Compilado {} -> {} ({} bytes)",
-            route.pattern,
-            output_dir(route).join("index.html").display(),
-            page.html.len()
-        );
+        println!("Compilado {} -> {} ({} bytes)", route.pattern, out_html.display(), page.html.len());
         print_classification_summary(&page.ir);
         print_activation_summary(&page.manifest, page.chunks.len());
         print_seo_warnings(&page.seo_warnings);
@@ -175,7 +186,11 @@ pub fn run_for(desktop: bool) -> Result<()> {
             largest_image: largest_static_image(&page),
         });
 
-        built_patterns.push(route.pattern.clone());
+        if is_404 {
+            let _ = fs::remove_dir_all("dist/404"); // solo quedaba su manifiesto de activación
+        } else {
+            built_patterns.push(route.pattern.clone());
+        }
         ui_classes.extend(page.ui_used_classes);
         built += 1;
     }
@@ -188,6 +203,7 @@ pub fn run_for(desktop: bool) -> Result<()> {
     }
 
     write_site_files(&built_patterns, site_url.as_deref())?;
+    write_rule_files(&project_manifest)?;
     let ui_stylesheet = write_ui_stylesheet(&ui_classes)?;
     let ui_css_bytes = ui_stylesheet.as_ref().map(|(bytes, _)| *bytes);
 
@@ -321,6 +337,12 @@ fn output_dir_for_params(route: &Route, params: &BTreeMap<String, String>) -> Pa
         match segment {
             Segment::Static(name) => dir.push(name),
             Segment::Dynamic(name) => dir.push(params.get(name).map(String::as_str).unwrap_or_default()),
+            // `a/b/c` → tres directorios (los valores ya vienen validados en `enumerate_paths`)
+            Segment::CatchAll(name) => {
+                for part in params.get(name).map(String::as_str).unwrap_or_default().split('/') {
+                    dir.push(part);
+                }
+            }
         }
     }
     dir
@@ -338,7 +360,7 @@ pub(crate) fn resolved_pattern(route: &Route, params: &BTreeMap<String, String>)
         .iter()
         .map(|s| match s {
             Segment::Static(name) => name.clone(),
-            Segment::Dynamic(name) => params.get(name).cloned().unwrap_or_default(),
+            Segment::Dynamic(name) | Segment::CatchAll(name) => params.get(name).cloned().unwrap_or_default(),
         })
         .collect::<Vec<_>>()
         .join("/");
@@ -372,7 +394,7 @@ fn dynamic_names(route: &Route) -> Vec<&str> {
         .segments
         .iter()
         .filter_map(|s| match s {
-            Segment::Dynamic(name) => Some(name.as_str()),
+            Segment::Dynamic(name) | Segment::CatchAll(name) => Some(name.as_str()),
             Segment::Static(_) => None,
         })
         .collect()
@@ -402,7 +424,7 @@ pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> 
         .segments
         .iter()
         .filter_map(|s| match s {
-            Segment::Dynamic(name) => Some(name.as_str()),
+            Segment::Dynamic(name) | Segment::CatchAll(name) => Some(name.as_str()),
             Segment::Static(_) => None,
         })
         .collect();
@@ -422,6 +444,15 @@ pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> 
         for name in &dynamic_names {
             match obj.get(*name).and_then(|v| v.as_str()) {
                 Some(value) => {
+                    let catch_all = route.segments.iter().any(|s| matches!(s, Segment::CatchAll(n) if n == name));
+                    if !safe_path_value(value, catch_all) {
+                        return Err(anyhow::anyhow!(
+                            "{}: el valor `{value}` de `{name}` en `paths` no es un nombre de carpeta válido \
+                             (sin `..`, `\\` ni segmentos vacíos{})",
+                            route.pattern,
+                            if catch_all { "" } else { "; usa `[...nombre]` si necesitas varias capas" }
+                        ));
+                    }
                     params.insert((*name).to_string(), value.to_string());
                 }
                 None if *name == "locale" && !locales.is_empty() => needs_every_locale = true,
@@ -444,6 +475,42 @@ pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> 
         }
     }
     Ok(sets)
+}
+
+/// `[redirects]` y `[headers]` (Fase 75) para hosts estáticos: `dist/_redirects` y
+/// `dist/_headers` (Netlify, Cloudflare Pages) y, para las redirecciones exactas
+/// (sin `:param` ni `*`), una página con `<meta refresh>` que funciona hasta en GitHub Pages.
+fn write_rule_files(manifest: &crate::manifest::Manifest) -> Result<()> {
+    let (redirects, headers) = manifest.rules()?;
+    if !redirects.is_empty() {
+        fs::write("dist/_redirects", crate::rules::netlify_redirects(&redirects))?;
+        for r in &redirects {
+            let exact = !r.from.contains(':') && !r.from.contains('*') && !r.to.contains('*') && !r.to.contains(':');
+            let dir = Path::new("dist").join(r.from.trim_matches('/'));
+            if exact && r.from != "/" && !dir.join("index.html").exists() {
+                fs::create_dir_all(&dir)?;
+                fs::write(dir.join("index.html"), crate::rules::meta_refresh_page(&r.to))?;
+            }
+        }
+        println!("Generado dist/_redirects ({} redirección(es)).", redirects.len());
+    }
+    if !headers.is_empty() {
+        fs::write("dist/_headers", crate::rules::netlify_headers(&headers))?;
+        println!("Generado dist/_headers ({} regla(s)).", headers.len());
+    }
+    Ok(())
+}
+
+/// Un valor de `paths` se convierte en carpetas de `dist/`: no puede salirse de ahí.
+fn safe_path_value(value: &str, allow_slashes: bool) -> bool {
+    if value.is_empty() || value.contains('\\') || value.contains('\0') {
+        return false;
+    }
+    let parts: Vec<&str> = value.split('/').collect();
+    if parts.len() > 1 && !allow_slashes {
+        return false;
+    }
+    parts.iter().all(|p| !p.is_empty() && *p != "." && *p != "..")
 }
 
 fn write_page_assets(route: &Route, page: &CompiledPage) -> Result<()> {
@@ -578,5 +645,20 @@ fn print_seo_warnings(warnings: &[Warning]) {
 fn print_pkg_warnings(warnings: &[crate::pkg_warnings::PackageWarning]) {
     for warning in warnings {
         println!("  [{}] {}", warning.code, warning.message);
+    }
+}
+
+#[cfg(test)]
+mod path_value_tests {
+    use super::safe_path_value;
+
+    #[test]
+    fn values_cannot_escape_dist() {
+        assert!(safe_path_value("hola", false));
+        assert!(safe_path_value("a/b/c", true));
+        for bad in ["", "..", ".", "a/..", "../x", "a//b", "a\\b", "/abs"] {
+            assert!(!safe_path_value(bad, true), "{bad}");
+        }
+        assert!(!safe_path_value("a/b", false));
     }
 }

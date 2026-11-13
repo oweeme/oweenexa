@@ -5,14 +5,14 @@ vive en el **Modo App** y usa [Phaser](https://phaser.io).
 
 ```bash
 npm install
-npm run vendor          # empaqueta Phaser a public/vendor/phaser.js (~1,3 MB, ESM)
+# (nada más: Nexa empaqueta Phaser solo, ~1,3 MB, a partir de islands/phaser.island.js)
 nexa dev                # http://127.0.0.1:4321  ->  "Jugar"
 ```
 
 Qué muestra:
 
-- `[imports] phaser = "/vendor/phaser.js"` en `nexa.toml`: así `import Phaser from "phaser"` se
-  resuelve en el navegador (import map), sin bundler propio. Ver `docs/VENDORING.md`.
+- `islands/phaser.island.js` re-exporta Phaser: Nexa lo empaqueta solo (esbuild) y lo declara en el import map, así
+  `import Phaser from "phaser"` se resuelve en el navegador. Ver `docs/VENDORING.md`.
 - El juego se monta con `ref` en un `<div>` y se destruye en `onCleanup` al salir de la página.
 - **Juego -> UI**: `update()` escribe una señal de Nexa cada fotograma (`Frames: …`).
 - **UI <- juego**: un clic sobre el sprite (`pointerdown`) suma a otra señal (`Clics: …`).

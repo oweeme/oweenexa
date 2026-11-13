@@ -97,6 +97,14 @@ fn write_atomic(path: &str, contents: &[u8]) {
 
 /// La puerta de idioma de `/` (Fase 67) si el sitio es multi-idioma y no tiene
 /// una portada propia — lo que `nexa build` escribe a `dist/index.html`.
+/// Tu `src/pages/404.tsx`, compilada, para responder con estado 404 (Fase 74).
+pub fn custom_404(pages_dir: &Path, api_base: &str) -> Option<String> {
+    if !pages_dir.join("404.tsx").is_file() {
+        return None;
+    }
+    resolve_page(pages_dir, "/404", api_base, false).ok()
+}
+
 pub fn locale_gate_for_root(pages_dir: &Path) -> Option<String> {
     let routes = scan_pages(pages_dir).ok()?;
     crate::locale_gate::for_project(&routes)
