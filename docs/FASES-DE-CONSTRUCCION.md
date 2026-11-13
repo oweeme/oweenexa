@@ -4584,8 +4584,13 @@ Resource file during tauri-build` — Windows exige un `.ico` y la plantilla sol
 falta, por eso no se había visto). Corregido: la plantilla ahora genera también `icons/icon.ico` (256/48/32/16 px)
 y lo declara en `bundle.icon`; un test comprueba que es un `.ico` válido y que está declarado.
 
-**Sigue sin verificarse:** las suites de Chrome en Windows/macOS, la app de escritorio en macOS, la de Windows con
-el arreglo (hay que volver a ejecutar `desktop.yml`) y `nexa bundle --runtime` entre sistemas operativos.
+**Resultado final de `desktop.yml`:** tras ese arreglo y otro del propio flujo (la caché restauraba
+`desk/src-tauri/target` antes de `nexa create desk`, que fallaba con «`desk` ya existe» en cuanto había caché),
+**la app de escritorio compila en Ubuntu, Windows y macOS** y cada uno sube su binario (2,6–2,8 MB comprimidos).
+En macOS una ejecución se canceló porque GitHub no asignó ejecutor (escasez de máquinas), no por el código.
+
+**Sigue sin verificarse:** que las apps de Windows y macOS se *abran* y funcionen (solo se comprobó que compilan),
+las suites de Chrome en Windows/macOS y `nexa bundle --runtime` entre sistemas operativos.
 
 ---
 

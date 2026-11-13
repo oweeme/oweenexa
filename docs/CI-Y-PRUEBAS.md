@@ -29,10 +29,14 @@ y `nexa` sirve JavaScript viejo — un error silencioso que ya ocurrió durante 
   --all-targets --target …`) y se corrigió lo que habría fallado en Windows: `nexa test` ejecutaba `npm` (en
   Windows es `npm.cmd`); el script `build:ui-assets` usaba `cp`; los scripts `vendor` de los ejemplos usaban
   `mkdir -p` y comillas de bash; sin `.gitattributes`, Git en Windows convierte a CRLF y rompe los assets embebidos.
-- **App de escritorio (`desktop.yml`, a mano):** compila en **Ubuntu**. En **Windows** la primera ejecución destapó
-  que la plantilla de Tauri no traía `icons/icon.ico` (corregido; falta volver a ejecutarlo para confirmarlo).
-- **Sigue sin verificarse:** las suites de Chrome (`run-all.mjs`) en Windows y macOS (solo corren en Linux), la app
-  de escritorio en macOS, y `nexa bundle --runtime` entre sistemas (en macOS, además, un binario modificado
+- **App de escritorio (`desktop.yml`, a mano):** **compila en Ubuntu, Windows y macOS** y sube el binario de cada
+  uno como artefacto (2,6 a 2,8 MB comprimidos). Las dos primeras ejecuciones destaparon dos defectos reales, ya
+  corregidos: la plantilla de Tauri no traía `icons/icon.ico` (Windows lo exige) y el propio flujo cacheaba una
+  carpeta que hacía fallar `nexa create` cuando ya había caché. En macOS GitHub a veces no asigna ejecutor por
+  escasez (basta reintentar).
+- **Sigue sin verificarse:** que esas apps **se abran y funcionen** (solo se comprobó que compilan; la ejecución
+  en Linux sí se probó a mano con captura de pantalla), las suites de Chrome (`run-all.mjs`) en Windows y macOS
+  (solo corren en Linux), y `nexa bundle --runtime` entre sistemas (en macOS, además, un binario modificado
   necesita `codesign`).
 
 ## Empaquetar para otro sistema operativo
