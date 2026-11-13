@@ -45,6 +45,7 @@ pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool, static_
         default_port: 8080,
         dynamic,
         revalidate: manifest.bundle.as_ref().and_then(|b| b.revalidate).unwrap_or(60),
+        stale: manifest.bundle.as_ref().and_then(|b| b.stale).unwrap_or(0),
         redirects,
         headers,
     };

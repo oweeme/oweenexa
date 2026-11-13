@@ -4629,8 +4629,21 @@ aplican en dev, preview y el ejecutable; `nexa build` escribe `_redirects`, `_he
 consulta del visitante no es parte de ella (una página pre-renderizada lo ignoraría). La paginación es por ruta
 (`/blog/page/2`), que es además lo que indexan los buscadores.
 
-**Pendiente (prioridad media y baja):** autenticación en `load` (cookies/cabeceras), i18n del Modo App y plurales,
-`stale-while-revalidate` y purga de caché, comando de comprobación de tipos, feed RSS, imágenes sociales generadas.
+**Prioridad media (Fases 78–80).**
+
+- **78 — Token hacia tu API.** `[api] headers = { Authorization = "Bearer ${API_TOKEN}" }` en cada `load`/`paths` (compilar
+  y renderizar bajo demanda), con `${VAR}` desde el entorno/`.env`; nunca llega al HTML. **Decisión consciente:** `load` no lee
+  la cookie del visitante (el HTML de Core es compartido y se cachea; `docs/DISENO-COOKIES-EN-LOAD.md`): lo personal va en islas
+  o en el Modo App.
+- **79 — i18n.** Plurales en `t()` de Core (objeto `{one, other, …}` + `count`; reglas CLDR de los idiomas comunes; un plural no se
+  mezcla con el del idioma por defecto) y `createI18n` en `@nexa/app` (Modo App: claves, interpolación, plurales con `Intl.PluralRules`,
+  cambio de idioma en caliente, formatos `Intl`, recuerda la elección). Antes el Modo App no tenía traducciones.
+- **80 — Caché de producción y tipos.** `stale-while-revalidate` (`--stale`, `[bundle] stale`: se sirve la copia vieja al instante y
+  se renueva en segundo plano, una vez por ruta), purga por webhook (`POST /__nexa/purge`, con token, comparación en tiempo constante,
+  inexistente sin token) y `nexa check` (`tsc --noEmit` con el `tsconfig.json` del proyecto).
+
+**Pendiente (prioridad baja):** feed RSS, imágenes sociales generadas, validación de formularios asíncrona, optimización de imágenes en
+contenido dinámico, sistema de plugins del build, servidor de lenguaje (LSP), recarga en caliente que conserve el estado.
 
 ---
 

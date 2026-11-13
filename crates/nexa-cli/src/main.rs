@@ -14,6 +14,7 @@ mod document;
 mod dotenv;
 mod image_pipeline;
 mod image_scan;
+mod api_headers;
 mod app_mode;
 mod import_map;
 mod proxy;
@@ -83,6 +84,9 @@ enum Command {
     /// Analyzer o los avisos de paquetes encontraron algo — a diferencia
     /// de `nexa build`, que nunca falla por esto.
     Lint,
+    /// Comprueba los tipos de TypeScript de todo el proyecto (`tsc --noEmit`):
+    /// Nexa compila sin comprobar tipos, así que esto es lo que los verifica.
+    Check,
     /// Compila el proyecto (`dist/` fresco, con los nombres de archivo
     /// con hash de la Fase 23) y corre el test runner de JS declarado en
     /// `package.json` (`npm test`) — no reemplaza a `vitest`/etc., solo
@@ -121,6 +125,10 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     // `.env` / `.env.local` del proyecto (Fase 76)
     dotenv::load(std::path::Path::new("."));
+    // `[api] headers` (Fase 78) — solo las órdenes que piden datos a la API
+    if matches!(cli.command, Some(Command::Build { .. } | Command::Dev { .. } | Command::Preview { .. } | Command::Lint | Command::Bundle { .. })) {
+        api_headers::init()?;
+    }
 
     match cli.command.unwrap_or(Command::Info) {
         Command::Info => commands::info::run(),
@@ -138,6 +146,7 @@ fn main() -> Result<()> {
         Command::Dev { port } => commands::dev::run(port),
         Command::Add { module } => commands::add::run(&module),
         Command::Lint => commands::lint::run(),
+        Command::Check => commands::check::run(),
         Command::Test => commands::test::run(),
         Command::Bundle { out, runtime, no_build, static_only } => commands::bundle::run(out, runtime, no_build, static_only),
     }

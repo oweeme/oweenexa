@@ -7,6 +7,8 @@ export { effect, onCleanup, createScope, runInScope, disposeScope } from "./scop
 export { state, computed, watch, Signal } from "@nexa/reactivity";
 export type { ReadonlySignal } from "@nexa/reactivity";
 export { persisted } from "./persisted";
+export { createI18n } from "./i18n";
+export type { I18n, I18nOptions, Dictionary } from "./i18n";
 // Capa de datos: el mismo cliente/queries/mutaciones de `@nexa/http`,
 // re-exportados para importar todo desde un único lugar en el Modo App.
 export { createApi, HttpError, query, mutation, connectSSE, connectSocket } from "@nexa/http";

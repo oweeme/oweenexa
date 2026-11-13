@@ -509,6 +509,12 @@ pub(crate) fn is_safe_locale(locale: &str) -> bool {
 /// Superpone `over` sobre `base` recursivamente: cada clave de `over` gana, y
 /// las que `over` no tiene quedan con el valor de `base` (idioma por defecto).
 pub(crate) fn merge_dictionaries(base: &mut serde_json::Value, over: serde_json::Value) {
+    // Una forma plural (`{"one": …, "other": …}`) se reemplaza entera: mezclarla con la del idioma por defecto
+    // dejaría frases en dos idiomas.
+    if is_plural_forms(&over) {
+        *base = over;
+        return;
+    }
     match (base, over) {
         (serde_json::Value::Object(b), serde_json::Value::Object(o)) => {
             for (key, value) in o {
@@ -522,6 +528,11 @@ pub(crate) fn merge_dictionaries(base: &mut serde_json::Value, over: serde_json:
         }
         (slot, value) => *slot = value,
     }
+}
+
+fn is_plural_forms(value: &serde_json::Value) -> bool {
+    const CATEGORIES: [&str; 6] = ["zero", "one", "two", "few", "many", "other"];
+    value.as_object().is_some_and(|o| o.contains_key("other") && o.keys().all(|k| CATEGORIES.contains(&k.as_str())))
 }
 
 /// `<link rel="alternate" hreflang="...">` por cada locale disponible —
@@ -675,5 +686,19 @@ mod translate_validation_tests {
         assert_eq!(base["home"]["cta"], "Comprar", "lo que falta cae al idioma por defecto");
         assert_eq!(base["footer"], "Pie");
         assert_eq!(base["extra"], "Only in en");
+    }
+}
+
+#[cfg(test)]
+mod plural_merge_tests {
+    use super::merge_dictionaries;
+    use serde_json::json;
+
+    #[test]
+    fn a_plural_object_replaces_the_default_languages_whole_instead_of_mixing() {
+        let mut base = json!({ "items": { "one": "{count} artículo", "other": "{count} artículos" }, "a": { "x": "1", "y": "2" } });
+        merge_dictionaries(&mut base, json!({ "items": { "few": "{count} статьи", "other": "{count} статей" }, "a": { "x": "uno" } }));
+        assert_eq!(base["items"], json!({ "few": "{count} статьи", "other": "{count} статей" }));
+        assert_eq!(base["a"], json!({ "x": "uno", "y": "2" }), "lo demás sigue mezclándose clave por clave");
     }
 }

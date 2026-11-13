@@ -56,6 +56,7 @@ nexa preview [--port]  Sirve dist/; lo que falte se renderiza al vuelo. Puerto: 
 nexa dev [--port]      Recompila cada página en cada request + auto-reload. Puerto: 4321.
 nexa add <módulo>      Declara un módulo oficial en nexa.toml/nexa.lock (`docker`, `nginx`, `tauri`, …).
 nexa lint              Compila sin escribir dist/ (Core y Modo App); falla si hay avisos SEO/paquetes.
+nexa check             Comprueba los tipos de TypeScript de todo el proyecto (`tsc --noEmit`; requiere `typescript`).
 nexa test              Compila (dist/ fresco) y corre el script "test" de package.json.
 ```
 
@@ -355,6 +356,24 @@ backend se convierte en un 404 real de la página (o, en `nexa build`,
 en un error claro: no se puede generar HTML estático para un dato que
 no existe).
 
+### Un token para tu API (`[api] headers`, Fase 78)
+
+Si tu API exige autenticación de servidor a servidor (un CMS, una API privada), declara las cabeceras en `nexa.toml`:
+
+```toml
+[api]
+headers = { Authorization = "Bearer ${API_TOKEN}" }
+```
+
+`${VAR}` se sustituye por la variable de entorno (o de `.env`), así el secreto no vive en `nexa.toml`; si la variable
+no existe, el comando falla con ese nombre. Las cabeceras viajan en **cada** `load`/`paths` (al compilar y al renderizar
+bajo demanda) y **solo** entre Nexa y tu API: nunca llegan al HTML ni al navegador. En el ejecutable de `nexa bundle`
+el token se lee del entorno del servidor, no está dentro del paquete.
+
+Lo que Nexa **no** hace: leer la cookie de sesión del visitante para pedir datos personalizados en `load` (el HTML de
+Core se comparte y se cachea; ver `docs/DISENO-COOKIES-EN-LOAD.md`). Lo personal va en una isla o en el Modo App, que
+hablan con tu API con la sesión del propio navegador.
+
 ## `paths` — pre-renderizar rutas dinámicas
 
 ```tsx
@@ -455,8 +474,25 @@ estáticas compiladas.
   `params.x`) — nunca una expresión arbitraria; un literal
   (`{ name: "Ada" }`) o una llamada no se reconocen, y el `t(...)`
   entero queda sin efecto. `t("clave")` sin segundo argumento sigue
-  funcionando exactamente igual que antes. Sin pluralización, sin
-  clave dinámica (`t(variable)`) — quedan fuera de alcance.
+  funcionando exactamente igual que antes. Sin clave dinámica
+  (`t(variable)`) — queda fuera de alcance.
+
+  **Plurales (Fase 79).** Una clave cuyo valor es un **objeto** con las formas del plural elige la
+  forma según el argumento `count` (o `n`) y las reglas del idioma de la página (CLDR: `es`, `en`, `de`,
+  `it`, `fr`, `pt`, `ru`, `uk`, `pl`, `ar`, `ja`, `zh`, `ko`…; el resto usa «uno = exactamente 1»):
+
+  ```json
+  { "cart": { "items": { "one": "{count} artículo", "other": "{count} artículos" } } }
+  ```
+
+  ```tsx
+  <p>{t("cart.items", { count: data.n })}</p>   {/* 1 → "1 artículo", 5 → "5 artículos" */}
+  ```
+
+  Las categorías son `zero`, `one`, `two`, `few`, `many` y `other`; si falta la que toca se usa `other`.
+  Al combinar con el idioma por defecto, un objeto de plural **se reemplaza entero** (nunca queda una frase
+  mezclada en dos idiomas). Fechas, números y monedas: dáselos ya formateados desde tu API, o usa `Intl`
+  en una isla; Core no formatea valores.
 
   `nexa build`/`nexa lint` fallan con un error claro si una clave tiene
   un `{placeholder}` sin su variable correspondiente, o si sobra una
@@ -481,7 +517,25 @@ estáticas compiladas.
   si el sitio lo tiene, si no el idioma por defecto), conservando `?query` y
   `#hash`; sin JavaScript hay enlaces a cada idioma, `canonical` y `x-default`.
   Una portada propia (`src/pages/index.tsx`) siempre gana.
-- El Modo App **no tiene** `t()`: sus textos los gestiona la propia app.
+- **Modo App (Fase 79):** `createI18n` de `@nexa/app` — mismas claves, interpolación y plurales, con cambio de
+  idioma en caliente y formatos de `Intl`:
+
+  ```ts
+  import { createI18n } from "@nexa/app";
+  export const i18n = createI18n(
+      { es: { hi: "Hola, {name}", items: { one: "{count} cosa", other: "{count} cosas" } },
+        en: { hi: "Hello, {name}", items: { one: "{count} thing", other: "{count} things" } } },
+      { fallback: "es" },
+  );
+  // en una página:
+  //   <h1>{() => i18n.t("hi", { name: user.value })}</h1>
+  //   <p>{() => i18n.currency(total.value, "EUR")}</p>
+  //   <button onClick={() => i18n.setLocale("en")}>EN</button>
+  ```
+
+  `i18n.locale` es una señal (lo que lo lea se actualiza al cambiar de idioma). El idioma inicial es el del
+  navegador si lo tienes, si no `fallback`; la elección se recuerda en `localStorage` (`storageKey: null` para no
+  recordarla). Una clave sin traducir cae a `fallback`, y si tampoco está se muestra la propia clave.
 - Una página fuera de `[locale]` (Fase 29) — por ejemplo una gate de
   selección de idioma en la raíz — también resuelve `params.locale` y
   `t(...)` contra ese mismo `"es"` por defecto (antes, sin fase 29,
@@ -1785,7 +1839,9 @@ nexa bundle --no-build --out site
 
 | Comportamiento | Detalle |
 |---|---|
-| Caché (ISR) | Lo renderizado se reutiliza `--revalidate` segundos (60 por defecto; `0` = nunca; `[bundle] revalidate`; `$NEXA_REVALIDATE`). Cabecera `X-Nexa-Cache: miss/hit/stale`. |
+| Caché (ISR) | Lo renderizado se reutiliza `--revalidate` segundos (60 por defecto; `0` = nunca; `[bundle] revalidate`; `$NEXA_REVALIDATE`). Cabecera `X-Nexa-Cache: miss/hit/stale/revalidating`. |
+| `stale-while-revalidate` | Con `--stale <seg>` (`[bundle] stale`, `$NEXA_STALE`; 0 = apagado), una página vencida se sirve **al instante** durante esa ventana y se renueva en segundo plano (una sola vez por ruta): nadie espera a tu API. La siguiente visita ya ve la nueva. |
+| Purga | Con `--purge-token <TOKEN>` (o `$NEXA_PURGE_TOKEN`, mínimo 8 caracteres): `curl -X POST -H "Authorization: Bearer TOKEN" "https://tu-sitio/__nexa/purge?path=/blog/a/b"` borra esa ruta de la caché (sin `path`, todas) — úsalo desde el webhook de tu CMS. Sin token la ruta no existe (404). |
 | Una sola llamada | Con 24 visitas simultáneas a una página vencida, una renderiza y las demás esperan ese resultado. |
 | API caída | Se sirve la última copia aunque esté vencida (`stale`); una ruta nunca vista da `502` con `Retry-After`, sin filtrar la URL interna. |
 | Rutas inexistentes | Un 404 de tu API es un 404 real, recordado 10 s como máximo. Un idioma inexistente es 404. |
@@ -1906,6 +1962,10 @@ default = "es"           # idioma por defecto y de respaldo
 
 [bundle]
 revalidate = 60          # nexa bundle: segundos de caché de lo renderizado bajo demanda
+stale = 300              # stale-while-revalidate: segundos extra sirviendo la copia vieja mientras se renueva
+
+[api]                    # Fase 78: cabeceras hacia tu API en cada load/paths (${VAR} = variable de entorno)
+headers = { Authorization = "Bearer ${API_TOKEN}" }
 
 [build]
 before = ["npx @tailwindcss/cli -i src/styles/_tw.css -o src/styles/app.css"]   # comandos previos (Fase 72)

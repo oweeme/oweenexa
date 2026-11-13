@@ -1,5 +1,6 @@
 pub mod add;
 pub mod build;
+pub mod check;
 pub mod bundle;
 pub mod create;
 pub mod desktop;

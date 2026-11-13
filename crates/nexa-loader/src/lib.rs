@@ -16,8 +16,20 @@ pub use error::LoaderError;
 pub use url::resolve_url;
 
 use std::collections::BTreeMap;
+use std::sync::RwLock;
 
 use nexa_ast::Loader;
+
+/// Cabeceras que se envían en TODA petición a la API (Fase 78): un token de servidor a servidor
+/// (`Authorization: Bearer …`). Las pone `nexa` al arrancar desde `[api] headers` de `nexa.toml`.
+/// Nunca llegan al HTML ni al navegador: solo viajan entre Nexa y tu API.
+static DEFAULT_HEADERS: RwLock<Vec<(String, String)>> = RwLock::new(Vec::new());
+
+pub fn set_default_headers(headers: Vec<(String, String)>) {
+    if let Ok(mut h) = DEFAULT_HEADERS.write() {
+        *h = headers;
+    }
+}
 
 /// Resuelve la URL de `loader` (sustituyendo `:params`) y hace un GET
 /// real contra `api_base` + esa ruta. Devuelve el JSON ya parseado, o un
@@ -35,8 +47,13 @@ pub fn load(
     }
     let full_url = format!("{api_base}{path}");
 
-    agent()
-        .get(&full_url)
+    let mut request = agent().get(&full_url);
+    if let Ok(headers) = DEFAULT_HEADERS.read() {
+        for (name, value) in headers.iter() {
+            request = request.header(name, value);
+        }
+    }
+    request
         .call()
         .map_err(classify_error)?
         .body_mut()

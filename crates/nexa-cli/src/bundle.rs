@@ -55,6 +55,9 @@ pub struct Config {
     /// de volver a pedirle los datos a la API (0 = nunca cachear).
     #[serde(default = "default_revalidate")]
     pub revalidate: u64,
+    /// `stale-while-revalidate` en segundos (0 = desactivado). Ver `prod_server::Dynamic`.
+    #[serde(default)]
+    pub stale: u64,
     /// `[redirects]` y `[headers]` de `nexa.toml` (Fase 75).
     #[serde(default)]
     pub redirects: Vec<crate::rules::Redirect>,
@@ -274,7 +277,7 @@ mod tests {
     use super::*;
 
     fn config() -> Config {
-        Config { name: "demo".into(), app_base: Some("/app".into()), proxy: [("/api".to_string(), "http://x".to_string())].into(), default_port: 8080, dynamic: false, revalidate: 60, redirects: vec![], headers: vec![] }
+        Config { name: "demo".into(), app_base: Some("/app".into()), proxy: [("/api".to_string(), "http://x".to_string())].into(), default_port: 8080, dynamic: false, revalidate: 60, stale: 0, redirects: vec![], headers: vec![] }
     }
 
     fn files() -> Vec<(String, Vec<u8>)> {

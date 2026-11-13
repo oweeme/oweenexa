@@ -677,3 +677,34 @@ fn active_link_works_inside_the_layout_the_same_way_as_a_page() {
     assert_eq!(hrefs_with_active.len(), 1);
     assert!(hrefs_with_active[0].starts_with("href=\"/services\""));
 }
+
+#[test]
+fn a_plural_key_picks_the_form_for_the_count_and_the_page_locale() {
+    let node = translate_with_args(0, "cart.items", vec![("count".into(), dotted("data", "n"))]);
+    let dictionary = json!({ "cart": { "items": { "one": "{count} artículo", "other": "{count} artículos" } } });
+    let render_for = |locale: &str, n: u32| {
+        let data = json!({ "n": n });
+        let mut params = BTreeMap::new();
+        params.insert("locale".to_string(), locale.to_string());
+        let ctx = RenderContext { data: Some(&data), params: &params, translations: Some(&dictionary), loop_binding: None, outer_loops: Vec::new(), current_path: None };
+        render_node(&node, &ctx)
+    };
+    assert_eq!(render_for("es", 1), "1 artículo");
+    assert_eq!(render_for("es", 0), "0 artículos");
+    assert_eq!(render_for("es", 5), "5 artículos");
+}
+
+#[test]
+fn a_plural_key_falls_back_to_other_and_never_invents_a_count() {
+    let dictionary = json!({ "k": { "one": "uno", "other": "{count} cosas" } });
+    // ruso: `few` no está en el diccionario → `other`
+    let node = translate_with_args(0, "k", vec![("count".into(), dotted("data", "n"))]);
+    let data = json!({ "n": 3 });
+    let mut params = BTreeMap::new();
+    params.insert("locale".to_string(), "ru".to_string());
+    let ctx = RenderContext { data: Some(&data), params: &params, translations: Some(&dictionary), loop_binding: None, outer_loops: Vec::new(), current_path: None };
+    assert_eq!(render_node(&node, &ctx), "3 cosas");
+    // sin `count`, no se puede elegir una forma: se deja el marcador
+    let no_count = translate(0, "k");
+    assert_eq!(render_node(&no_count, &ctx_with_translations(&dictionary)), "<!--nexa:t(k)-->");
+}

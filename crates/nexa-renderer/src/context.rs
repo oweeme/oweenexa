@@ -113,8 +113,61 @@ pub(crate) fn resolve_template(template: &Template, ctx: &RenderContext) -> Opti
 /// locale) — degradar sin romper el render sigue siendo lo correcto acá.
 pub(crate) fn resolve_translation(translate: &Translate, ctx: &RenderContext) -> Option<String> {
     let path: Vec<&str> = translate.key.split('.').collect();
+    // Plurales (Fase 79): una clave con un OBJETO (`{"one": "...", "other": "..."}`) elige la forma según
+    // el argumento `count` (o `n`) y las reglas del idioma de la página.
+    if let Some(forms) = path.iter().try_fold(ctx.translations?, |v, seg| v.get(seg)).and_then(|v| v.as_object()) {
+        let count = translate.args.iter().find(|(name, _)| name == "count" || name == "n").and_then(|(_, expr)| resolve(expr, ctx));
+        let n = count.as_deref().and_then(|c| c.trim().parse::<f64>().ok())?;
+        let locale = ctx.params.get("locale").map(String::as_str).unwrap_or("");
+        let form = plural_category(locale, n);
+        let raw = forms.get(form).or_else(|| forms.get("other")).and_then(|v| v.as_str())?;
+        return Some(interpolate(raw.to_string(), &translate.args, ctx));
+    }
     let raw = resolve_by_path(ctx.translations, &path)?;
     Some(interpolate(raw, &translate.args, ctx))
+}
+
+/// Categoría de plural (`zero`/`one`/`two`/`few`/`many`/`other`) de `n` en `locale` (reglas CLDR de los
+/// idiomas más comunes; el resto usa la regla de «uno» del inglés).
+pub(crate) fn plural_category(locale: &str, n: f64) -> &'static str {
+    let lang = locale.split(['-', '_']).next().unwrap_or("").to_ascii_lowercase();
+    let is_int = n.fract() == 0.0;
+    let i = n.abs().trunc() as u64;
+    match lang.as_str() {
+        // sin plural gramatical
+        "ja" | "zh" | "ko" | "vi" | "th" | "id" | "ms" => "other",
+        // 0 y 1 son singular
+        "fr" | "pt" => if (0.0..2.0).contains(&n.abs()) && (is_int || n.abs() < 2.0) { "one" } else { "other" },
+        "ru" | "uk" | "be" => {
+            if !is_int { return "other" }
+            match (i % 10, i % 100) {
+                (1, r) if r != 11 => "one",
+                (2..=4, r) if !(12..=14).contains(&r) => "few",
+                _ => "many",
+            }
+        }
+        "pl" => {
+            if !is_int { return "other" }
+            match (i % 10, i % 100) {
+                _ if i == 1 => "one",
+                (2..=4, r) if !(12..=14).contains(&r) => "few",
+                _ => "many",
+            }
+        }
+        "ar" => {
+            if !is_int { return "other" }
+            match (i, i % 100) {
+                (0, _) => "zero",
+                (1, _) => "one",
+                (2, _) => "two",
+                (_, 3..=10) => "few",
+                (_, 11..=99) => "many",
+                _ => "other",
+            }
+        }
+        // en, es, de, it, nl, sv, ...: «uno» es exactamente 1
+        _ => if n == 1.0 { "one" } else { "other" },
+    }
 }
 
 fn interpolate(mut text: String, args: &[(String, Expr)], ctx: &RenderContext) -> String {
@@ -247,5 +300,32 @@ fn json_value_to_text(value: &serde_json::Value) -> String {
         serde_json::Value::Bool(b) => b.to_string(),
         serde_json::Value::Null => String::new(),
         other => other.to_string(),
+    }
+}
+
+#[cfg(test)]
+mod plural_tests {
+    use super::plural_category;
+
+    #[test]
+    fn the_common_languages_follow_cldr() {
+        assert_eq!(plural_category("es", 1.0), "one");
+        assert_eq!(plural_category("es", 0.0), "other");
+        assert_eq!(plural_category("en", 2.0), "other");
+        assert_eq!(plural_category("en-US", 1.0), "one");
+        assert_eq!(plural_category("fr", 0.0), "one");
+        assert_eq!(plural_category("fr", 2.0), "other");
+        assert_eq!(plural_category("ja", 1.0), "other");
+        assert_eq!(plural_category("ru", 1.0), "one");
+        assert_eq!(plural_category("ru", 21.0), "one");
+        assert_eq!(plural_category("ru", 3.0), "few");
+        assert_eq!(plural_category("ru", 11.0), "many");
+        assert_eq!(plural_category("ru", 25.0), "many");
+        assert_eq!(plural_category("pl", 22.0), "few");
+        assert_eq!(plural_category("pl", 5.0), "many");
+        assert_eq!(plural_category("ar", 0.0), "zero");
+        assert_eq!(plural_category("ar", 7.0), "few");
+        assert_eq!(plural_category("de", 1.5), "other");
+        assert_eq!(plural_category("", 1.0), "one");
     }
 }

@@ -41,6 +41,18 @@ declare module "@nexa/app" {
     export function onCleanup(fn: () => void): void;
     export function persisted<T>(key: string, initial: T, storage?: "local" | "session"): Signal<T>;
 
+    export type Dictionary = { [key: string]: string | Dictionary };
+    export interface I18n {
+        readonly locale: Signal<string>;
+        readonly available: string[];
+        t(key: string, args?: Record<string, string | number>): string;
+        setLocale(locale: string): void;
+        number(value: number, options?: Intl.NumberFormatOptions): string;
+        currency(value: number, currency: string, options?: Intl.NumberFormatOptions): string;
+        date(value: Date | number | string, options?: Intl.DateTimeFormatOptions): string;
+    }
+    export function createI18n(dictionaries: Record<string, Dictionary>, options?: { fallback?: string; storageKey?: string | null }): I18n;
+
     export type Child = unknown;
     export interface PageProps extends Record<string, unknown> {
         params: Record<string, string>;

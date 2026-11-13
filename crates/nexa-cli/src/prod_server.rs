@@ -70,6 +70,8 @@ pub struct Site {
     workdir: Option<PathBuf>,
     /// Nombres de cabecera propios (`[headers]`) con vida `'static`: se crean una vez al arrancar.
     header_names: HashMap<String, &'static str>,
+    /// Con un token, `POST /__nexa/purge` vacía la caché de páginas renderizadas bajo demanda.
+    purge_token: Option<String>,
 }
 
 impl Site {
@@ -96,7 +98,7 @@ impl Site {
             .flat_map(|r| r.headers.keys())
             .map(|k| (k.clone(), &*Box::leak(k.clone().into_boxed_str())))
             .collect();
-        Site { payload, entries, app_base, dynamic: None, workdir: None, header_names }
+        Site { payload, entries, app_base, dynamic: None, workdir: None, header_names, purge_token: None }
     }
 
     /// Activa el renderizado bajo demanda de las rutas no pre-renderizadas.
@@ -380,6 +382,8 @@ pub enum CacheState {
     Hit,
     /// La API falló: se sirve la última copia, aunque esté vencida.
     Stale,
+    /// Vencida pero dentro de `stale-while-revalidate`: se sirve ya y se renueva en segundo plano.
+    Revalidating,
 }
 
 impl CacheState {
@@ -388,6 +392,7 @@ impl CacheState {
             CacheState::Miss => "miss",
             CacheState::Hit => "hit",
             CacheState::Stale => "stale",
+            CacheState::Revalidating => "revalidating",
         }
     }
 }
@@ -411,31 +416,79 @@ const STRIPES: usize = 64;
 /// pronto, pero no a costa de una llamada a la API por cada visita de un bot.
 const NEGATIVE_TTL: Duration = Duration::from_secs(10);
 
-pub struct Dynamic {
+/// La caché de páginas renderizadas bajo demanda (cuesta clonar: es un `Arc`).
+pub struct Dynamic(Arc<DynInner>);
+
+struct DynInner {
     renderer: Box<dyn Renderer>,
     ttl: Duration,
+    /// `stale-while-revalidate`: pasada la ventana `ttl`, durante estos segundos se sirve la copia vieja
+    /// AL INSTANTE y se renueva en segundo plano. 0 = desactivado (se renueva esperando).
+    stale: Duration,
     cache: Mutex<HashMap<String, Arc<Cached>>>,
     /// Un cerrojo por "franja" de rutas: si mil visitas piden a la vez un
     /// post vencido, una sola lo renderiza y el resto espera ese resultado
     /// en vez de golpear tu API mil veces.
     stripes: Vec<Mutex<()>>,
+    /// Rutas que se están renovando en segundo plano (una sola vez cada una).
+    refreshing: Mutex<std::collections::HashSet<String>>,
 }
 
 impl Dynamic {
     pub fn new(renderer: Box<dyn Renderer>, revalidate_secs: u64) -> Dynamic {
-        Dynamic {
+        Dynamic(Arc::new(DynInner {
             renderer,
             ttl: Duration::from_secs(revalidate_secs),
+            stale: Duration::ZERO,
             cache: Mutex::new(HashMap::new()),
             stripes: (0..STRIPES).map(|_| Mutex::new(())).collect(),
-        }
+            refreshing: Mutex::new(std::collections::HashSet::new()),
+        }))
     }
 
+    /// Activa `stale-while-revalidate` durante `secs` segundos después de vencer cada página.
+    pub fn with_stale(self, secs: u64) -> Dynamic {
+        let inner = Arc::try_unwrap(self.0).unwrap_or_else(|_| panic!("with_stale se usa al construir, antes de compartir"));
+        Dynamic(Arc::new(DynInner { stale: Duration::from_secs(secs), ..inner }))
+    }
+
+    pub fn get(&self, path: &str, now: Instant) -> DynOutcome {
+        DynInner::get(&self.0, path, now)
+    }
+
+    /// Borra de la caché una ruta (o todas con `None`): lo siguiente que se pida se renderiza de nuevo.
+    pub fn purge(&self, path: Option<&str>) -> usize {
+        let mut cache = self.0.cache.lock().unwrap_or_else(|e| e.into_inner());
+        match path {
+            Some(p) => usize::from(cache.remove(p).is_some()),
+            None => {
+                let n = cache.len();
+                cache.clear();
+                n
+            }
+        }
+    }
+}
+
+impl DynInner {
     fn lookup(&self, path: &str, now: Instant) -> Option<Arc<Cached>> {
         self.cache.lock().unwrap_or_else(|e| e.into_inner()).get(path).cloned().filter(|c| {
             let ttl = if c.status == 200 { self.ttl } else { self.ttl.min(NEGATIVE_TTL) };
             !ttl.is_zero() && now.saturating_duration_since(c.stored) < ttl
         })
+    }
+
+    /// Una página vencida pero todavía dentro de la ventana de `stale-while-revalidate`.
+    fn lookup_stale(&self, path: &str, now: Instant) -> Option<Arc<Cached>> {
+        if self.stale.is_zero() || self.ttl.is_zero() {
+            return None;
+        }
+        self.cache
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .get(path)
+            .cloned()
+            .filter(|c| c.status == 200 && now.saturating_duration_since(c.stored) < self.ttl + self.stale)
     }
 
     fn outcome(c: &Arc<Cached>, state: CacheState) -> DynOutcome {
@@ -456,33 +509,59 @@ impl Dynamic {
         cache.insert(path.to_string(), entry);
     }
 
-    pub fn get(&self, path: &str, now: Instant) -> DynOutcome {
-        if let Some(c) = self.lookup(path, now) {
+    fn stripe(path: &str) -> usize {
+        path.bytes().fold(0usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % STRIPES
+    }
+
+    /// Renueva `path` en un hilo aparte (si no hay ya otro haciéndolo). Si la API falla, la copia vieja se queda.
+    fn refresh_in_background(this: &Arc<DynInner>, path: &str) {
+        if !this.refreshing.lock().unwrap_or_else(|e| e.into_inner()).insert(path.to_string()) {
+            return;
+        }
+        let (inner, path) = (this.clone(), path.to_string());
+        std::thread::spawn(move || {
+            {
+                let _guard = inner.stripes[Self::stripe(&path)].lock().unwrap_or_else(|e| e.into_inner());
+                match inner.renderer.render(&path) {
+                    Rendered::Html(html) => inner.store(&path, Arc::new(Cached::page(html, Instant::now()))),
+                    Rendered::NotFound => inner.store(&path, Arc::new(Cached::missing(Instant::now()))),
+                    Rendered::Failed(message) => eprintln!("render {path} (en segundo plano): {message}"),
+                }
+            }
+            inner.refreshing.lock().unwrap_or_else(|e| e.into_inner()).remove(&path);
+        });
+    }
+
+    fn get(this: &Arc<DynInner>, path: &str, now: Instant) -> DynOutcome {
+        if let Some(c) = this.lookup(path, now) {
             return Self::outcome(&c, CacheState::Hit);
         }
+        if let Some(c) = this.lookup_stale(path, now) {
+            Self::refresh_in_background(this, path);
+            return Self::outcome(&c, CacheState::Revalidating);
+        }
 
-        let stripe = path.bytes().fold(0usize, |h, b| h.wrapping_mul(31).wrapping_add(b as usize)) % STRIPES;
-        let _guard = self.stripes[stripe].lock().unwrap_or_else(|e| e.into_inner());
+        let _guard = this.stripes[Self::stripe(path)].lock().unwrap_or_else(|e| e.into_inner());
         // Quien esperaba el cerrojo encuentra ahora lo que renderizó el anterior.
-        if let Some(c) = self.lookup(path, now) {
+        if let Some(c) = this.lookup(path, now) {
             return Self::outcome(&c, CacheState::Hit);
         }
 
-        match self.renderer.render(path) {
+        match this.renderer.render(path) {
             Rendered::Html(html) => {
                 let entry = Arc::new(Cached::page(html, now));
-                self.store(path, entry.clone());
+                this.store(path, entry.clone());
                 Self::outcome(&entry, CacheState::Miss)
             }
             Rendered::NotFound => {
-                self.store(path, Arc::new(Cached::missing(now)));
+                this.store(path, Arc::new(Cached::missing(now)));
                 DynOutcome::Missing
             }
             Rendered::Failed(message) => {
                 eprintln!("render {path}: {message}");
                 // Más vale una página algo vieja que un error: si la API
                 // cae, el sitio sigue en pie con lo último que sirvió.
-                let previous = self.cache.lock().unwrap_or_else(|e| e.into_inner()).get(path).cloned();
+                let previous = this.cache.lock().unwrap_or_else(|e| e.into_inner()).get(path).cloned();
                 match previous {
                     Some(old) if old.status == 200 => Self::outcome(&old, CacheState::Stale),
                     _ => DynOutcome::Unavailable,
@@ -601,7 +680,9 @@ struct Options {
     quiet: bool,
     proxy: BTreeMap<String, String>,
     revalidate: u64,
+    stale: u64,
     api_url: String,
+    purge_token: Option<String>,
 }
 
 const HELP: &str = "\
@@ -622,6 +703,12 @@ OPCIONES:
     --revalidate <SEG>      Segundos que se reutiliza una página renderizada
                             bajo demanda antes de volver a pedirle los datos a
                             la API (por defecto $NEXA_REVALIDATE o 60; 0 = nunca)
+    --stale <SEG>           stale-while-revalidate: tras vencer, durante estos
+                            segundos se sirve la copia vieja al instante y se
+                            renueva en segundo plano (por defecto $NEXA_STALE o 0)
+    --purge-token <TOKEN>   Activa `POST /__nexa/purge[?path=/ruta]` con la cabecera
+                            `Authorization: Bearer <TOKEN>` (por defecto
+                            $NEXA_PURGE_TOKEN; mínimo 8 caracteres): vacía la caché
     --quiet                 No imprime una línea por petición
     -h, --help              Esta ayuda
 ";
@@ -633,7 +720,9 @@ fn parse_options(args: &[String], defaults: &crate::bundle::Config) -> Result<Op
         quiet: false,
         proxy: defaults.proxy.clone(),
         revalidate: std::env::var("NEXA_REVALIDATE").ok().and_then(|v| v.parse().ok()).unwrap_or(defaults.revalidate),
+        stale: std::env::var("NEXA_STALE").ok().and_then(|v| v.parse().ok()).unwrap_or(defaults.stale),
         api_url: std::env::var("NEXA_API_URL").unwrap_or_default(),
+        purge_token: std::env::var("NEXA_PURGE_TOKEN").ok().filter(|t| !t.is_empty()),
     };
     let mut overridden = false;
     let mut it = args.iter();
@@ -648,6 +737,8 @@ fn parse_options(args: &[String], defaults: &crate::bundle::Config) -> Result<Op
             "--host" => opts.host = value("--host")?,
             "--quiet" => opts.quiet = true,
             "--revalidate" => opts.revalidate = value("--revalidate")?.parse().context("--revalidate debe ser un número de segundos")?,
+            "--stale" => opts.stale = value("--stale")?.parse().context("--stale debe ser un número de segundos")?,
+            "--purge-token" => opts.purge_token = Some(value("--purge-token")?).filter(|t| !t.is_empty()),
             "--api-url" => opts.api_url = value("--api-url")?.trim_end_matches('/').to_string(),
             "--proxy" => {
                 let v = value("--proxy")?;
@@ -674,13 +765,19 @@ pub fn run_embedded(payload: Payload, args: Vec<String>) -> Result<()> {
     let workdir = if dynamic_enabled {
         let workdir = prepare_workdir(&payload)?;
         std::env::set_current_dir(&workdir).with_context(|| format!("entrando a {}", workdir.display()))?;
+        // `[api] headers` (Fase 78): el token sale del entorno del servidor, nunca del paquete.
+        crate::api_headers::init()?;
         Some(workdir)
     } else {
         None
     };
     let mut site = Site::new(payload);
     if let Some(workdir) = workdir {
-        site = site.with_dynamic(Dynamic::new(Box::new(PipelineRenderer { api_base: opts.api_url.clone() }), opts.revalidate), Some(workdir));
+        site = site.with_dynamic(Dynamic::new(Box::new(PipelineRenderer { api_base: opts.api_url.clone() }), opts.revalidate).with_stale(opts.stale), Some(workdir));
+    }
+    site.purge_token = opts.purge_token.clone().filter(|t| t.len() >= 8);
+    if opts.purge_token.as_ref().is_some_and(|t| t.len() < 8) {
+        eprintln!("atención: el token de purga debe tener al menos 8 caracteres: la purga queda desactivada");
     }
     let site = Arc::new(site);
 
@@ -724,6 +821,40 @@ pub fn run_embedded(payload: Payload, args: Vec<String>) -> Result<()> {
     Ok(())
 }
 
+const PURGE_PATH: &str = "/__nexa/purge";
+
+/// `POST /__nexa/purge[?path=/blog/mi-post]` con `Authorization: Bearer <token>`: vacía la caché de esa ruta
+/// (o de todas). Sin token configurado no existe (404): no se revela.
+fn purge(site: &Site, method: &str, url: &str, authorization: &str) -> Reply {
+    let (Some(token), Some(dynamic)) = (site.purge_token.as_deref(), site.dynamic.as_ref()) else {
+        return text_reply(404, "404 — no encontrado");
+    };
+    if method != "POST" {
+        let mut r = text_reply(405, "405 — usa POST");
+        r.headers.push(("Allow", "POST".to_string()));
+        return r;
+    }
+    let given = authorization.strip_prefix("Bearer ").unwrap_or("");
+    if !constant_time_eq(given.as_bytes(), token.as_bytes()) {
+        return text_reply(401, "401 — token incorrecto");
+    }
+    let path = crate::serve::query_param(url, "path");
+    let purged = dynamic.purge(path.as_deref());
+    let mut r = text_reply(200, &format!("{{\"purged\":{purged}}}"));
+    r.headers.retain(|(n, _)| *n != "Content-Type");
+    r.headers.insert(0, ("Content-Type", "application/json".to_string()));
+    r
+}
+
+/// Comparación en tiempo constante (sin salir al primer byte distinto).
+fn constant_time_eq(a: &[u8], b: &[u8]) -> bool {
+    let mut diff = (a.len() ^ b.len()) as u8;
+    for i in 0..a.len().max(b.len()) {
+        diff |= a.get(i).copied().unwrap_or(0) ^ b.get(i).copied().unwrap_or(0);
+    }
+    diff == 0
+}
+
 fn header_value(request: &tiny_http::Request, name: &str) -> String {
     request
         .headers()
@@ -745,6 +876,19 @@ fn handle(site: &Site, proxy: &BTreeMap<String, String>, request: tiny_http::Req
         if !quiet {
             eprintln!("{method} {url} -> proxy {target} ({} ms)", started.elapsed().as_millis());
         }
+        return;
+    }
+
+    if path_only == PURGE_PATH {
+        let auth = header_value(&request, "Authorization");
+        let reply = purge(site, &method, &url, &auth);
+        let mut response = Response::from_data(reply.body).with_status_code(reply.status);
+        for (name, value) in reply.headers {
+            if let Ok(h) = tiny_http::Header::from_bytes(name.as_bytes(), value.as_bytes()) {
+                response.add_header(h);
+            }
+        }
+        let _ = request.respond(response);
         return;
     }
 
@@ -790,7 +934,7 @@ mod tests {
             ("app/200.html".into(), b"<div id=app>SHELL</div>".to_vec()),
             ("sw.js".into(), b"self.skipWaiting()".to_vec()),
         ];
-        let config = Config { name: "t".into(), app_base: app_base.map(String::from), proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60, redirects: vec![], headers: vec![] };
+        let config = Config { name: "t".into(), app_base: app_base.map(String::from), proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60, stale: 0, redirects: vec![], headers: vec![] };
         Site::new(unpack(&pack(&files, &[], config).unwrap()).unwrap())
     }
 
@@ -803,7 +947,7 @@ mod tests {
 
     fn site_with_rules(redirects: Vec<crate::rules::Redirect>, headers: Vec<crate::rules::HeaderRule>) -> Site {
         let files: Vec<(String, Vec<u8>)> = vec![("index.html".into(), b"<h1>hi</h1>".to_vec()), ("about/index.html".into(), b"<h1>about</h1>".to_vec())];
-        let config = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60, redirects, headers };
+        let config = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: false, revalidate: 60, stale: 0, redirects, headers };
         Site::new(unpack(&pack(&files, &[], config).unwrap()).unwrap())
     }
 
@@ -959,7 +1103,7 @@ mod tests {
 
     #[test]
     fn options_use_defaults_flags_and_a_proxy_flag_replaces_the_embedded_table() {
-        let cfg = Config { name: "t".into(), app_base: None, proxy: [("/api".to_string(), "http://old".to_string())].into(), default_port: 9000, dynamic: false, revalidate: 60, redirects: vec![], headers: vec![] };
+        let cfg = Config { name: "t".into(), app_base: None, proxy: [("/api".to_string(), "http://old".to_string())].into(), default_port: 9000, dynamic: false, revalidate: 60, stale: 0, redirects: vec![], headers: vec![] };
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
 
         let o = parse_options(&a(&[]), &cfg).unwrap().unwrap();
@@ -1022,6 +1166,92 @@ mod tests {
 
     fn dynamic_site(fake: &Fake, ttl: u64) -> Site {
         site(None).with_dynamic(Dynamic::new(Box::new(fake.clone()), ttl), None)
+    }
+
+    fn wait_for(cond: impl Fn() -> bool) {
+        for _ in 0..200 {
+            if cond() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        panic!("la condición no se cumplió a tiempo");
+    }
+
+    #[test]
+    fn stale_while_revalidate_serves_the_old_copy_instantly_and_renews_in_the_background() {
+        let fake = Fake::new(Mode::Html("<h1>v1</h1>"));
+        let d = Dynamic::new(Box::new(fake.clone()), 60).with_stale(300);
+        let t0 = Instant::now();
+        assert!(matches!(d.get("/blog/a/b", t0), DynOutcome::Page(_, CacheState::Miss)));
+
+        // la API publica una versión nueva
+        fake.set(Mode::Html("<h1>v2</h1>"));
+        // vencida pero dentro de la ventana: responde YA con la vieja, sin esperar a la API
+        match d.get("/blog/a/b", t0 + Duration::from_secs(61)) {
+            DynOutcome::Page(page, CacheState::Revalidating) => assert_eq!(page.raw, b"<h1>v1</h1>"),
+            _ => panic!("debía servir la copia vieja"),
+        }
+        // …mientras la renueva en segundo plano (una sola vez aunque lleguen más visitas)
+        d.get("/blog/a/b", t0 + Duration::from_secs(62));
+        wait_for(|| fake.calls() >= 2);
+        std::thread::sleep(Duration::from_millis(50));
+        assert_eq!(fake.calls(), 2, "una sola renovación por ruta");
+        match d.get("/blog/a/b", Instant::now() + Duration::from_secs(1)) {
+            DynOutcome::Page(page, CacheState::Hit) => assert_eq!(page.raw, b"<h1>v2</h1>", "la siguiente visita ya ve la nueva"),
+            _ => panic!("debía ser un acierto con la copia nueva"),
+        }
+    }
+
+    #[test]
+    fn past_the_stale_window_the_visit_waits_for_a_fresh_render_and_a_dead_api_keeps_the_old_copy() {
+        let fake = Fake::new(Mode::Html("<h1>v1</h1>"));
+        let d = Dynamic::new(Box::new(fake.clone()), 60).with_stale(100);
+        let t0 = Instant::now();
+        d.get("/p", t0);
+        fake.set(Mode::Html("<h1>v2</h1>"));
+        assert!(matches!(d.get("/p", t0 + Duration::from_secs(200)), DynOutcome::Page(_, CacheState::Miss)), "fuera de la ventana se espera");
+        // si la API cae durante la renovación en segundo plano, la copia vieja sigue siendo la que se sirve
+        let fake2 = Fake::new(Mode::Html("<h1>ok</h1>"));
+        let d2 = Dynamic::new(Box::new(fake2.clone()), 60).with_stale(300);
+        d2.get("/q", t0);
+        fake2.set(Mode::Fail);
+        assert!(matches!(d2.get("/q", t0 + Duration::from_secs(70)), DynOutcome::Page(_, CacheState::Revalidating)));
+        wait_for(|| fake2.calls() >= 2);
+        std::thread::sleep(Duration::from_millis(50));
+        assert!(matches!(d2.get("/q", t0 + Duration::from_secs(71)), DynOutcome::Page(_, CacheState::Revalidating | CacheState::Hit)));
+    }
+
+    #[test]
+    fn purge_removes_one_path_or_everything_and_needs_the_right_token() {
+        let fake = Fake::new(Mode::Html("<h1>x</h1>"));
+        let mut s = dynamic_site(&fake, 600);
+        s.purge_token = Some("token-largo-123".to_string());
+        let t0 = Instant::now();
+        let d = s.dynamic.as_ref().unwrap();
+        d.get("/a", t0);
+        d.get("/b", t0);
+        assert_eq!(fake.calls(), 2);
+
+        assert_eq!(purge(&s, "POST", "/__nexa/purge?path=/a", "Bearer incorrecto").status, 401);
+        assert_eq!(purge(&s, "POST", "/__nexa/purge?path=/a", "").status, 401);
+        assert_eq!(purge(&s, "GET", "/__nexa/purge", "Bearer token-largo-123").status, 405);
+        assert_eq!(fake.calls(), 2, "sin token válido no se purga nada");
+
+        let r = purge(&s, "POST", "/__nexa/purge?path=/a", "Bearer token-largo-123");
+        assert_eq!((r.status, r.body.as_slice()), (200, &b"{\"purged\":1}"[..]));
+        assert!(matches!(d.get("/a", t0), DynOutcome::Page(_, CacheState::Miss)));
+        assert!(matches!(d.get("/b", t0), DynOutcome::Page(_, CacheState::Hit)));
+        assert_eq!(purge(&s, "POST", "/__nexa/purge", "Bearer token-largo-123").body, b"{\"purged\":2}");
+        assert!(matches!(d.get("/b", t0), DynOutcome::Page(_, CacheState::Miss)));
+    }
+
+    #[test]
+    fn purge_does_not_exist_without_a_token() {
+        let fake = Fake::new(Mode::Html("x"));
+        let s = dynamic_site(&fake, 60);
+        assert_eq!(purge(&s, "POST", "/__nexa/purge", "Bearer lo-que-sea").status, 404);
+        assert!(constant_time_eq(b"abc", b"abc") && !constant_time_eq(b"abc", b"abd") && !constant_time_eq(b"abc", b"abcd"));
     }
 
     #[test]
@@ -1179,7 +1409,7 @@ mod tests {
 
     fn payload_with_sources(sources: Vec<(&str, &str)>) -> Payload {
         let sources: Vec<(String, Vec<u8>)> = sources.into_iter().map(|(p, c)| (p.to_string(), c.as_bytes().to_vec())).collect();
-        let config = Config { name: "mi sitio!".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: true, revalidate: 60, redirects: vec![], headers: vec![] };
+        let config = Config { name: "mi sitio!".into(), app_base: None, proxy: Default::default(), default_port: 8080, dynamic: true, revalidate: 60, stale: 0, redirects: vec![], headers: vec![] };
         unpack(&pack(&[], &sources, config).unwrap()).unwrap()
     }
 
@@ -1206,7 +1436,7 @@ mod tests {
 
     #[test]
     fn options_accept_revalidate_and_api_url() {
-        let cfg = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 9000, dynamic: true, revalidate: 60, redirects: vec![], headers: vec![] };
+        let cfg = Config { name: "t".into(), app_base: None, proxy: Default::default(), default_port: 9000, dynamic: true, revalidate: 60, stale: 0, redirects: vec![], headers: vec![] };
         let a = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
         let o = parse_options(&a(&["--revalidate", "5", "--api-url", "https://api.miapp.com/"]), &cfg).unwrap().unwrap();
         assert_eq!((o.revalidate, o.api_url.as_str()), (5, "https://api.miapp.com"));

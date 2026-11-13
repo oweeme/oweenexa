@@ -77,9 +77,21 @@ pub struct Manifest {
     /// `[headers."/ruta/*"]` (Fase 75): cabeceras HTTP propias por ruta.
     #[serde(default)]
     pub headers: BTreeMap<String, BTreeMap<String, String>>,
+    /// `[api]` (Fase 78): cómo habla Nexa con tu API al compilar/renderizar.
+    #[serde(default)]
+    pub api: Option<ApiSection>,
     /// `[security]` (Fase 75).
     #[serde(default)]
     pub security: Option<SecuritySection>,
+}
+
+/// `[api] headers = { Authorization = "Bearer ${API_TOKEN}" }`: cabeceras que Nexa envía a tu API en cada
+/// `load`/`paths` (al compilar y al renderizar bajo demanda). `${VAR}` se sustituye por la variable de entorno
+/// (o de `.env`), así el secreto no vive en `nexa.toml`. Solo viajan de servidor a servidor.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct ApiSection {
+    #[serde(default)]
+    pub headers: BTreeMap<String, String>,
 }
 
 /// `[security] csp = "default-src 'self'; img-src 'self' data:"`: Content-Security-Policy por
@@ -124,6 +136,10 @@ pub struct I18nSection {
 pub struct BundleSection {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub revalidate: Option<u64>,
+    /// `stale-while-revalidate`: segundos tras vencer en los que aún se sirve la copia vieja mientras se
+    /// renueva en segundo plano (por defecto 0 = la visita espera la copia nueva).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stale: Option<u64>,
 }
 
 /// `[desktop.proxy]`: prefijo -> backend real para la app de escritorio.
