@@ -1,0 +1,97 @@
+/* oweekoi — hoja de estilos global de Nexa («papel y tinta», claro y oscuro).
+ *
+ * Es TUYA: `nexa create` la deja en src/styles/oweekoi.css y Nexa la enlaza sola en todas las páginas.
+ * Cámbiala a tu gusto, o bórrala (y borra la carpeta si no usas más CSS) para empezar de cero.
+ * Sin clases obligatorias: estiliza el HTML normal (main, h1, a, button, input, table, pre…).
+ * Para cambiar la paleta basta con las variables de :root. Modo oscuro: automático, o fuerza uno con
+ * <html data-theme="light"> / <html data-theme="dark">.
+ */
+:root {
+  /* papel */
+  --base: #f2eee2; --vista: #faf7ee; --superficie: #ebe6d6; --elevado: #fffdf7; --borde: #d6cfbb;
+  --texto: #252223; --suave: #5f5a55; --acento: #488c54; --sel: #9cd5a3; --sobre-sel: #0f1d0b;
+  --coral: #c9412c; --enlace: #1d62a0; --positivo: #2b7a4b; --neutro: #8f5f00;
+  --b-cerrar: #d9705d; --b-minimizar: #d9ab4f; --b-maximizar: #74ad7d;
+  --radio: 12px;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    /* tinta */
+    --base: #2d2a2c; --vista: #262325; --superficie: #353234; --elevado: #3d3a3c; --borde: #55514f;
+    --texto: #ece6d6; --suave: #b8b0a1; --acento: #93cf9b; --sel: #8cc093; --sobre-sel: #0f1d0b;
+    --coral: #f58a76; --enlace: #7cb9f0; --positivo: #7bd88f; --neutro: #e8b65c;
+    --b-cerrar: #e08a78; --b-minimizar: #e3bb70; --b-maximizar: #8cc093;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --base: #2d2a2c; --vista: #262325; --superficie: #353234; --elevado: #3d3a3c; --borde: #55514f;
+  --texto: #ece6d6; --suave: #b8b0a1; --acento: #93cf9b; --sel: #8cc093; --sobre-sel: #0f1d0b;
+  --coral: #f58a76; --enlace: #7cb9f0; --positivo: #7bd88f; --neutro: #e8b65c;
+  --b-cerrar: #e08a78; --b-minimizar: #e3bb70; --b-maximizar: #8cc093;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--base); color: var(--texto); font: 16px/1.65 Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-font-smoothing: antialiased; }
+@media (prefers-reduced-motion: reduce) { html { scroll-behavior: auto; } }
+
+/* ---- texto ---- */
+main { display: block; max-width: 62rem; margin: 0 auto; padding: 28px 16px 56px; }
+h1, h2, h3, h4 { line-height: 1.2; letter-spacing: -.02em; margin: 1.4em 0 .5em; }
+h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); margin-top: .4em; letter-spacing: -.03em; }
+h2 { font-size: 1.5rem; } h3 { font-size: 1.2rem; }
+p, ul, ol { margin: 0 0 1em; }
+a { color: var(--enlace); }
+a:hover { text-decoration-thickness: 2px; }
+hr { border: 0; border-top: 1px solid var(--borde); margin: 2em 0; }
+small, .suave { color: var(--suave); }
+::selection { background: var(--sel); color: var(--sobre-sel); }
+:focus-visible { outline: 2px solid var(--acento); outline-offset: 2px; }
+img, video { max-width: 100%; height: auto; }
+blockquote { margin: 1em 0; padding: .2em 1em; border-left: 3px solid var(--acento); color: var(--suave); }
+
+/* ---- código ---- */
+code, pre, kbd { font-family: ui-monospace, "JetBrains Mono", "Fira Code", Consolas, monospace; font-size: .92em; }
+code { background: var(--superficie); border: 1px solid var(--borde); border-radius: 6px; padding: 0 5px; }
+pre { background: var(--vista); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 16px; overflow-x: auto; }
+pre code { background: none; border: 0; padding: 0; }
+kbd { background: var(--vista); border: 1px solid var(--borde); border-radius: 5px; padding: 0 5px; }
+
+/* ---- navegación ---- */
+nav { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; }
+nav a { color: var(--suave); text-decoration: none; padding: 6px 11px; border-radius: 8px; }
+nav a:hover, nav a[aria-current] { background: var(--superficie); color: var(--texto); }
+header { border-bottom: 1px solid var(--borde); }
+footer { border-top: 1px solid var(--borde); color: var(--suave); padding: 16px 0; font-size: .92rem; }
+
+/* ---- «ventanas» Onda: doble línea, esquinas de 12 px ---- */
+.card, .ventana, article, details { position: relative; background: var(--vista); border: 1px solid var(--borde); border-radius: var(--radio); padding: 14px 18px; margin: 0 0 14px; }
+.card > :first-child, article > :first-child { margin-top: 0; }
+.card > :last-child, article > :last-child { margin-bottom: 0; }
+.card::after, .ventana::after { content: ""; position: absolute; inset: 3px; border: 1px solid color-mix(in srgb, var(--borde) 45%, transparent); border-radius: calc(var(--radio) - 3px); pointer-events: none; }
+summary { cursor: pointer; font-weight: 600; }
+
+/* ---- botones y formularios ---- */
+button, .btn, input[type="submit"] { font: inherit; font-weight: 600; cursor: pointer; color: var(--sobre-sel); background: var(--sel); border: 1px solid var(--acento); border-radius: 999px; padding: 7px 16px; text-decoration: none; display: inline-block; }
+button:hover, .btn:hover, input[type="submit"]:hover { background: var(--acento); color: var(--elevado); }
+button:disabled { opacity: .55; cursor: not-allowed; }
+button.suave, .btn.suave { color: var(--texto); background: var(--superficie); border-color: var(--borde); }
+input, textarea, select { font: inherit; color: var(--texto); background: var(--elevado); border: 1px solid var(--borde); border-radius: 8px; padding: 7px 10px; max-width: 100%; }
+input:focus, textarea:focus, select:focus { outline: 2px solid var(--acento); outline-offset: 0; border-color: var(--acento); }
+label { display: block; font-weight: 600; margin: .8em 0 .25em; }
+input[aria-invalid="true"], .nx-invalid { border-color: var(--coral); }
+[data-nexa-error-for] { color: var(--coral); font-size: .9rem; min-height: 1.2em; margin: .2em 0 0; }
+
+/* ---- tablas ---- */
+table { border-collapse: collapse; width: 100%; margin: 0 0 1em; }
+th, td { text-align: left; padding: 8px 12px; border-bottom: 1px solid var(--borde); }
+th { background: var(--superficie); font-size: .88rem; }
+
+/* ---- etiquetas ---- */
+.pill, .tag { display: inline-block; font-size: .8rem; background: var(--superficie); border: 1px solid var(--borde); border-radius: 999px; padding: 0 9px; color: var(--suave); }
+.ok { color: var(--positivo); } .error { color: var(--coral); } .aviso { color: var(--neutro); }
+
+@media (max-width: 640px) { main { padding: 20px 14px 40px; } }

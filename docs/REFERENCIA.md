@@ -1587,8 +1587,13 @@ Nexa trae esbuild integrado para lo que escribes tú. **Sin configuración**: la
 Una isla puede importar otros archivos, **paquetes de npm** y CSS (`import "./counter.css"`: ese CSS se enlaza también).
 Un CSS puede usar `@import`, y se minifica. Los archivos llevan hash en el nombre: caché inmutable.
 
-Requisito único: `esbuild` en el proyecto (`npm install -D esbuild`; o en el `PATH`). Si hay islas o estilos y no está,
-`nexa` lo dice con ese mismo comando. Sin islas ni estilos no se necesita nada.
+**`oweekoi.css`:** `nexa create` deja en `src/styles/oweekoi.css` la hoja de estilos global de Nexa («papel y tinta», claro y
+oscuro, la misma de este sitio de documentación). Estiliza el HTML normal (`main`, `h1`, `a`, `button`, `input`, `table`, `pre`,
+`.card`…) sin clases obligatorias; se cambia la paleta con las variables de `:root` (`--acento`, `--texto`…), y el modo oscuro es
+automático (o `<html data-theme="dark">`). Es del proyecto: edítala, o bórrala para empezar de cero. Todos los ejemplos la usan.
+
+Requisito único: `esbuild` en el proyecto (`npm install -D esbuild`; o en el `PATH`). Sin esbuild, un proyecto con **solo CSS** funciona igual (se copia tal cual, sin `@import` ni minificar); con islas, `nexa`
+dice el comando exacto para instalarlo.
 
 - `nexa build` deja los archivos en `dist/assets/`; lo generado vive en `.nexa/` (ponlo en `.gitignore`, `nexa create` ya lo hace).
 - `nexa dev` empaqueta al arrancar y **otra vez cuando cambias** una isla o un CSS.

@@ -4650,6 +4650,11 @@ consulta del visitante no es parte de ella (una página pre-renderizada lo ignor
   respuesta, una respuesta vieja se ignora, una API caída no bloquea). Con pruebas en `@nexa/forms`.
 - **Plugins del build**: `[build] before`/`after` — cualquier herramienta de línea de comandos antes/después de compilar.
 
+**Estilo global (Fase 82).**
+
+- **`oweekoi.css`**: `nexa create` deja en `src/styles/oweekoi.css` una hoja global («papel y tinta», claro/oscuro, variables CSS) que
+  estiliza el HTML sin clases. Es del proyecto: se edita o se borra. Los ejemplos la usan. Un proyecto con solo CSS funciona sin esbuild.
+
 **No hecho, a propósito:** imágenes sociales generadas (exigen rasterizar texto con una fuente: una dependencia pesada para
 algo que el diseñador hace mejor), optimización de imágenes en páginas renderizadas bajo demanda (el ejecutable no lleva `public/`),
 un servidor de lenguaje propio (el editor ya entiende `nexa-env.d.ts` y `nexa check` verifica los tipos) y recarga en caliente que

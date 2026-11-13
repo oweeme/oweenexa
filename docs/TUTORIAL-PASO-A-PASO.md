@@ -54,8 +54,9 @@ tutorial-blog/
 ├── nexa.toml            ← la configuración del proyecto
 ├── src/
 │   ├── pages/           ← NEXA CORE: cada archivo es una página HTML (con SEO)
-│   └── app/pages/       ← MODO APP: las páginas de la SPA
-├── public/              ← archivos que se copian tal cual (imágenes, CSS...)
+│   ├── app/pages/       ← MODO APP: las páginas de la SPA
+│   └── styles/oweekoi.css ← la hoja de estilos global de Nexa (tuya: edítala o bórrala)
+├── public/              ← archivos que se copian tal cual (imágenes, íconos...)
 ├── tsconfig.json        ← solo para tu editor
 └── nexa-env.d.ts        ← tipos para el editor (autocompletado)
 ```
@@ -245,23 +246,21 @@ export default function Layout() {
 }
 ```
 
-Y un poco de estilo. Todo `.css` de `src/styles/` se empaqueta (con `@import` y minificado), se le pone un hash en el nombre
-y se enlaza **solo** en el `<head>` de cada página: no hay que escribir ningún `<link>`.
+Y un poco de estilo. `nexa create` ya dejó en `src/styles/oweekoi.css` la **hoja de estilos global de Nexa** (papel y tinta, claro y oscuro):
+da estilo al texto, los enlaces, los botones, los formularios y las tarjetas sin que escribas una sola clase. **Es tuya**: edítala o bórrala.
+
+Todo `.css` de `src/styles/` se empaqueta (con `@import` y minificado), se le pone un hash en el nombre y se enlaza **solo** en el `<head>` de
+cada página: no hay que escribir ningún `<link>`. Así que lo nuestro es solo lo propio de este sitio, usando las variables de oweekoi (`--texto`, `--suave`…):
 
 ```css title="src/styles/site.css"
-:root { --fg: #252223; --bg: #faf7ee; --muted: #5f5a55; --accent: #488c54; --line: #d6cfbb; }
-@media (prefers-color-scheme: dark) { :root { --fg: #ece6d6; --bg: #262325; --muted: #b8b0a1; --accent: #93cf9b; --line: #55514f; } }
-body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+/* Lo propio de este sitio. La paleta, el texto, los botones y las tarjetas vienen de oweekoi.css */
 .shell { max-width: 720px; margin: 0 auto; padding: 0 16px; }
-header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line); }
-.brand { font-weight: 700; text-decoration: none; color: var(--fg); }
-nav { display: flex; gap: 14px; }
-a { color: var(--accent); }
-.card { border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 12px 0; }
-.card h3 { margin: 10px 0 0; }
-.meta { color: var(--muted); font-size: .9rem; margin: 4px 0; }
-.search { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; margin: 8px 0; background: transparent; color: inherit; }
-footer { margin: 32px 0; color: var(--muted); font-size: .9rem; }
+.shell main { padding: 12px 0 0; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; }
+.brand { font-weight: 700; text-decoration: none; color: var(--texto); }
+.meta { color: var(--suave); font-size: .9rem; margin: 4px 0; }
+.search { width: 100%; margin: 8px 0; }
+footer { margin-top: 32px; }
 ```
 
 ## Paso 5 · Un componente y la portada

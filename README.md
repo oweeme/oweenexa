@@ -287,6 +287,8 @@ nexa build
 cat dist/index.html
 ```
 
+El proyecto trae `src/styles/oweekoi.css`, una hoja global con estilo «papel y tinta» (claro y oscuro) que da buen aspecto al HTML sin clases. Es tuya: edítala o bórrala.
+
 ## Uso
 
 ### Layout compartido: header/footer en todas las páginas

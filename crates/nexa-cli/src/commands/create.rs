@@ -9,6 +9,8 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{bail, Context, Result};
 
+/// La hoja de estilos global de Nexa (se deja en `src/styles/oweekoi.css`: es del proyecto, se edita o se borra).
+const OWEEKOI_CSS: &str = include_str!("../../assets/oweekoi.css");
 const ENV_DTS: &str = include_str!("../../assets/nexa-env.d.ts");
 
 const TSCONFIG: &str = r#"{
@@ -76,6 +78,7 @@ pub fn run(name: &str, template: &str) -> Result<()> {
 
     fs::create_dir_all(root.join("src/pages")).with_context(|| format!("creando {}", root.join("src/pages").display()))?;
     fs::create_dir_all(root.join("public"))?;
+    fs::create_dir_all(root.join("src/styles"))?;
 
     let mut manifest = format!("[project]\nname = \"{name}\"\nversion = \"0.1.0\"\n\n[dependencies]\n");
     if template == "app" {
@@ -85,6 +88,7 @@ pub fn run(name: &str, template: &str) -> Result<()> {
     }
     write(&root.join("nexa.toml"), &manifest)?;
     write(&root.join("src/pages/index.tsx"), if template == "app" { APP_HOME } else { CORE_HOME })?;
+    write(&root.join("src/styles/oweekoi.css"), OWEEKOI_CSS)?;
     write(&root.join("tsconfig.json"), TSCONFIG)?;
     write(&root.join("nexa-env.d.ts"), ENV_DTS)?;
     write(&root.join(".gitignore"), "dist/\nnode_modules/\n.nexa/\n.env.local\n")?;
@@ -120,7 +124,7 @@ mod tests {
         let dir = scratch("core");
         let project = dir.join("hola");
         run(project.to_str().unwrap(), "core").unwrap();
-        for f in ["nexa.toml", "tsconfig.json", "nexa-env.d.ts", "src/pages/index.tsx", ".gitignore"] {
+        for f in ["nexa.toml", "tsconfig.json", "nexa-env.d.ts", "src/pages/index.tsx", "src/styles/oweekoi.css", ".gitignore"] {
             assert!(project.join(f).is_file(), "falta {f}");
         }
         assert!(!project.join("nexa.config.ts").exists(), "nexa.config.ts no lo lee nadie");

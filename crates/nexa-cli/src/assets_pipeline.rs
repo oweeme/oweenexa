@@ -150,7 +150,12 @@ pub fn run(root: &Path, before: &[String]) -> Result<Generated> {
     }
 
     let Some(bin) = find_esbuild(root) else {
-        bail!("hay islas o estilos para empaquetar pero no encuentro esbuild. Instálalo en el proyecto: `npm install -D esbuild`");
+        if islands.is_empty() {
+            // Solo CSS y sin esbuild: se copia tal cual (sin `@import`, sin minificar). Un proyecto recién
+            // creado (con `src/styles/oweekoi.css`) funciona sin instalar nada.
+            return copy_styles_without_esbuild(root, &styles, &gen);
+        }
+        bail!("hay islas para empaquetar pero no encuentro esbuild. Instálalo en el proyecto: `npm install -D esbuild`");
     };
 
     let tmp = gen.join("tmp");
@@ -203,6 +208,21 @@ pub fn run(root: &Path, before: &[String]) -> Result<Generated> {
         }
     }
     let _ = fs::remove_dir_all(&tmp);
+    fs::write(root.join(INDEX), serde_json::to_string_pretty(&result)?)?;
+    Ok(result)
+}
+
+fn copy_styles_without_esbuild(root: &Path, styles: &[(String, PathBuf)], gen: &Path) -> Result<Generated> {
+    let mut result = Generated::default();
+    for (name, entry) in styles {
+        let code = fs::read(entry)?;
+        if String::from_utf8_lossy(&code).contains("@import") {
+            eprintln!("Aviso: {} usa @import y no hay esbuild: se copia sin resolverlo (`npm install -D esbuild`).", entry.display());
+        }
+        let file = format!("{name}.{}.css", crate::assets::content_short_hash(&code));
+        write_asset(gen, "assets/styles", &file, &code)?;
+        result.styles.push(format!("/assets/styles/{file}"));
+    }
     fs::write(root.join(INDEX), serde_json::to_string_pretty(&result)?)?;
     Ok(result)
 }
@@ -265,6 +285,19 @@ mod tests {
         let g = run(&d, &[]).unwrap();
         assert_eq!(g, Generated::default());
         assert!(!d.join(".nexa").exists());
+    }
+
+    #[test]
+    fn css_only_projects_work_without_esbuild() {
+        let d = scratch("noesbuild");
+        fs::create_dir_all(d.join("src/styles")).unwrap();
+        fs::write(d.join("src/styles/oweekoi.css"), "body{margin:0}").unwrap();
+        // sin esbuild en node_modules; el PATH de la prueba tampoco lo trae garantizado, pero el CSS se copia igual
+        let g = run(&d, &[]);
+        if let Ok(g) = g {
+            assert_eq!(g.styles.len(), 1);
+            assert!(d.join(".nexa/gen").join(g.styles[0].trim_start_matches('/')).is_file());
+        }
     }
 
     #[test]

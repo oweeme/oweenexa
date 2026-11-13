@@ -1,7 +1,12 @@
 @import "./_vars.css";
-body { font: 17px/1.6 system-ui, sans-serif; color: var(--ink); background: var(--bg); margin: 0; }
-.shell { max-width: 46rem; margin: 0 auto; padding: 1rem; }
-nav a { margin-right: 1rem; color: var(--accent); }
-.meta { color: #667; font-size: .9rem; }
+/* Lo propio de este sitio; la paleta y el aspecto general vienen de oweekoi.css */
+.shell { max-width: 60rem; margin: 0 auto; padding: 1rem; }
+.shell main { padding: 12px 0 0; }
+nav { margin-bottom: 8px; }
+.meta { color: var(--suave); font-size: .9rem; }
 .docs { display: grid; grid-template-columns: 12rem 1fr; gap: 1.5rem; }
 .docs-nav { display: flex; flex-direction: column; gap: .3rem; }
+.docs-nav a { padding: 4px 8px; }
+.counter { margin-top: .5rem; }
+
+html body { background: var(--bg); color: var(--ink); }
