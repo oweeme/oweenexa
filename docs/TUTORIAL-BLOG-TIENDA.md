@@ -52,6 +52,17 @@ export default function Post() {
 
 El **contenido va directo en la página**, no dentro de una isla: así Google lo ve.
 
+Si el cuerpo del post es **HTML de un editor o Markdown**, no lo pongas con `{data.body}` (se vería el
+texto con etiquetas): usa `<SafeHtml html={data.body} />` o `<Markdown text={data.body} />`. Se sanean al
+renderizar (sin `<script>`, `on*`, `javascript:`…); ver [SEGURIDAD.md](SEGURIDAD.md).
+
+```tsx
+<article>
+    <h1>{data.title}</h1>
+    <Markdown text={data.body} />
+</article>
+```
+
 ## 3. Idiomas, sin endpoint
 
 ```

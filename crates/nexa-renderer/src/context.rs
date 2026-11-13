@@ -177,7 +177,7 @@ pub(crate) fn resolve_truthy(expr: &Expr, ctx: &RenderContext) -> bool {
     }
 }
 
-fn resolve_expr_json(expr: &Expr, ctx: &RenderContext) -> Option<serde_json::Value> {
+pub(crate) fn resolve_expr_json(expr: &Expr, ctx: &RenderContext) -> Option<serde_json::Value> {
     match expr.root_identifier() {
         "data" => resolve_json_by_path(ctx.data, &expr.property_path()),
         "params" => resolve_params(expr, ctx.params).map(serde_json::Value::String),

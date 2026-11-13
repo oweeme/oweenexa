@@ -220,3 +220,65 @@ fn text_and_attribute_values_are_always_escaped() {
     assert!(!out.contains("<script>") && !out.contains("<img"), "{out}");
     assert!(out.contains("class=\"&quot;&gt;&lt;img src=x onerror=alert(1)&gt;\""), "{out}");
 }
+
+// ---- <SafeHtml> y <Markdown> (Fase 68) ----
+
+#[test]
+fn safe_html_renders_rich_content_from_the_api_and_strips_the_attacks() {
+    let data = json!({ "body": "<h2>Hola</h2><p>Texto <b>fuerte</b></p><script>alert(1)</script><img src=x onerror=alert(1)><a href=\"javascript:alert(1)\">x</a>" });
+    let out = render(r#"export default function P() { return (<article><SafeHtml html={data.body} /></article>); }"#, &data);
+    assert!(out.contains("<h2>Hola</h2>") && out.contains("<b>fuerte</b>"), "{out}");
+    for bad in ["<script", "onerror", "javascript:"] {
+        assert!(!out.contains(bad), "{bad}: {out}");
+    }
+}
+
+#[test]
+fn the_same_html_through_a_plain_expression_is_still_escaped_text() {
+    let data = json!({ "body": "<b>x</b>" });
+    let out = render(r#"export default function P() { return (<div><p>{data.body}</p><SafeHtml html={data.body} /></div>); }"#, &data);
+    assert_eq!(out, "<div><p>&lt;b&gt;x&lt;/b&gt;</p><b>x</b></div>");
+}
+
+#[test]
+fn markdown_renders_and_is_sanitized() {
+    let data = json!({ "md": "# Título\n\nUn [enlace](https://oweeme.com) y [malo](javascript:alert(1)).\n\n<script>alert(1)</script>" });
+    let out = render(r#"export default function P() { return (<main><Markdown text={data.md} /></main>); }"#, &data);
+    assert!(out.contains("<h1>Título</h1>") && out.contains("href=\"https://oweeme.com\""), "{out}");
+    assert!(!out.contains("<script") && !out.contains("javascript:"), "{out}");
+}
+
+#[test]
+fn rich_content_works_inside_a_for_and_through_a_component_prop() {
+    let data = json!({ "posts": [{ "title": "A", "html": "<p>uno <i>i</i></p>" }, { "title": "B", "html": "<p>dos</p><script>x()</script>" }] });
+    let out = render(
+        r#"
+function Body(props) { return (<section><SafeHtml html={props.content} /></section>); }
+export default function P() { return (<div><For each={data.posts}>{(p) => (<article><h2>{p.title}</h2><Body content={p.html} /></article>)}</For></div>); }"#,
+        &data,
+    );
+    assert_eq!(out, "<div><article><h2>A</h2><section><p>uno <i>i</i></p></section></article><article><h2>B</h2><section><p>dos</p></section></article></div>");
+}
+
+#[test]
+fn a_missing_or_non_text_value_renders_nothing() {
+    let out = render(
+        r#"export default function P() { return (<div><SafeHtml html={data.nope} /><SafeHtml html={data.n} /><Markdown text={data.obj} /></div>); }"#,
+        &json!({ "n": 42, "obj": { "a": 1 } }),
+    );
+    assert_eq!(out, "<div></div>");
+}
+
+#[test]
+fn rich_nodes_only_accept_a_data_reference_and_nothing_else() {
+    let err = |src: &str| nexa_parser::parse_component("page.tsx", src).unwrap_err().to_string();
+    assert!(err(r#"export default function P() { return (<div><SafeHtml html="<b>x</b>" /></div>); }"#).contains("debe ser una expresión"));
+    assert!(err(r#"export default function P() { return (<div><SafeHtml html={data.a > 1} /></div>); }"#).contains("solo admite"));
+    assert!(err(r#"export default function P() { return (<div><SafeHtml>hola</SafeHtml></div>); }"#).contains("no admite hijos"));
+    assert!(err(r#"export default function P() { return (<div><SafeHtml text={data.a} /></div>); }"#).contains("usa `html={...}`"));
+    assert!(err(r#"export default function P() { return (<div><Markdown html={data.a} /></div>); }"#).contains("usa `text={...}`"));
+    assert!(err(r#"export default function P() { return (<div><SafeHtml /></div>); }"#).contains("exactamente un atributo"));
+    // un literal pasado por un prop tampoco: no necesita saneado, se escribe a mano
+    assert!(err(r#"function B(props) { return (<p><SafeHtml html={props.c} /></p>); }
+export default function P() { return (<div><B c="<b>x</b>" /></div>); }"#).contains("un literal no necesita saneado"));
+}

@@ -31,6 +31,13 @@ pub(crate) fn convert_element(jsx: &JSXElement, ctx: &Ctx) -> Result<Node, Parse
         if id.name.as_str() == "Show" {
             return crate::show::convert_show(jsx, ctx);
         }
+        // Contenido enriquecido saneado (Fase 68).
+        if id.name.as_str() == "SafeHtml" {
+            return crate::rich::convert_rich(jsx, ctx, false);
+        }
+        if id.name.as_str() == "Markdown" {
+            return crate::rich::convert_rich(jsx, ctx, true);
+        }
         // Fase 62: cualquier otro nombre capitalizado es una llamada a un
         // componente, que se expande en tiempo de compilación.
         return compose::expand_call(jsx, id.name.as_str(), ctx);

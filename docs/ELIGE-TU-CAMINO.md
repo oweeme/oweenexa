@@ -1,5 +1,7 @@
 # Elige tu camino: ¿qué uso para qué?
 
+> ¿Primera vez? Empieza por el [tutorial paso a paso](TUTORIAL-PASO-A-PASO.md), que usa las tres piezas.
+
 Nexa tiene **tres piezas** y la confusión más común es no saber cuál usar. Esta página es la guía
 de decisión. Para construir algo de punta a punta, ver
 [TUTORIAL-BLOG-TIENDA.md](TUTORIAL-BLOG-TIENDA.md).

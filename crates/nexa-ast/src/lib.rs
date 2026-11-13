@@ -20,7 +20,7 @@ pub use component::Component;
 pub use expr::Expr;
 pub use json_template::JsonTemplate;
 pub use loader::Loader;
-pub use node::{Attr, AttrValue, Element, Event, ForLoop, Island, Node, ShowNode};
+pub use node::{Attr, AttrValue, Element, Event, ForLoop, Island, Node, RichNode, ShowNode};
 pub use seo::SeoConfig;
 pub use template::{Template, TemplatePart};
 pub use top_level_const::TopLevelConst;

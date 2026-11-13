@@ -1,0 +1,8 @@
+# Siempre LF: en Windows, Git convertiría a CRLF y rompería la comprobación de assets embebidos
+# (`include_str!`) y las pruebas que comparan texto exacto.
+* text=auto eol=lf
+*.png binary
+*.avif binary
+*.ico binary
+*.woff binary
+*.woff2 binary

@@ -51,6 +51,16 @@ pub(crate) fn classify_node(
             }
         }
 
+        Node::Rich(rich) => {
+            let id = alloc_id(next_id);
+            dependencies.add(rich.source.root_identifier(), id);
+            IrNode {
+                id,
+                classification: Classification::Dynamic,
+                kind: IrNodeKind::Rich { source: rich.source.clone(), markdown: rich.markdown },
+            }
+        }
+
         Node::Show(show) => {
             let id = alloc_id(next_id);
             dependencies.add(show.when.root_identifier(), id);

@@ -67,7 +67,6 @@ Verificá que funcionó:
 nexa info
 # Nexa CLI
 # Version: 0.1.0
-# Fase actual: 16 — Islas interactivas
 ```
 
 Si en vez de eso ves algo como `error: ... is not a directory`, casi
@@ -545,6 +544,8 @@ uno, vive en `README.md`)
 
 ## Dónde seguir
 
+- [TUTORIAL-PASO-A-PASO.md](TUTORIAL-PASO-A-PASO.md) — **empieza aquí si es tu
+  primera vez**: un blog bilingüe con un buscador y un panel, desde cero.
 - [ELIGE-TU-CAMINO.md](ELIGE-TU-CAMINO.md) — ¿Core, isla o Modo App? ¿Cómo
   se sirve lo que cambia? ¿Dónde lo despliego?
 - [TUTORIAL-BLOG-TIENDA.md](TUTORIAL-BLOG-TIENDA.md) — un blog y una tienda

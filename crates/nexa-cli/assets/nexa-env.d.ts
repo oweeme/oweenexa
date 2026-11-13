@@ -20,6 +20,9 @@ declare function t(key: string, args?: Record<string, unknown>): string;
 // `each={group.members}`).
 declare function For(props: { each: any; children: (item: any) => unknown }): JSX.Element;
 declare function Show(props: { when: unknown; fallback?: unknown; children?: unknown }): JSX.Element;
+// Contenido enriquecido de tu API, SANEADO al renderizar (ver docs/SEGURIDAD.md).
+declare function SafeHtml(props: { html: string | null | undefined }): JSX.Element;
+declare function Markdown(props: { text: string | null | undefined }): JSX.Element;
 
 // ── Modo App (src/app): la API de @nexa/app ──
 declare module "@nexa/app" {

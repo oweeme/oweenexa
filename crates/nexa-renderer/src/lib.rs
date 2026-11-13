@@ -16,6 +16,7 @@
 
 mod context;
 mod html;
+mod rich;
 
 #[cfg(test)]
 mod tests;
@@ -57,6 +58,7 @@ pub fn render_node(node: &IrNode, ctx: &RenderContext) -> String {
         },
         IrNodeKind::Element { .. } => html::render_element(node, ctx),
         IrNodeKind::For { each, item_name, body } => render_for(each, item_name, body, ctx),
+        IrNodeKind::Rich { source, markdown } => rich::render_rich(context::resolve_expr_json(source, ctx), *markdown),
         IrNodeKind::Show { when, then, otherwise } => {
             let branch = if context::resolve_truthy(when, ctx) { then } else { otherwise };
             branch.iter().map(|n| render_node(n, ctx)).collect()

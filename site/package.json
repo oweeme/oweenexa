@@ -1,0 +1,17 @@
+{
+  "name": "nexa-site",
+  "private": true,
+  "type": "module",
+  "description": "Sitio de documentación de Nexa (GitHub Pages). Se genera desde ../docs/*.md.",
+  "scripts": {
+    "build": "node build.mjs",
+    "check": "node check-tutorial.mjs",
+    "serve": "node serve.mjs"
+  },
+  "dependencies": {
+    "@fontsource/inter": "^5.2.5",
+    "github-slugger": "^2.0.0",
+    "highlight.js": "^11.11.1",
+    "marked": "^15.0.7"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "site": { "name": "Mi blog", "tagline": "Un sitio hecho con Nexa" },
+  "nav": { "home": "Inicio", "blog": "Blog" },
+  "home": { "title": "Bienvenido", "latest": "Últimos artículos" },
+  "blog": { "title": "Todos los artículos", "search": "Buscar un artículo…", "by": "por", "back": "← Volver al blog", "empty": "Todavía no hay artículos." }
+}

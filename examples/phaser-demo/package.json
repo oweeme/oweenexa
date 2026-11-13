@@ -3,10 +3,11 @@
   "private": true,
   "description": "Ejemplo de Nexa: un juego Phaser dentro del Modo App. `npm run vendor` genera public/vendor/phaser.js (ver docs/VENDORING.md).",
   "scripts": {
-    "vendor": "mkdir -p public/vendor && esbuild vendor-entry.js --bundle --format=esm --target=es2022 --minify --outfile=public/vendor/phaser.js"
+    "vendor": "node vendor.mjs"
   },
   "devDependencies": {
     "esbuild": "^0.28.2",
     "phaser": "^4.2.1"
-  }
+  },
+  "type": "module"
 }

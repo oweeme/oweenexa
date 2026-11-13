@@ -4399,6 +4399,171 @@ añade ya a todas las páginas con `hreflang`). `preview` y `dev` la sirven.
 
 ---
 
+## Fase 68 — Contenido enriquecido saneado: `<SafeHtml>` y `<Markdown>`
+
+**Motivación.** La Fase 67 dejó el hueco de uso más importante para un blog:
+Nexa escapa todo lo que viene de datos, así que el cuerpo de un post en HTML o
+Markdown se veía como texto con etiquetas, y no había una forma segura de
+mostrarlo con formato.
+
+**Qué se construyó.**
+
+1. `<SafeHtml html={data.body} />` y `<Markdown text={data.body} />`: nodos
+   hoja nuevos (`Node::Rich` / `IrNodeKind::Rich`) que solo aceptan una
+   referencia a datos (`data.x`, `params.x`, el item de un `<For>`, o un prop de
+   un componente) — nunca un literal, una expresión ni hijos (errores claros).
+   No hay `<RawHtml>` sin sanear.
+2. Saneado con `ammonia` (analizador HTML5 de Servo: re-serializa el DOM, no
+   usa expresiones regulares) a partir de su lista de etiquetas permitidas,
+   endurecida: sin `<script>`/`<style>`/`<iframe>`/`<svg>`/`<math>`/`<form>`/
+   `<input>`/`<base>`/`<meta>`/`<link>`, sin `on*`/`style`/`id`/`srcdoc`; URLs
+   solo `http`/`https`/`mailto`/`tel`/relativas; enlaces con `rel="noopener
+   noreferrer nofollow ugc"`; imágenes `loading="lazy"`; `class` solo en
+   `<code>`/`<pre>`.
+3. Markdown con `pulldown-cmark` (CommonMark + tablas + tachado); el HTML que
+   produce (y el que el autor mezcle dentro) pasa por el mismo saneador.
+4. Protección de recursos: más de 2 MB, o más de 128 niveles de anidamiento
+   (medido antes **y** después de convertir el Markdown, porque `> > > …`
+   se vuelve `<blockquote>` anidados) no se muestra — no se cae ni se agota la pila.
+5. Tipos de editor (`nexa-env.d.ts`), `docs/SEGURIDAD.md`, la referencia y el
+   tutorial puestos al día; `examples/blog-store-demo` gana `articles/[slug]`.
+
+**Verificado.**
+
+- 16 tests nuevos de Rust: 10 del saneador (20 ataques de HTML —incluidos `<svg
+  onload>`, `<math>`, mutación con `<noscript>`, `srcdoc`, `data:` en una
+  imagen—, 7 de Markdown, enlaces endurecidos, imágenes, 50.000 `<div>` y 5.000
+  `>` anidados sin caídas) y 6 de integración (dentro de `<For>` y de un
+  componente, `{data.x}` sigue escapando, valor ausente o no texto = nada,
+  errores del parser). **465 de Rust pasan, 0 fallos, 0 avisos de clippy.**
+  Los tipos de editor (`SafeHtml`/`Markdown`) se comprobaron con el `tsc` real.
+- **Chrome real** (`e2e/rich-content.mjs`, 15 de 15): un artículo cuyo HTML y
+  Markdown traen `<script>`, `onerror`, `onload`, `<iframe srcdoc>`,
+  `javascript:` y `style` que, si se ejecutaran, marcarían `window.__pwned`.
+  Resultado: **nada se ejecutó** (`__pwned` sin definir, ningún diálogo), el
+  formato legítimo se ve (títulos, negrita, lista, tabla, código con su clase,
+  imagen perezosa, enlace con `rel` seguro), el enlace `javascript:` perdió su
+  `href`, y el mismo valor por `{data.html}` sigue viéndose como texto escapado.
+
+**Límites conocidos (honestos).**
+
+- Lista de etiquetas fija (no configurable todavía): sin `<iframe>` (vídeos
+  incrustados de YouTube), sin `id` (anclas de títulos), sin `<input>` (listas de
+  tareas), sin `<svg>`. Para eso, una isla.
+- No hay resaltado de sintaxis (solo se conserva `class="language-x"`), ni
+  tabla de contenidos, ni extracción de *front matter*.
+- Saneado ≠ moderación: no evita spam de enlaces (de ahí `nofollow ugc`) ni
+  verifica que el autor diga la verdad.
+- Las imágenes `<img>` de este contenido no pasan por la optimización AVIF de
+  Nexa (es contenido dinámico).
+- La dependencia (`ammonia` + `html5ever` + `pulldown-cmark`) hace crecer el
+  binario de `nexa` en release de **15,1 a 17,0 MB** (+1,9 MB) — y con él, el
+  de cada `nexa bundle`.
+
+---
+
+## Fase 69 — CI multiplataforma y suite de punta a punta con un solo comando
+
+**Motivación.** Todo lo construido (fases 60-68) solo estaba garantizado en un
+Linux, y las pruebas de Chrome eran scripts sueltos (algunos en bash) que había
+que lanzar a mano, con APIs y servidores levantados por separado.
+
+**Qué se hizo.**
+
+1. **Auditoría de portabilidad.** El código y los tests compilan para Windows
+   (`x86_64-pc-windows-gnu`) y macOS (Intel y Apple Silicon): `cargo check
+   --workspace --all-targets --target …` desde Linux (con un compilador C falso
+   para el script de compilación de `ring`, que solo hace falta para enlazar).
+   Encontró cuatro cosas que compilaban pero habrían fallado en Windows:
+   `nexa test` ejecutaba `npm` (es `npm.cmd`), `build:ui-assets` usaba `cp`, los
+   scripts `vendor` de los ejemplos usaban `mkdir -p`/comillas de bash (ahora
+   `vendor.mjs` con la API de esbuild, que produce bundles idénticos byte a byte),
+   y un aviso `unreachable_pattern` que rompería `-D warnings`. Además,
+   `.gitattributes` (`eol=lf`): sin él, Git en Windows convierte a CRLF y rompe
+   los assets embebidos.
+2. **`e2e/run-all.mjs`**: toda la suite con un comando — levanta cada API,
+   compila, sirve con `nexa preview` y con el ejecutable de `nexa bundle`, corre
+   las pruebas en un Chrome real, limpia los procesos y resume. La prueba del
+   renderizado bajo demanda se portó de bash a Node (`ssr-on-demand.mjs`).
+3. **`e2e/smoke.mjs`**: humo **multiplataforma** (solo Node + `nexa`): crear,
+   lint, build, bundle, arrancar el ejecutable fuera del proyecto y 18
+   comprobaciones — lo más sensible a cada sistema (pegar el sitio al final del
+   `.exe` y leerlo al arrancar).
+4. **Flujos de GitHub Actions**: `ci.yml` (clippy `-D warnings` + tests en
+   Linux/Windows/macOS; assets embebidos al día; tipos y tests de JS; humo en
+   los 3 sistemas; e2e en Chrome), `release.yml` (binarios de `nexa` para
+   Linux, Windows y macOS Intel/ARM al subir una etiqueta) y `desktop.yml`
+   (Tauri por sistema, a mano y cada lunes). Documentado en `docs/CI-Y-PRUEBAS.md`.
+5. **Comprobación de assets embebidos**: si cambias `packages/*` y olvidas
+   `npm run build:cli-assets`, el binario compila y sirve JavaScript viejo (pasó
+   durante el desarrollo). La CI lo detecta; se verificó con un cambio real de
+   comportamiento (la comprobación falla) y con uno solo de comentario (que
+   `--minify` elimina: correctamente no falla).
+
+**Verificado.**
+
+- `node e2e/run-all.mjs`: **137 comprobaciones, 0 fallos, 11 suites, 70 s**
+  (humo 18, SPA 13+13, Core 10+10, Phaser 7, React 12, idioma 7+7, contenido
+  enriquecido 15, bajo demanda 25).
+- Los comandos exactos de la CI, ejecutados en local: clippy `-D warnings` sin
+  avisos, 465 tests de Rust, 0 errores de tipos, todos los tests de los paquetes
+  de JS, assets al día.
+- Los tres flujos se validaron con un script propio (YAML, referencias
+  `needs`/`matrix`, formato de `uses`, expresiones).
+
+**Límites conocidos (honestos).**
+
+- **Los flujos no se han ejecutado en GitHub**: aquí no hay Actions. Pueden
+  necesitar ajustes en la primera ejecución. No se pudo pasar `actionlint` (no se
+  permite ejecutar un binario descargado en este entorno): pásalo tú.
+- **Windows y macOS: los tests y el humo no se han ejecutado en esos sistemas**,
+  solo comprobado que compila. Por eso esos jobs son `experimental`
+  (`continue-on-error`) hasta la primera ejecución verde.
+- El e2e de Chrome corre solo en Linux (necesita Python 3 y las APIs de
+  ejemplo); el escritorio y `nexa bundle --runtime` entre sistemas siguen sin
+  verificar.
+- `release.yml` no genera binarios musl/estáticos ni firma el de macOS.
+
+---
+
+## Fase 70 — Sitio de documentación (GitHub Pages) y tutorial verificado
+
+**Qué se hizo.**
+
+1. **`examples/tutorial-blog`**: el proyecto del tutorial (API en Node sin dependencias, blog bilingüe, componente,
+   layout, ruta dinámica con `paths`, Markdown saneado, una isla en TypeScript puro, y un panel como SPA con
+   login por cookie que publica artículos). **`e2e/tutorial.mjs`: 23 comprobaciones en Chrome real**, incluida
+   la publicación de un artículo que aparece bajo demanda y un intento de XSS por Markdown. Entra en
+   `run-all.mjs` (ahora 12 suites, 160 comprobaciones).
+2. **`docs/TUTORIAL-PASO-A-PASO.md`**: 12 pasos con "compruébalo" en cada uno. Sus bloques de código se
+   **generan desde los archivos del ejemplo** y `site/check-tutorial.mjs` falla si el texto y el código
+   dejan de coincidir (probado con un cambio deliberado). Todas las URLs que el tutorial menciona se
+   comprobaron también contra `nexa dev`.
+3. **`site/`**: generador del sitio de documentación con el estilo de `oweekoi` (paleta papel/tinta, ventanas
+   «Onda», alternador de tema, portada bilingüe ES/EN) y identidad propia. 45 páginas a partir de `docs/*.md`
+   (la referencia se parte por secciones, con anclas y enlaces reescritos), buscador en el cliente, índice por
+   página, anterior/siguiente, sitemap, 404. **Falla si hay enlaces o anclas internas rotas o la estructura HTML
+   se rompe.** Revisado visualmente en claro, oscuro y móvil, lo que destapó tres defectos reales corregidos:
+   el código en línea no escapaba HTML (un `<main>` entre comillas rompía la página), el encabezado móvil
+   desbordaba, y las palabras largas de código ensanchaban la página.
+4. **`.github/workflows/pages.yml`** (despliegue) y un job `site` en `ci.yml`.
+5. `nexa info` mostraba "Fase actual: 59": ahora muestra la versión y los enlaces.
+
+**Verificado.** `node site/build.mjs`: 45 páginas, 220 entradas de búsqueda, 0 enlaces rotos; capturas en Chrome
+real (portada clara/oscura/móvil, documentación, referencia, buscador con resultados relevantes); sin
+desbordamiento horizontal en ninguna página a 390 px.
+
+**Límites conocidos (honestos).**
+
+- **El flujo de Pages no se ha ejecutado en GitHub** (hay que activar Settings → Pages → Source: GitHub Actions).
+  La URL esperada es `https://oweeme.github.io/oweenexa/`.
+- La portada es bilingüe; **la documentación solo está en español**.
+- El buscador es una búsqueda de texto simple en el cliente (sin tolerancia a erratas ni resaltado en la página).
+- La tipografía (Inter) se sirve desde el sitio; los colores y componentes siguen el sistema de diseño de
+  `oweekoi`, pero el logotipo y la portada son propios.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

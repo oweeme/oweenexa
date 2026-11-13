@@ -586,6 +586,21 @@ de props, props con valores por defecto, un prop que sea una función o
 una expresión calculada, `<Pkg.Componente>` con punto, un componente
 que no devuelva un único elemento JSX.
 
+## Contenido enriquecido: `<SafeHtml>` y `<Markdown>` (Fase 68)
+
+`{data.body}` escapa todo (un `"<p>Hola</p>"` se ve como texto). Para el cuerpo de un post, una descripción
+con formato, etc.:
+
+```tsx
+<SafeHtml html={data.bodyHtml} />       // HTML (de un editor WYSIWYG)
+<Markdown text={data.bodyMarkdown} />   // Markdown (CommonMark + tablas + tachado)
+```
+
+Se sanean al renderizar: etiquetas de texto/listas/tablas/código/enlaces/imágenes sí; `<script>`, `<iframe>`,
+`<svg>`, `<form>`, `on*`, `style`, `javascript:`… no. Funcionan dentro de `<For>` y de componentes (el prop
+recibe `data.x`). Solo aceptan una referencia a datos, nunca un literal. Detalle y límites en
+[SEGURIDAD.md](SEGURIDAD.md).
+
 ## Link activo automático (`aria-current`)
 
 ```tsx

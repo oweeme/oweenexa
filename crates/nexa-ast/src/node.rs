@@ -23,6 +23,19 @@ pub enum Node {
     /// igual que `<For>` o `t()` — nunca un `if` ni una expresión
     /// arbitraria del desarrollador.
     Show(ShowNode),
+    /// `<SafeHtml html={data.body} />` / `<Markdown text={data.body} />`
+    /// (Fase 68): contenido enriquecido que viene de datos, **saneado** al
+    /// renderizar con una lista de etiquetas permitidas.
+    Rich(RichNode),
+}
+
+/// El texto a mostrar es la misma `Expr` limitada de siempre (`data.x`,
+/// `params.x`, el item de un `<For>` o un prop). `markdown`: el valor es
+/// Markdown (CommonMark + tablas/tachado/tareas) en vez de HTML.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RichNode {
+    pub source: Expr,
+    pub markdown: bool,
 }
 
 /// `when` es la misma `Expr` limitada de siempre (`data.x`, `params.x`,

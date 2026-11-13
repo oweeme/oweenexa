@@ -1,0 +1,12 @@
+{
+  "name": "tutorial-blog",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "api": "node api.mjs",
+    "vendor": "esbuild islands/search.island.ts --bundle --format=esm --target=es2022 --minify --outfile=public/vendor/search.js"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2"
+  }
+}

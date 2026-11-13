@@ -39,7 +39,9 @@ pub fn run() -> Result<()> {
 
     println!();
     println!("Corriendo `npm test`...");
-    let status = ProcessCommand::new("npm").arg("test").status().context("ejecutando `npm test`")?;
+    // En Windows `npm` es un script `npm.cmd`: `Command::new("npm")` no lo encuentra.
+    let npm = if cfg!(windows) { "npm.cmd" } else { "npm" };
+    let status = ProcessCommand::new(npm).arg("test").status().context("ejecutando `npm test`")?;
     if !status.success() {
         bail!("`npm test` terminó con errores.");
     }

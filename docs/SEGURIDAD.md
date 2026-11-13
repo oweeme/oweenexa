@@ -12,6 +12,7 @@ Las afirmaciones de esta página están **probadas** (tests en `crates/nexa-rend
 | **XSS por atributos de evento** (`onclick={data.x}`, `srcdoc={data.x}`) | Un dato nunca llega a un atributo `on*` ni a `srcdoc`. |
 | **Romper el JSON-LD** (`</script>`, `<!--<script>`) | El JSON-LD escapa todo `<`, `>`, `&` y U+2028/9 como `\uXXXX`: sigue siendo JSON válido y el valor hostil queda como dato. |
 | **`canonical` / `og:image` falsos** | Solo se emiten con `http(s)` o rutas relativas. |
+| **HTML/Markdown de tu API** (cuerpo de un post) | `<SafeHtml>` y `<Markdown>` lo pasan por un sanitizador con lista de etiquetas permitidas: nada de `<script>`, `<iframe>`, `<svg>`, `<form>`, `on*`, `style`, `id`, `javascript:`/`data:`. Ver abajo. |
 | **Props de una isla** | Van en un atributo, escapados. |
 | **Inyección en la llamada a tu API** (`/blog/x/a?admin=1`, `../`) | Los parámetros de la URL se **codifican** (`%XX`) antes de ir a tu API; `.`/`..` se rechazan. |
 | **Path traversal** (`/../etc/passwd`) | Rechazado (400) en el ejecutable, y bloqueado en `nexa preview`/`dev`. |
@@ -24,6 +25,35 @@ Las afirmaciones de esta página están **probadas** (tests en `crates/nexa-rend
 Lo que escribes tú a mano en el TSX (`<a href="javascript:void(0)">`) se considera de confianza y no se toca;
 el mismo texto **desde datos** sí se bloquea.
 
+## Contenido enriquecido: `<SafeHtml>` y `<Markdown>`
+
+```tsx
+<article>
+    <h1>{data.title}</h1>
+    <SafeHtml html={data.bodyHtml} />        {/* HTML de un editor (TinyMCE, Quill…) */}
+    <Markdown text={data.bodyMarkdown} />    {/* Markdown (CommonMark + tablas + tachado) */}
+</article>
+```
+
+El valor se sanea **al renderizar** con `ammonia` (basado en el analizador de HTML5 de Servo; re-serializa el
+DOM, así que no se deja engañar por trucos de mutación):
+
+- **Permitido**: párrafos, títulos, listas, citas, tablas, `<pre><code class="language-x">`, `<strong>`,
+  `<em>`, `<img>` (https), enlaces (`http`, `https`, `mailto`, `tel`, o relativos).
+- **Siempre quitado**: `<script>`, `<style>`, `<iframe>`, `<object>`, `<embed>`, `<form>`, `<input>`,
+  `<svg>`, `<math>`, `<base>`, `<meta>`, `<link>`, todo atributo `on*`, `style`, `id` (evita el DOM
+  clobbering), `srcdoc`, y cualquier URL `javascript:`/`data:`/`vbscript:`.
+- **Enlaces**: reciben `rel="noopener noreferrer nofollow ugc"`; **imágenes**: `loading="lazy"`; `class`
+  solo en `<code>`/`<pre>` (resaltado de sintaxis).
+- **Límites**: un valor de más de 2 MB, o con más de 128 niveles de etiquetas anidadas, no se muestra
+  (protege al servidor; un post real no se acerca). Un valor que no es texto no muestra nada.
+- El atributo solo admite una referencia a datos (`data.x`, `params.x`, el item de un `<For>` o un prop).
+  Un literal escrito a mano no necesita saneado: escríbelo directamente en el TSX.
+- No hay `<RawHtml>` sin sanear, a propósito.
+
+**Qué cubre y qué no:** el contenido llega seguro al HTML de la página. No valida que el autor "diga la
+verdad" ni evita el spam de enlaces (por eso `nofollow ugc`).
+
 ## Lo que sigue siendo tu responsabilidad
 
 - **SQL / NoSQL injection, autenticación y autorización → tu backend.** Nexa nunca construye consultas ni
@@ -34,10 +64,9 @@ el mismo texto **desde datos** sí se bloquea.
 - **CSP (`Content-Security-Policy`).** No se envía por defecto: una CSP genérica rompería los imports de
   terceros (`[imports]`) y la cámara de `platform`. Si quieres una, añádela en tu nginx/proxy con los
   orígenes que usas.
-- **HTML que viene de tu API.** Nexa **escapa todo**: si tu API devuelve `"<p>Hola</p>"` se ve el texto
-  literal, no un párrafo. Es seguro, pero un blog con contenido enriquecido (Markdown/HTML) necesita
-  convertirlo antes en tu backend a datos estructurados, o mostrarlo con una isla que use un sanitizador
-  (p. ej. DOMPurify). No existe todavía un `<RawHtml>` saneado dentro de Nexa Core.
+- **Contenido enriquecido.** `{data.body}` **escapa todo**: si tu API devuelve `"<p>Hola</p>"` se ve el
+  texto literal, no un párrafo. Para un post con formato usa `<SafeHtml html={data.body} />` o
+  `<Markdown text={data.body} />` (ver abajo): son la forma explícita y saneada.
 - **Dependencias del navegador** (React, Phaser…) y el contenido de `public/`: las que tú elijas.
 - **HTTPS.** `nexa bundle` no termina TLS: ponlo detrás de un proxy inverso o balanceador.
 - **Parámetros en el *host* de `load.url`**: no pongas un `:parámetro` donde iría el dominio

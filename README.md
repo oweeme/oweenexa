@@ -6,6 +6,10 @@ real (con SEO, JSON-LD, i18n) contra cualquier backend HTTP, y solo envía
 JavaScript al navegador para las partes de la página que de verdad son
 interactivas — nunca para la página completa.
 
+**🌐 [Documentación en línea](https://oweeme.github.io/oweenexa/)** ·
+**🚀 [Tutorial paso a paso](docs/TUTORIAL-PASO-A-PASO.md)** — un blog bilingüe con un buscador y un panel,
+desde cero y verificado en un Chrome real.
+
 **📖 [Guía de instalación y uso](docs/GUIA-DE-INICIO.md)** — empezá acá si
 es la primera vez que ves Nexa: instalación, tu primer proyecto, sintaxis
 de una página, módulos oficiales, islas interactivas, empaquetado para
@@ -87,6 +91,14 @@ se produce ese HTML:
   con props, hijos y eventos, `<Show when>` y `<For>` anidado — el
   parser los *expande al compilar* y produce el mismo HTML que escribir
   todo a mano: SEO intacto y cero JavaScript extra (Fase 62).
+- **CI en Linux, Windows y macOS y una suite de punta a punta con un solo
+  comando** (`node e2e/run-all.mjs`: 160 comprobaciones en un Chrome real contra
+  `nexa preview` y contra el ejecutable). Detalle y lo que sí/no está verificado
+  en [docs/CI-Y-PRUEBAS.md](docs/CI-Y-PRUEBAS.md) (Fase 69).
+- **Contenido de blog con formato, sin riesgo.** `<SafeHtml html={data.body} />`
+  y `<Markdown text={data.body} />` muestran el HTML o Markdown de tu API
+  saneado (sin `<script>`, `on*`, `javascript:`…), probado en Chrome con
+  ataques reales (Fase 68).
 - **Seguridad contra inyecciones, probada.** Todo lo que viene de tu API
   se escapa; un `href="javascript:…"` o un `onclick` que salga de datos se
   omite; el JSON-LD no puede romperse; los parámetros de la URL se codifican
@@ -783,7 +795,7 @@ Si tocas `packages/runtime`, `packages/router`, `packages/forms`,
 
 ```bash
 npm run build:cli-assets   # esbuild -> crates/nexa-cli/assets/*.js
-npm run build:ui-assets    # copia el CSS -> crates/nexa-ui/assets/*.css
+npm run build:ui-assets    # copia el CSS -> crates/nexa-ui/assets/*.css (script de Node, multiplataforma)
 ```
 
 ## Estructura

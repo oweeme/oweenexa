@@ -10,6 +10,8 @@ use tiny_http::{ListenAddr, Response, Server};
 
 fn spawn_test_server(status: u16, body: &'static str) -> String {
     let server = Server::http("127.0.0.1:0").expect("failed to bind test server");
+    // En Unix `ListenAddr` también tiene la variante `Unix`; en Windows el `_` es inalcanzable.
+    #[allow(unreachable_patterns)]
     let port = match server.server_addr() {
         ListenAddr::IP(addr) => addr.port(),
         _ => panic!("expected an IP listen address"),

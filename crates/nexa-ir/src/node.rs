@@ -51,6 +51,11 @@ pub enum IrNodeKind {
         then: Vec<IrNode>,
         otherwise: Vec<IrNode>,
     },
+    /// Contenido enriquecido saneado (Fase 68): HTML o Markdown de los datos.
+    Rich {
+        source: Expr,
+        markdown: bool,
+    },
 }
 
 impl IrNode {

@@ -1,0 +1,13 @@
+:root { --fg: #252223; --bg: #faf7ee; --muted: #5f5a55; --accent: #488c54; --line: #d6cfbb; }
+@media (prefers-color-scheme: dark) { :root { --fg: #ece6d6; --bg: #262325; --muted: #b8b0a1; --accent: #93cf9b; --line: #55514f; } }
+body { margin: 0; font: 16px/1.6 system-ui, sans-serif; color: var(--fg); background: var(--bg); }
+.shell { max-width: 720px; margin: 0 auto; padding: 0 16px; }
+header { display: flex; align-items: center; justify-content: space-between; padding: 16px 0; border-bottom: 1px solid var(--line); }
+.brand { font-weight: 700; text-decoration: none; color: var(--fg); }
+nav { display: flex; gap: 14px; }
+a { color: var(--accent); }
+.card { border: 1px solid var(--line); border-radius: 10px; padding: 4px 16px; margin: 12px 0; }
+.card h3 { margin: 10px 0 0; }
+.meta { color: var(--muted); font-size: .9rem; margin: 4px 0; }
+.search { width: 100%; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; font: inherit; margin: 8px 0; background: transparent; color: inherit; }
+footer { margin: 32px 0; color: var(--muted); font-size: .9rem; }

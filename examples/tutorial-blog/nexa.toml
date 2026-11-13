@@ -1,0 +1,22 @@
+[project]
+name = "tutorial-blog"
+version = "0.1.0"
+
+[dependencies]
+
+# Idioma por defecto (y de respaldo: una clave sin traducir cae a este idioma).
+[i18n]
+default = "es"
+
+# La SPA (el panel) vive en /panel
+[app]
+base = "/panel"
+title = "Panel"
+
+# `nexa dev`, `nexa preview` y el ejecutable reenvían /api/* a tu backend: mismo origen, sin CORS.
+[proxy]
+"/api" = "http://127.0.0.1:9500"
+
+# El módulo de la isla del buscador (lo genera `npm run vendor`).
+[imports]
+search = "/vendor/search.js"

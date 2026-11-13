@@ -44,6 +44,7 @@ mod head;
 mod jsx;
 mod loader;
 mod object_literal;
+mod rich;
 mod schema;
 mod show;
 mod seo;

@@ -1,0 +1,51 @@
+name: Escritorio (Tauri)
+
+# Compilar una app de escritorio por sistema operativo es lento (varios minutos), así que no corre en cada
+# commit: a mano, y una vez por semana.
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 5 * * 1"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  desktop:
+    name: Escritorio (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            ${{ runner.temp }}/desk/src-tauri
+      - name: Dependencias de Tauri (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - run: cargo build --release -p nexa-cli
+      - name: Crear una app, generar src-tauri y compilar el binario nativo
+        shell: bash
+        run: |
+          nexa="$GITHUB_WORKSPACE/target/release/nexa"
+          cd "$RUNNER_TEMP"
+          "$nexa" create desk --template app
+          cd desk
+          "$nexa" add tauri
+          "$nexa" build --target desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            ${{ runner.temp }}/desk/src-tauri/target/release/desk
+            ${{ runner.temp }}/desk/src-tauri/target/release/desk.exe
+          if-no-files-found: warn

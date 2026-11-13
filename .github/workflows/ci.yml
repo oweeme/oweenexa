@@ -1,0 +1,148 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  # Rust: clippy sin avisos + todos los tests, en los tres sistemas operativos.
+  rust:
+    name: Rust (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            experimental: false
+          # Windows y macOS: el código compila para ambos (comprobado con `cargo check --target`), pero los
+          # tests aún no se habían ejecutado allí. Quita `experimental` cuando la primera ejecución salga verde.
+          - os: windows-latest
+            experimental: true
+          - os: macos-latest
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: clippy (sin avisos)
+        run: cargo clippy --workspace --all-targets -- -D warnings
+      - name: tests
+        run: cargo test --workspace
+
+  # Los bundles de JS que se embeben en el binario (crates/*/assets) tienen que estar al día: si cambias
+  # `packages/*` y olvidas `npm run build:cli-assets`, el binario sirve JavaScript viejo.
+  assets:
+    name: Assets embebidos al día
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run build:cli-assets
+      - run: npm run build:ui-assets
+      - name: ¿Hay diferencias con lo versionado?
+        run: |
+          if ! git diff --exit-code -- 'crates/nexa-cli/assets/*.js' 'crates/nexa-ui/assets/*.css'; then
+            echo "::error::Los assets embebidos están desactualizados. Ejecuta 'npm run build:cli-assets' y 'npm run build:ui-assets' y súbelos."
+            exit 1
+          fi
+
+  # El sitio de documentación: se genera, no tiene enlaces rotos, y el tutorial coincide con el código probado.
+  site:
+    name: Sitio de documentación
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+      - run: npm ci
+        working-directory: site
+      - run: node check-tutorial.mjs
+        working-directory: site
+      - run: node build.mjs
+        working-directory: site
+
+  # TypeScript: tipos + tests de los paquetes.
+  js:
+    name: JavaScript (tipos y tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck --workspaces --if-present
+      - run: npm test --workspaces --if-present
+
+  # Humo en los tres sistemas: crear, compilar, empaquetar en UN ejecutable y servirlo.
+  # Es lo más sensible a cada sistema operativo (pegar el sitio al final del .exe y leerlo al arrancar).
+  smoke:
+    name: Humo (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            exe: ""
+            experimental: false
+          - os: windows-latest
+            exe: ".exe"
+            experimental: true
+          - os: macos-latest
+            exe: ""
+            experimental: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: cargo build --release -p nexa-cli
+      - run: node e2e/smoke.mjs target/release/nexa${{ matrix.exe }}
+        shell: bash
+
+  # De punta a punta en un Chrome real (Linux): SPA con cookies, Core con componentes, islas de React,
+  # Phaser, contenido con ataques, renderizado bajo demanda... contra `nexa preview` y contra el ejecutable.
+  e2e:
+    name: De punta a punta (Chrome)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            e2e/package-lock.json
+      - run: cargo build --release -p nexa-cli
+      - name: Todas las suites
+        env:
+          CHROME: /usr/bin/google-chrome
+        run: node e2e/run-all.mjs --nexa target/release/nexa

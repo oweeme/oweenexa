@@ -1,0 +1,6 @@
+{
+  "site": { "tagline": "A site built with Nexa" },
+  "nav": { "home": "Home", "blog": "Blog" },
+  "home": { "title": "Welcome", "latest": "Latest articles" },
+  "blog": { "title": "All articles", "search": "Search an article…", "by": "by", "back": "← Back to the blog" }
+}
