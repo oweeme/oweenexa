@@ -91,8 +91,15 @@ se produce ese HTML:
   con props, hijos y eventos, `<Show when>` y `<For>` anidado — el
   parser los *expande al compilar* y produce el mismo HTML que escribir
   todo a mano: SEO intacto y cero JavaScript extra (Fase 62).
+- **Lo que le faltaba a un framework de frontend completo (Fases 72–81)**: esbuild integrado (islas con `import` de
+  npm y CSS empaquetados solos, sin `npm run vendor`), contenido local en Markdown (`load = { url: "content:/posts" }`:
+  blog y documentación **sin backend**), ruta comodín `[...path]`, `404.tsx` propio, layouts anidados, redirecciones,
+  cabeceras y una **CSP sin `'unsafe-inline'`** (hash por script), `.env`, `nexa add docker`, token hacia tu API
+  (`[api]`), plurales y `createI18n` para el Modo App, `stale-while-revalidate` y purga de caché, `nexa check` (tipos),
+  feed RSS y validación de formularios entre campos y contra tu API. Ver `examples/content-demo`
+  y la [referencia](docs/REFERENCIA.md).
 - **CI en Linux, Windows y macOS y una suite de punta a punta con un solo
-  comando** (`node e2e/run-all.mjs`: 160 comprobaciones en un Chrome real contra
+  comando** (`node e2e/run-all.mjs`: 188 comprobaciones en un Chrome real contra
   `nexa preview` y contra el ejecutable). Detalle y lo que sí/no está verificado
   en [docs/CI-Y-PRUEBAS.md](docs/CI-Y-PRUEBAS.md) (Fase 69).
 - **Contenido de blog con formato, sin riesgo.** `<SafeHtml html={data.body} />`

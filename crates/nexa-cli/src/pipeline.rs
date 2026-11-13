@@ -282,6 +282,11 @@ pub fn compile_page(
     let combined_head = join_head_fragments(&combined_head, &page_head_html);
     // CSS empaquetado desde `src/styles/` (Fase 72)
     let combined_head = join_head_fragments(&combined_head, &crate::assets_pipeline::styles_head());
+    // `[feed]` (Fase 81): `<link rel="alternate" type="application/rss+xml">`
+    let combined_head = match &project_manifest.feed {
+        Some(feed) => join_head_fragments(&combined_head, &crate::feed::head_link(feed)),
+        None => combined_head,
+    };
 
     let mut ui_used_classes = nexa_ui::collect_used_classes(&ir.root);
     ui_used_classes.extend(layout_ui_used_classes);

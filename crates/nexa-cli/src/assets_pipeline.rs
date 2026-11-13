@@ -98,6 +98,13 @@ fn find_esbuild(root: &Path) -> Option<PathBuf> {
     std::env::split_paths(&path).map(|d| d.join(bin)).find(|p| p.is_file())
 }
 
+pub fn run_commands(root: &Path, commands: &[String]) -> Result<()> {
+    for command in commands {
+        run_shell(command, root)?;
+    }
+    Ok(())
+}
+
 fn run_shell(command: &str, root: &Path) -> Result<()> {
     println!("  $ {command}");
     let status = if cfg!(windows) {

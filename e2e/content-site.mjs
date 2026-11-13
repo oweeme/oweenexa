@@ -34,6 +34,13 @@ ok("fuera de /docs no hay barra lateral, y `_layout.tsx` no es una página", !(a
 const nf = await get("/no-existe");
 ok("/no-existe responde 404 con TU página (src/pages/404.tsx)", nf.status === 404 && (await nf.text()).includes("404 — No encontrada"));
 
+// 3b. feed RSS generado a partir de la colección
+const feedRes = await get("/feed.xml");
+const feedXml = await feedRes.text();
+ok("[feed]: /feed.xml es RSS con las entradas del blog (sin el borrador), más reciente primero",
+    (feedRes.headers.get("content-type") ?? "").includes("xml") && feedXml.includes("<rss") && feedXml.includes("/blog/segundo") && feedXml.includes("/blog/hola") && !feedXml.includes("borrador") && feedXml.indexOf("/blog/segundo") < feedXml.indexOf("/blog/hola"));
+ok("[feed]: cada página lo anuncia con <link rel=\"alternate\" type=\"application/rss+xml\">", (await text("/blog")).includes('type="application/rss+xml"'));
+
 // 4. redirecciones y cabeceras de nexa.toml
 const r1 = await get("/articulos");
 ok("[redirects] simple: /articulos → /blog (301)", r1.status === 301 && new URL(r1.headers.get("location"), base).pathname === "/blog");

@@ -1,5 +1,6 @@
 import { errorTargetFor, getFieldError, getFormFields, type FormField } from "./validation";
 import { markDirty, markTouched, setInvalid, CLASS_TOUCHED } from "./state";
+import { applyMatch, checkRemote, dependentsOf, forgetRemote, hasRemote, needsRemoteCheck } from "./rules";
 
 /**
  * Activa un `<form data-nexa-form>`: valida con las reglas nativas del
@@ -18,14 +19,29 @@ export function initForm(form: HTMLFormElement): () => void {
     const cleanups: Array<() => void> = [];
 
     for (const field of fields) {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const revalidate = () => validateField(form, field);
         const onBlur = () => {
             markTouched(field);
             validateField(form, field);
+            if (hasRemote(field)) void checkRemote(field, revalidate);
         };
         const onInput = () => {
             markDirty(field);
+            if (hasRemote(field)) {
+                forgetRemote(field); // el valor cambió: el resultado anterior ya no vale
+                const wait = Number(field.dataset.nexaRemoteDebounce);
+                if (wait > 0) {
+                    clearTimeout(timer);
+                    timer = setTimeout(() => void checkRemote(field, revalidate), wait);
+                }
+            }
             if (field.classList.contains(CLASS_TOUCHED)) {
                 validateField(form, field);
+            }
+            // un campo «confirmar» depende de este
+            for (const dep of dependentsOf(form, field)) {
+                if (dep.classList.contains(CLASS_TOUCHED)) validateField(form, dep);
             }
         };
         // Bug real, encontrado con un navegador de verdad (Chromium):
@@ -48,6 +64,7 @@ export function initForm(form: HTMLFormElement): () => void {
         field.addEventListener("input", onInput);
         field.addEventListener("invalid", onInvalid);
         cleanups.push(() => {
+            clearTimeout(timer);
             field.removeEventListener("blur", onBlur);
             field.removeEventListener("input", onInput);
             field.removeEventListener("invalid", onInvalid);
@@ -67,6 +84,24 @@ export function initForm(form: HTMLFormElement): () => void {
         if (firstInvalid) {
             event.preventDefault();
             firstInvalid.focus();
+            return;
+        }
+
+        // Reglas contra tu API (`data-nexa-remote`): el envío espera la respuesta.
+        const pending = fields.filter(needsRemoteCheck);
+        if (pending.length > 0) {
+            event.preventDefault();
+            void Promise.all(pending.map((f) => checkRemote(f, () => validateField(form, f)))).then(() => {
+                const bad = pending.find((f) => !f.validity.valid);
+                if (bad) {
+                    validateField(form, bad);
+                    bad.focus();
+                } else if (typeof form.requestSubmit === "function") {
+                    form.requestSubmit();
+                } else {
+                    form.submit();
+                }
+            });
         }
     };
 
@@ -79,6 +114,7 @@ export function initForm(form: HTMLFormElement): () => void {
 }
 
 function validateField(form: HTMLFormElement, field: FormField): boolean {
+    applyMatch(form, field);
     const error = getFieldError(field);
     setInvalid(field, error !== null);
 

@@ -28,6 +28,10 @@ export function getFieldError(field: FormField): string | null {
     if (field.validity.valid) {
         return null;
     }
+    // Un error propio (`data-nexa-match`, `data-nexa-remote`) ya trae su mensaje.
+    if (field.validity.customError) {
+        return field.validationMessage;
+    }
     return field.dataset.nexaMessage ?? field.validationMessage;
 }
 

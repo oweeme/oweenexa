@@ -8,6 +8,7 @@ mod capacitor_scaffold;
 mod commands;
 mod copy_dir;
 mod devtools;
+mod feed;
 mod dev_watch;
 mod docker_scaffold;
 mod document;

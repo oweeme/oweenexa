@@ -14,3 +14,10 @@ csp = "default-src 'self'; img-src 'self' data:"
 # Cabeceras propias por ruta.
 [headers."/*"]
 X-Demo = "content-demo"
+
+# Feed RSS: `nexa build` escribe dist/feed.xml a partir del blog y enlaza el feed en el <head> de cada página.
+[feed]
+title = "Content demo"
+description = "Artículos de ejemplo"
+source = "content:/posts"
+link = "/blog/:slug"

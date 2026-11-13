@@ -4642,8 +4642,18 @@ consulta del visitante no es parte de ella (una página pre-renderizada lo ignor
   se renueva en segundo plano, una vez por ruta), purga por webhook (`POST /__nexa/purge`, con token, comparación en tiempo constante,
   inexistente sin token) y `nexa check` (`tsc --noEmit` con el `tsconfig.json` del proyecto).
 
-**Pendiente (prioridad baja):** feed RSS, imágenes sociales generadas, validación de formularios asíncrona, optimización de imágenes en
-contenido dinámico, sistema de plugins del build, servidor de lenguaje (LSP), recarga en caliente que conserve el estado.
+**Prioridad baja (Fase 81).**
+
+- **Feed RSS**: `[feed]` genera `dist/feed.xml` (RSS 2.0, texto escapado, `pubDate` desde `date`) desde una colección local o tu
+  API, y cada página lo anuncia con `<link rel="alternate">`.
+- **Formularios**: `data-nexa-match` (entre campos) y `data-nexa-remote` (validación asíncrona contra tu API; el envío espera la
+  respuesta, una respuesta vieja se ignora, una API caída no bloquea). Con pruebas en `@nexa/forms`.
+- **Plugins del build**: `[build] before`/`after` — cualquier herramienta de línea de comandos antes/después de compilar.
+
+**No hecho, a propósito:** imágenes sociales generadas (exigen rasterizar texto con una fuente: una dependencia pesada para
+algo que el diseñador hace mejor), optimización de imágenes en páginas renderizadas bajo demanda (el ejecutable no lleva `public/`),
+un servidor de lenguaje propio (el editor ya entiende `nexa-env.d.ts` y `nexa check` verifica los tipos) y recarga en caliente que
+conserve el estado (hoy recarga la página).
 
 ---
 

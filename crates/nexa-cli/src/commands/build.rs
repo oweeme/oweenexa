@@ -204,6 +204,7 @@ pub fn run_for(desktop: bool) -> Result<()> {
 
     write_site_files(&built_patterns, site_url.as_deref())?;
     write_rule_files(&project_manifest)?;
+    write_feed(&project_manifest, &api_base, site_url.as_deref())?;
     let ui_stylesheet = write_ui_stylesheet(&ui_classes)?;
     let ui_css_bytes = ui_stylesheet.as_ref().map(|(bytes, _)| *bytes);
 
@@ -251,6 +252,13 @@ pub fn run_for(desktop: bool) -> Result<()> {
     }
 
     check_performance_budgets(&pending_usage, ui_css_bytes)?;
+
+    // `[build] after` (Fase 81): pasos propios con `dist/` ya escrito
+    if let Some(build) = &project_manifest.build {
+        if !build.after.is_empty() {
+            crate::assets_pipeline::run_commands(Path::new("."), &build.after)?;
+        }
+    }
 
     Ok(())
 }
@@ -475,6 +483,22 @@ pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> 
         }
     }
     Ok(sets)
+}
+
+/// `[feed]` (Fase 81): `dist/feed.xml`.
+fn write_feed(manifest: &crate::manifest::Manifest, api_base: &str, site_url: Option<&str>) -> Result<()> {
+    let Some(feed) = &manifest.feed else { return Ok(()) };
+    let loader = Loader { url_template: feed.source.clone() };
+    let value = nexa_loader::load(&loader, &BTreeMap::new(), api_base)
+        .map_err(|e| anyhow::anyhow!("[feed] source `{}`: {e}", feed.source))?;
+    let items = value.as_array().ok_or_else(|| anyhow::anyhow!("[feed] source `{}` debe devolver una lista (array JSON)", feed.source))?;
+    let name = feed.output_name();
+    fs::write(Path::new("dist").join(name), crate::feed::render(feed, items, site_url))?;
+    println!("Generado dist/{name} ({} entrada(s) de `{}`).", items.len().min(feed.limit.unwrap_or(20)), feed.source);
+    if site_url.is_none() {
+        println!("Aviso: sin NEXA_SITE_URL los enlaces del feed son relativos; los lectores de feeds necesitan URLs absolutas.");
+    }
+    Ok(())
 }
 
 /// `[redirects]` y `[headers]` (Fase 75) para hosts estáticos: `dist/_redirects` y

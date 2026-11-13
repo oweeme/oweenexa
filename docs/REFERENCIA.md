@@ -1158,6 +1158,28 @@ Validation API nativa del navegador (el HTML solo, sin JS, ya valida):
 - El `action`/`method` son tuyos — esto solo mejora la experiencia antes
   del POST normal del navegador.
 
+**Reglas que el HTML no tiene (Fase 81)**, también con atributos:
+
+```html
+<input name="pass" type="password" required minlength="8" />
+<input name="again" type="password" required
+       data-nexa-match="pass" data-nexa-message-match="Las contraseñas no coinciden" />
+<p data-nexa-error-for="again"></p>
+
+<input name="user" required data-nexa-remote="/api/usuarios/libre?nombre={value}"
+       data-nexa-message-remote="Ese usuario ya existe" />
+<p data-nexa-error-for="user"></p>
+```
+
+- **`data-nexa-match="otro"`** — el valor debe ser igual al del campo `otro` (confirmar contraseña o correo). Al
+  cambiar `otro`, el campo «confirmar» ya tocado se revalida solo.
+- **`data-nexa-remote="/ruta?x={value}"`** — pregunta a tu API (GET, con tu sesión por `[proxy]`) si el valor sirve. La API
+  responde JSON `{ "ok": true }` o `{ "ok": false, "message": "Ya existe" }` (el `message` de la API gana sobre
+  `data-nexa-message-remote`). Se consulta al salir del campo; con `data-nexa-remote-debounce="400"` también mientras escribes
+  (una respuesta que llega tarde, de un valor que ya cambió, se ignora). **Al enviar, el formulario espera** la respuesta y
+  solo envía si es buena. Si tu API no responde, **no se bloquea al usuario**: el servidor es quien manda al recibir el envío
+  (esto es mejora progresiva, nunca la única validación).
+
 ## `@nexa/platform`
 
 `nexa add platform` — un objeto `platform` disponible siempre (builtin,
@@ -1570,6 +1592,8 @@ Requisito único: `esbuild` en el proyecto (`npm install -D esbuild`; o en el `P
 
 - `nexa build` deja los archivos en `dist/assets/`; lo generado vive en `.nexa/` (ponlo en `.gitignore`, `nexa create` ya lo hace).
 - `nexa dev` empaqueta al arrancar y **otra vez cuando cambias** una isla o un CSS.
+- `[build] after = ["comando", …]` corre al terminar `nexa build`, con `dist/` ya escrito (un índice de búsqueda, un
+  minificador, subir a un CDN…). Es el «sistema de plugins» de Nexa: cualquier herramienta de línea de comandos.
 - Para Tailwind, Sass o cualquier generador: `[build] before = ["comando", …]` en `nexa.toml` corre esos comandos antes
   de empaquetar. Si uno falla, el build se detiene. Ejemplo con Tailwind v4: `before = ["npx @tailwindcss/cli -i src/styles/tw.css -o src/styles/app.css"]`
   (y `src/styles/tw.css` empieza con `@import "tailwindcss";`; `app.css` es el que se empaqueta, así que ignora `tw.css` con `_tw.css`).
@@ -1619,6 +1643,23 @@ Ejemplo completo y probado en Chrome: `examples/content-demo`.
 **Paginar contra una API** es igual de simple y no necesita nada especial: `paths` devuelve `[{"n":"1"},{"n":"2"}]` y
 `load = { url: "/api/posts?page=:n" }`. (Un `?page=2` en la URL del visitante no cambia una página ya pre-renderizada:
 la paginación de Nexa es por ruta, `/blog/page/2`, que además es lo que indexan los buscadores.)
+
+## Feed RSS (Fase 81)
+
+```toml
+[feed]
+title = "Mi blog"
+description = "Artículos sobre Nexa"      # opcional
+source = "content:/posts"                 # una colección local, o la ruta de tu API ("/api/posts")
+link = "/blog/:slug"                      # `:campo` = un campo de cada entrada
+# output = "feed.xml"   limit = 20        # opcionales
+```
+
+`nexa build` escribe `dist/feed.xml` (RSS 2.0) y cada página lleva `<link rel="alternate" type="application/rss+xml">`.
+De cada entrada usa `title`, `date` (`2025-03-10` o RFC 3339 → `pubDate`) y `summary` (o `excerpt`/`description`); una entrada
+sin título se omite; el texto se escapa siempre. Los lectores de feeds necesitan URLs absolutas: define `NEXA_SITE_URL`
+(`nexa build` avisa si falta). Es el feed del momento del build: para uno que se actualice solo, vuelve a compilar o genera
+el feed en tu API.
 
 ## Redirecciones, cabeceras y CSP (Fase 75)
 
@@ -1969,6 +2010,12 @@ headers = { Authorization = "Bearer ${API_TOKEN}" }
 
 [build]
 before = ["npx @tailwindcss/cli -i src/styles/_tw.css -o src/styles/app.css"]   # comandos previos (Fase 72)
+after = ["npx pagefind --site dist"]                                            # comandos finales (Fase 81)
+
+[feed]                   # Fase 81: dist/feed.xml (RSS) + <link rel="alternate"> en cada página
+title = "Mi blog"
+source = "content:/posts"        # o la ruta de tu API: "/api/posts"
+link = "/blog/:slug"
 
 [redirects]              # Fase 75
 "/viejo" = "/nuevo"

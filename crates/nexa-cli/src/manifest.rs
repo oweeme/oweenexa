@@ -77,12 +77,38 @@ pub struct Manifest {
     /// `[headers."/ruta/*"]` (Fase 75): cabeceras HTTP propias por ruta.
     #[serde(default)]
     pub headers: BTreeMap<String, BTreeMap<String, String>>,
+    /// `[feed]` (Fase 81): feed RSS generado en `nexa build`.
+    #[serde(default)]
+    pub feed: Option<FeedSection>,
     /// `[api]` (Fase 78): cómo habla Nexa con tu API al compilar/renderizar.
     #[serde(default)]
     pub api: Option<ApiSection>,
     /// `[security]` (Fase 75).
     #[serde(default)]
     pub security: Option<SecuritySection>,
+}
+
+/// `[feed]`: ver `feed.rs`.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct FeedSection {
+    pub title: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// `content:/posts` o una ruta de tu API (`/api/posts`).
+    pub source: String,
+    /// Plantilla del enlace de cada entrada: `/blog/:slug`.
+    pub link: String,
+    /// Nombre del archivo (por defecto `feed.xml`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub limit: Option<usize>,
+}
+
+impl FeedSection {
+    pub fn output_name(&self) -> &str {
+        self.output.as_deref().filter(|o| !o.is_empty() && !o.contains(['/', '\\']) && *o != "..").unwrap_or("feed.xml")
+    }
 }
 
 /// `[api] headers = { Authorization = "Bearer ${API_TOKEN}" }`: cabeceras que Nexa envía a tu API en cada
@@ -118,6 +144,10 @@ impl Manifest {
 pub struct BuildSection {
     #[serde(default)]
     pub before: Vec<String>,
+    /// Comandos que `nexa build` ejecuta al terminar, con `dist/` ya escrito (índice de búsqueda,
+    /// minificadores, subir a un CDN…). Si uno falla, el build falla.
+    #[serde(default)]
+    pub after: Vec<String>,
 }
 
 /// `[i18n] default = "es"`: el idioma de las páginas que no viven bajo
