@@ -25,12 +25,12 @@ jobs:
         include:
           - os: ubuntu-latest
             experimental: false
-          # Windows y macOS: el código compila para ambos (comprobado con `cargo check --target`), pero los
-          # tests aún no se habían ejecutado allí. Quita `experimental` cuando la primera ejecución salga verde.
+          # Windows y macOS: verdes desde la primera ejecución real (465 tests de Rust y el humo en cada uno), así
+          # que bloquean igual que Linux. Si algún día uno falla por algo ajeno al código, vuelve a poner `true`.
           - os: windows-latest
-            experimental: true
+            experimental: false
           - os: macos-latest
-            experimental: true
+            experimental: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -110,10 +110,10 @@ jobs:
             experimental: false
           - os: windows-latest
             exe: ".exe"
-            experimental: true
+            experimental: false
           - os: macos-latest
             exe: ""
-            experimental: true
+            experimental: false
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable

@@ -20,16 +20,18 @@ y `nexa` sirve JavaScript viejo — un error silencioso que ya ocurrió durante 
 
 ## Windows y macOS: qué está verificado y qué no
 
-- **Verificado desde Linux:** el código **y los tests** compilan para `x86_64-pc-windows-gnu`,
-  `x86_64-apple-darwin` y `aarch64-apple-darwin` (`cargo check --workspace --all-targets --target …`).
-- **Corregido tras auditar** (compilaba pero fallaría en Windows): `nexa test` ejecutaba `npm` (en Windows es
-  `npm.cmd`); el script `build:ui-assets` usaba `cp`; los scripts `vendor` de los ejemplos usaban `mkdir -p` y
-  comillas de bash; sin `.gitattributes`, Git en Windows convierte a CRLF y rompe los assets embebidos.
-- **Sin ejecutar todavía:** los tests y el humo en Windows y macOS reales. Por eso esos jobs están marcados
-  `experimental` (`continue-on-error`): informan pero no bloquean. Cuando la primera ejecución salga verde,
-  quita `experimental` en `ci.yml`.
-- **Sin verificar nunca:** compilar la app de escritorio en Windows/macOS, y `nexa bundle --runtime` entre
-  sistemas (en macOS, además, un binario modificado necesita `codesign`).
+- **Verificado en ejecuciones reales de GitHub Actions** (Windows x64 y macOS): `clippy -D warnings`, los
+  **465 tests de Rust** (los mismos que en Linux) y el **humo multiplataforma** (18 comprobaciones: crear,
+  compilar, empaquetar en un ejecutable `.exe`/binario, arrancarlo fuera del proyecto y servirlo). Por eso esos
+  trabajos **bloquean** igual que Linux.
+- **Antes de la primera ejecución** se había comprobado que el código y los tests compilan para
+  `x86_64-pc-windows-gnu`, `x86_64-apple-darwin` y `aarch64-apple-darwin` (`cargo check --workspace
+  --all-targets --target …`) y se corrigió lo que habría fallado en Windows: `nexa test` ejecutaba `npm` (en
+  Windows es `npm.cmd`); el script `build:ui-assets` usaba `cp`; los scripts `vendor` de los ejemplos usaban
+  `mkdir -p` y comillas de bash; sin `.gitattributes`, Git en Windows convierte a CRLF y rompe los assets embebidos.
+- **Sigue sin verificarse:** las suites de Chrome (`run-all.mjs`) en Windows y macOS (solo corren en Linux),
+  compilar la app de escritorio allí (`desktop.yml` existe pero no se ha ejecutado), y `nexa bundle --runtime`
+  entre sistemas (en macOS, además, un binario modificado necesita `codesign`).
 
 ## Empaquetar para otro sistema operativo
 

@@ -4564,6 +4564,25 @@ desbordamiento horizontal en ninguna página a 390 px.
 
 ---
 
+## Fase 71 — Primera ejecución real de la CI y del sitio
+
+**Qué pasó.** Al subir el repositorio, GitHub ejecutó por primera vez los flujos que hasta entonces solo se
+habían validado en local:
+
+- **Sitio de documentación**: construido y desplegado **a la primera** en `https://oweeme.github.io/oweenexa/`
+  (portada, tutorial, referencia, buscador, fuentes, sitemap y 404 respondían correctamente).
+- **CI**: los 10 trabajos en verde. **Windows x64 y macOS**: `clippy -D warnings`, los mismos 465 tests de Rust
+  que en Linux, y el humo multiplataforma (18/18, con `nexa.exe` real en Windows). Linux: además las 160
+  comprobaciones de Chrome, los assets embebidos al día, los tipos y tests de JavaScript y el sitio.
+
+**Consecuencia.** Windows y macOS dejaron de ser `experimental` en `ci.yml` y bloquean como Linux. Se corrigieron
+los textos que decían "sin verificar" (`docs/CI-Y-PRUEBAS.md`, la portada del sitio).
+
+**Sigue sin verificarse:** las suites de Chrome en Windows/macOS, la app de escritorio allí (`desktop.yml` aún no
+se ha ejecutado) y `nexa bundle --runtime` entre sistemas operativos.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio
