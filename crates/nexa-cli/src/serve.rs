@@ -55,26 +55,42 @@ fn with_security_headers<R: std::io::Read>(response: Response<R>) -> Response<R>
 /// 'application/octet-stream'") — encontrado corriendo un navegador real
 /// (Chromium vía Playwright) contra un `nexa preview` real.
 pub fn guess_static_content_type(path: &str) -> Header {
+    Header::from_bytes(&b"Content-Type"[..], mime_for_path(path).as_bytes()).expect("el header Content-Type siempre es válido")
+}
+
+/// El `Content-Type` por extensión (ver `guess_static_content_type`).
+/// `avif` y `webmanifest` los produce `nexa build` mismo (Fases 18/19);
+/// `wasm` hace falta para motores de juegos/figuras que lo usan.
+pub fn mime_for_path(path: &str) -> &'static str {
     let ext = Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
-    let mime: &str = match ext.as_str() {
+    match ext.as_str() {
         "png" => "image/png",
         "jpg" | "jpeg" => "image/jpeg",
         "gif" => "image/gif",
         "svg" => "image/svg+xml",
         "webp" => "image/webp",
+        "avif" => "image/avif",
         "ico" => "image/x-icon",
         "woff" => "font/woff",
         "woff2" => "font/woff2",
         "ttf" => "font/ttf",
+        "otf" => "font/otf",
         "pdf" => "application/pdf",
         "txt" => "text/plain; charset=utf-8",
-        "json" => "application/json",
+        "json" | "map" => "application/json",
+        "webmanifest" => "application/manifest+json",
+        "xml" => "application/xml",
+        "wasm" => "application/wasm",
         "js" | "mjs" => "text/javascript; charset=utf-8",
         "css" => "text/css; charset=utf-8",
         "html" => "text/html; charset=utf-8",
+        "mp3" => "audio/mpeg",
+        "ogg" => "audio/ogg",
+        "wav" => "audio/wav",
+        "mp4" => "video/mp4",
+        "webm" => "video/webm",
         _ => "application/octet-stream",
-    };
-    Header::from_bytes(&b"Content-Type"[..], mime.as_bytes()).expect("el header Content-Type siempre es válido")
+    }
 }
 
 pub fn request_path(url: &str) -> String {

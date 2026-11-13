@@ -7,14 +7,16 @@
     "frontendDist": "../dist",
     "devUrl": "http://localhost:4321",
     "beforeDevCommand": "nexa dev",
-    "beforeBuildCommand": "nexa build"
+    "beforeBuildCommand": "nexa build --target desktop"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "{{NAME}}",
-        "width": 800,
-        "height": 600,
+        "url": "{{START_URL}}",
+        "width": 1100,
+        "height": 720,
         "resizable": true,
         "fullscreen": false
       }

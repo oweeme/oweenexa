@@ -46,6 +46,44 @@ pub struct Manifest {
     /// mismo costo cero que `[telemetry]`.
     #[serde(default)]
     pub pwa: Option<PwaSection>,
+    /// `[app]` (Fase 60, Modo App) — opcional: el Modo App se activa con
+    /// solo tener un directorio `src/app/`; esta sección solo ajusta
+    /// el prefijo y el título.
+    #[serde(default)]
+    pub app: Option<AppSection>,
+    /// `[proxy]` (Fase 61) — prefijo de ruta -> URL del backend. `nexa
+    /// dev`/`nexa preview` reenvían ahí cualquier petición que empiece
+    /// con ese prefijo (método, cuerpo, cabeceras y cookies incluidos),
+    /// así la app y el backend comparten origen: sin CORS, y las cookies
+    /// `HttpOnly` de sesión funcionan. En producción lo mismo lo hace
+    /// `nexa add nginx` (un `location` por entrada).
+    #[serde(default)]
+    pub proxy: BTreeMap<String, String>,
+    /// `[desktop]` (Fase 63) — solo afecta a `nexa build --target desktop`.
+    #[serde(default)]
+    pub desktop: Option<DesktopSection>,
+}
+
+/// `[desktop.proxy]`: prefijo -> backend real para la app de escritorio.
+/// Una app empaquetada no tiene el proxy de `nexa dev`/nginx (la página
+/// vive en `tauri://localhost`), así que `nexa build --target desktop`
+/// escribe esta tabla en el shell como `window.__NEXA_PROXY__` y
+/// `createApi` reescribe las rutas que empiecen por esos prefijos. Si no
+/// se declara, se usa `[proxy]`.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct DesktopSection {
+    #[serde(default)]
+    pub proxy: BTreeMap<String, String>,
+}
+
+/// `[app]` en `nexa.toml`: `base` es el prefijo de URL bajo el cual
+/// vive la SPA (por defecto `/app`), `title` el `<title>` del shell.
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct AppSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
 }
 
 #[derive(Debug, Default, Deserialize, Serialize)]

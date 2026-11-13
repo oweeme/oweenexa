@@ -89,12 +89,13 @@ pub fn run(name: &str) -> Result<()> {
     if name == "tauri" {
         println!();
         println!("Siguientes pasos:");
-        println!("  nexa build");
-        println!("  cd src-tauri && cargo build     # compila el binario de escritorio");
+        println!("  nexa build --target desktop     # dist/ para escritorio + binario nativo en un paso");
+        println!("  (con `cargo build` a mano: `--release --features custom-protocol`, o abrirá devUrl en vez de dist/)");
         println!(
             "  (o instala @tauri-apps/cli para `cargo tauri dev`/`cargo tauri build`, con \
              recarga en caliente e instaladores empaquetados)"
         );
+        println!("  Desde la página: `platform.native.invoke(\"app_info\")` llama a src-tauri/src/lib.rs.");
     }
 
     if name == "capacitor" {

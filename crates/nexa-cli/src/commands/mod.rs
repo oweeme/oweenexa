@@ -1,6 +1,8 @@
 pub mod add;
 pub mod build;
+pub mod bundle;
 pub mod create;
+pub mod desktop;
 pub mod dev;
 pub mod info;
 pub mod lint;

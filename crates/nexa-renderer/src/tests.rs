@@ -93,13 +93,13 @@ fn ctx_with_data(data: &serde_json::Value) -> RenderContext<'_> {
         data: Some(data),
         params: empty_params(),
         translations: None,
-        loop_binding: None,
+        loop_binding: None, outer_loops: Vec::new(),
         current_path: None,
     }
 }
 
 fn ctx_with_params(params: &BTreeMap<String, String>) -> RenderContext<'_> {
-    RenderContext { data: None, params, translations: None, loop_binding: None, current_path: None }
+    RenderContext { data: None, params, translations: None, loop_binding: None, outer_loops: Vec::new(), current_path: None }
 }
 
 fn ctx_with_translations(translations: &serde_json::Value) -> RenderContext<'_> {
@@ -107,13 +107,13 @@ fn ctx_with_translations(translations: &serde_json::Value) -> RenderContext<'_> 
         data: None,
         params: empty_params(),
         translations: Some(translations),
-        loop_binding: None,
+        loop_binding: None, outer_loops: Vec::new(),
         current_path: None,
     }
 }
 
 fn ctx_with_path<'a>(current_path: &'a str, params: &'a BTreeMap<String, String>) -> RenderContext<'a> {
-    RenderContext { data: None, params, translations: None, loop_binding: None, current_path: Some(current_path) }
+    RenderContext { data: None, params, translations: None, loop_binding: None, outer_loops: Vec::new(), current_path: Some(current_path) }
 }
 
 fn empty_params() -> &'static BTreeMap<String, String> {
@@ -276,7 +276,7 @@ fn interpolates_a_variable_from_data_into_the_translated_string() {
         data: Some(&data),
         params: empty_params(),
         translations: Some(&dictionary),
-        loop_binding: None,
+        loop_binding: None, outer_loops: Vec::new(),
         current_path: None,
     };
     assert_eq!(render_node(&node, &ctx), "Apoyar a Ada");
@@ -293,7 +293,7 @@ fn interpolates_a_route_param_into_the_translated_string() {
         data: None,
         params: &params,
         translations: Some(&dictionary),
-        loop_binding: None,
+        loop_binding: None, outer_loops: Vec::new(),
         current_path: None,
     };
     assert_eq!(render_node(&node, &ctx), "Viendo iphone-17");
@@ -327,7 +327,7 @@ fn escapes_the_interpolated_value_along_with_the_rest_of_the_string() {
         data: Some(&data),
         params: empty_params(),
         translations: Some(&dictionary),
-        loop_binding: None,
+        loop_binding: None, outer_loops: Vec::new(),
         current_path: None,
     };
     assert_eq!(render_node(&node, &ctx), "Hola &lt;b&gt;Ada&lt;/b&gt;");

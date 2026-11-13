@@ -47,6 +47,12 @@ fn check_tree(node: &IrNode, warnings: &mut Vec<Warning>) {
         check_tree(body, warnings);
         return;
     }
+    if let IrNodeKind::Show { then, otherwise, .. } = &node.kind {
+        for child in then.iter().chain(otherwise) {
+            check_tree(child, warnings);
+        }
+        return;
+    }
 
     let IrNodeKind::Element { tag, attrs, children, .. } = &node.kind else {
         return;

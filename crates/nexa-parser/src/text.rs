@@ -18,7 +18,11 @@ use oxc_ast::ast::{JSXExpression, JSXExpressionContainer};
 /// líneas separadas.
 pub(crate) fn normalize_jsx_text(raw: &str) -> Option<String> {
     let lines: Vec<&str> = raw.lines().collect();
-    let last_non_empty = lines.iter().rposition(|line| !line.trim().is_empty())?;
+    // Igual que Babel: si ninguna línea tiene contenido, el índice es 0.
+    // Importa para un espacio suelto entre dos hijos de la misma línea
+    // (`<Tag /> {m.name}`): una sola línea de solo espacios se conserva
+    // (JSX real lo conserva); un bloque con saltos de línea, no.
+    let last_non_empty = lines.iter().rposition(|line| !line.trim().is_empty()).unwrap_or(0);
 
     let mut out = String::new();
     for (i, line) in lines.iter().enumerate() {
@@ -76,6 +80,15 @@ mod tests {
         assert_eq!(normalize_jsx_text("\n    "), None);
         assert_eq!(normalize_jsx_text("   \n  \n   "), None);
         assert_eq!(normalize_jsx_text(""), None);
+    }
+
+    #[test]
+    fn a_lone_space_between_siblings_on_the_same_line_is_kept() {
+        // JSX real: `<b>a</b> {x}` conserva el espacio; solo el
+        // whitespace con saltos de línea colapsa a nada.
+        assert_eq!(normalize_jsx_text(" "), Some(" ".to_string()));
+        assert_eq!(normalize_jsx_text("
+  "), None);
     }
 
     #[test]

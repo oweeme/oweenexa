@@ -34,6 +34,7 @@
 //! - [`translate`]: reconoce `t("home.title")` (Fase 10, ver `nexa-i18n`).
 
 mod component;
+mod compose;
 mod declaration;
 mod error;
 mod expr;
@@ -44,6 +45,7 @@ mod jsx;
 mod loader;
 mod object_literal;
 mod schema;
+mod show;
 mod seo;
 mod template;
 mod text;
@@ -51,7 +53,10 @@ mod translate;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod compose_tests;
 
+pub use compose::{ImportResolver, NoImports};
 pub use error::ParseError;
 
 use oxc_allocator::Allocator;
@@ -63,6 +68,16 @@ use nexa_ast::Component;
 /// Parsea el contenido de un archivo `.tsx` y devuelve el primer componente
 /// encontrado (su `export default function`).
 pub fn parse_component(file_name: &str, source: &str) -> Result<Component, ParseError> {
+    parse_component_with(file_name, source, &NoImports)
+}
+
+/// Como [`parse_component`], pero con un [`ImportResolver`] para poder
+/// expandir componentes importados de otros archivos (Fase 62).
+pub fn parse_component_with(
+    file_name: &str,
+    source: &str,
+    resolver: &dyn ImportResolver,
+) -> Result<Component, ParseError> {
     let allocator = Allocator::default();
     let source_type =
         SourceType::from_path(file_name).map_err(|e| ParseError::Syntax(format!("{e:?}")))?;
@@ -79,5 +94,5 @@ pub fn parse_component(file_name: &str, source: &str) -> Result<Component, Parse
         return Err(ParseError::Syntax(msg));
     }
 
-    component::find_component(&ret.program, source)
+    component::find_component(&ret.program, source, file_name, resolver)
 }

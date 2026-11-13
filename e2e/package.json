@@ -1,0 +1,14 @@
+{
+  "name": "nexa-e2e",
+  "private": true,
+  "type": "module",
+  "description": "Pruebas de punta a punta en un Chrome real contra los ejemplos de Nexa (web: nexa preview/dev, o el ejecutable de `nexa bundle`).",
+  "scripts": {
+    "spa-auth": "node spa-auth.mjs",
+    "core-components": "node core-components.mjs",
+    "phaser": "node phaser.mjs"
+  },
+  "dependencies": {
+    "puppeteer-core": "^25"
+  }
+}

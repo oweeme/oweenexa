@@ -79,6 +79,33 @@ se produce ese HTML:
 
 ## Ventajas
 
+- **Componentes en Nexa Core, sin runtime.** `<Card title={data.name}>`
+  con props, hijos y eventos, `<Show when>` y `<For>` anidado — el
+  parser los *expande al compilar* y produce el mismo HTML que escribir
+  todo a mano: SEO intacto y cero JavaScript extra (Fase 62).
+- **Un solo ejecutable para producción.** `nexa bundle` empaqueta el
+  sitio compilado dentro de una copia del propio binario de `nexa`: un
+  archivo (~15 MB + el sitio) que se copia a un servidor y se corre — con
+  gzip, caché inmutable y `ETag`, fallback de SPA y proxy al backend
+  incluidos. Sin Node, sin nginx (Fase 64).
+- **De la misma SPA a un binario de escritorio.** `nexa add tauri` +
+  `nexa build --target desktop` produce un ejecutable nativo (~11 MB en
+  Linux) con `dist/` embebido, una ventana con el webview del sistema, la
+  API reescrita al backend real y un puente `platform.native.invoke(...)`
+  hacia Rust (Fase 63).
+- **Modo App: una SPA real, en el mismo proyecto.** Una carpeta
+  `src/app/` activa rutas de aplicación — TSX completo (`.map`,
+  condicionales, componentes con props, estado) compilado a DOM real
+  con señales, sin Virtual DOM (`@nexa/app`, 8 KB), con router de
+  cliente, rutas lazy y `guard` para rutas protegidas. Convive con las
+  páginas de Nexa Core: landing/catálogo con SEO en `src/pages/`, panel
+  o app autenticada en `src/app/`, cada una con el motor que le
+  conviene. Ver `examples/app-demo` y la Fase 60.
+- **Cualquier backend, con sesión, sin CORS.** `[proxy]` en `nexa.toml`
+  reenvía `/api/*` al backend real en `dev`/`preview` (y `nexa add nginx`
+  lo genera para producción): mismo origen, cookies `HttpOnly` que
+  funcionan, `createApi` con `onUnauthorized` y `persisted()` para el
+  estado de la sesión (Fase 61).
 - **Cero JavaScript por defecto.** Una página sin interacción se compila
   a HTML puro, sin runtime, sin hidratación, sin bundle vacío "por las
   dudas". El JS aparece únicamente cuando la página lo necesita, y solo
@@ -245,8 +272,8 @@ parser/analyzer/renderer que cualquier página, y sustituyen el único
 elemento marcado `data-nexa-slot` (debe estar vacío) por el HTML que ya
 renderizó cada página — sin que el layout ni la página sepan el uno del
 otro en ningún punto anterior a ese splice, así que esto no reabre la
-composición de componentes (props, `<Otro/>`, condicionales) rechazada
-desde el principio. El layout puede usar `{params.locale}`/`t(...)`
+composición en ejecución: los componentes de Nexa Core se expanden al
+compilar (Fase 62), y el layout puede usarlos. El layout puede usar `{params.locale}`/`t(...)`
 igual que cualquier página, y sus clases `nx-*` (si usa `@nexa/ui`) se
 suman a las de cada página para `nexa-ui.css`.
 
@@ -479,7 +506,7 @@ estándar.
 
 ```bash
 nexa add tauri
-cd src-tauri && cargo build     # binario de escritorio real
+nexa build --target desktop    # binario de escritorio real (src-tauri/target/release/)
 
 nexa add capacitor
 npm init -y && npm install @capacitor/core @capacitor/android @capacitor/cli
@@ -818,9 +845,11 @@ imports circulares sin ganar claridad.
 
 ## Limitaciones conocidas (deliberadas)
 
-- Un solo componente por página, sin composición (`<Otro/>` no
-  soportado), sin props, sin condicionales. Es también la razón de que
-  `@nexa/ui` se use con `<button class="nx-btn">` y no `<Button>`.
+- Los componentes de Nexa Core son de compilación, no de ejecución
+  (Fase 62): props solo simbólicos (literal, `data.x`, `params.x`,
+  `t()`, plantilla), sin recursión ni spread; `<Show when>` solo acepta
+  `data.x`/`params.x` (nada de comparaciones). Para lógica de UI
+  arbitraria está el Modo App o una isla.
 - `src/layout.tsx` es único (no hay layouts anidados por directorio, a
   diferencia de frameworks con rutas basadas en archivos que sí los
   tienen) y no puede tener eventos interactivos propios — puede tener

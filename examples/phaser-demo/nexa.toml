@@ -1,0 +1,8 @@
+[project]
+name = "phaser-demo"
+version = "0.1.0"
+
+[dependencies]
+
+[imports]
+phaser = "/vendor/phaser.js"

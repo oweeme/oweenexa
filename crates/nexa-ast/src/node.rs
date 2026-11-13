@@ -18,6 +18,22 @@ pub enum Node {
     /// `data.*` — nunca un `.map()` ni código arbitrario del
     /// desarrollador.
     For(ForLoop),
+    /// `<Show when={data.stock}>...</Show>` (Fase 62): un condicional
+    /// resuelto por el compilador contra los datos reales de la página,
+    /// igual que `<For>` o `t()` — nunca un `if` ni una expresión
+    /// arbitraria del desarrollador.
+    Show(ShowNode),
+}
+
+/// `when` es la misma `Expr` limitada de siempre (`data.x`, `params.x`,
+/// o el item de un `<For>`); se evalúa por "verdad" JSON: falso si falta,
+/// es `null`, `false`, `0`, `""` o un array vacío. `otherwise` viene de
+/// `fallback={<jsx/>}` y puede estar vacío.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ShowNode {
+    pub when: Expr,
+    pub then: Vec<Node>,
+    pub otherwise: Vec<Node>,
 }
 
 /// Cuerpo de un `<For>`. `each` solo puede tener `data`/`params` como raíz

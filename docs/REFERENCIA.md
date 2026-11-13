@@ -476,8 +476,76 @@ lo renderiza como HTML real una vez por cada elemento del array que
   compartido por todas las copias que produce el renderer — el runtime
   de activación (`packages/runtime`) activa cada copia por separado con
   su propio elemento real, no solo la primera.
-- Sin anidar: un `<For>` dentro de otro `<For>` no está soportado
-  todavía.
+- `<For>` se puede anidar (Fase 62): el `each` interno puede ser un
+  campo del item externo (`each={group.members}`). Un item interno
+  tapa a uno externo del mismo nombre, igual que en JS.
+
+## Componentes y `<Show>` (Fase 62)
+
+Nexa Core compone UI **en tiempo de compilación**: `<Card title={...}>`
+no es un componente en ejecución, el parser *expande* la llamada
+sustituyendo los props en el JSX de `Card`. El resultado es exactamente
+el árbol que habrías escrito a mano — el resto del compilador no se
+entera, y no se envía ningún JavaScript por usar componentes.
+
+```tsx
+// src/components/ui.tsx
+export function Tag({ text }) { return <span class="tag">{text}</span>; }
+export function Button({ onPress, children }) {
+    return <button class="nx-btn" onClick={onPress}>{children}</button>;
+}
+// src/components/Card.tsx
+export default function Card(props) {
+    return <section class="card"><h2>{props.title}</h2>{props.children}</section>;
+}
+```
+
+```tsx
+// src/pages/catalog.tsx
+import Card from "../components/Card";
+import { Tag, Button } from "../components/ui";
+
+export const load = { url: "/api/catalog" };
+function saludar() { console.log("hola"); }
+
+export default function Catalog() {
+    return (
+        <main>
+            <For each={data.groups}>
+                {(group) => (
+                    <Card title={group.name}>
+                        <For each={group.members}>{(m) => <p><Tag text={m.role} /> {m.name}</p>}</For>
+                        <Show when={group.open} fallback={<p>Cerrado</p>}>
+                            <Button onPress={saludar}>Saludar</Button>
+                        </Show>
+                    </Card>
+                )}
+            </For>
+        </main>
+    );
+}
+```
+
+| Se puede | Cómo |
+|---|---|
+| Definir un componente | `function Nombre(props)`, `const Nombre = ({ a, b }) => (...)` — en el mismo archivo, o importado con ruta relativa (`import X from "./X"`, `import { X } from "../ui"`) |
+| Pasar un prop | Literal (`title="x"`, `n={3}`), `data.x`, `params.x`, `t("clave")`, una plantilla (`` `/p/${data.slug}` ``), o el item de un `<For>` (`person={p}`) |
+| Usar un prop | `{props.title}`, `{title}` (destructurado), en atributos y plantillas (`href={`/x/${props.slug}`}`), en `each=` y en `when=` |
+| Campos de un prop | `{props.user.name}` si `user` se pasó como `data.x` / el item de un `<For>` |
+| Hijos | `{props.children}` / `{children}` |
+| Eventos | La página pasa el nombre de su función (`onPress={saludar}`) y el componente la conecta (`onClick={props.onPress}`). Las funciones del propio archivo del componente también llegan al chunk de activación |
+| Un prop no pasado | Se omite el atributo / no se renderiza el texto; en `when=` es falso |
+
+`<Show when={data.x} fallback={<p/>}>...</Show>` se resuelve al compilar
+contra los datos reales: `when` es la misma `Expr` limitada de siempre
+(nada de comparaciones — calculá el valor en el backend). Es falso si el
+dato falta, es `null`, `false`, `0`, `""` o un array vacío; verdadero en
+cualquier otro caso. Solo la rama elegida llega al HTML.
+
+No se puede (con mensaje de error explícito): recursión, `{...spread}`
+de props, props con valores por defecto, un prop que sea una función o
+una expresión calculada, `<Pkg.Componente>` con punto, un componente
+que no devuelva un único elemento JSX.
 
 ## Link activo automático (`aria-current`)
 
@@ -1417,7 +1485,8 @@ defecto (no hay presupuesto si no lo pedís).
 
 ```bash
 nexa add tauri
-cd src-tauri && cargo build            # binario de escritorio real
+nexa build --target desktop            # dist/ + binario de escritorio real (Fase 63)
+# -> src-tauri/target/release/<nombre>  (un solo archivo; ~11 MB en Linux)
 
 nexa add capacitor
 npx @capacitor/cli add android         # necesita el SDK de Android
@@ -1428,6 +1497,84 @@ Ambos son Experimental — generan archivos reales en el proyecto
 (`src-tauri/`, `capacitor.config.json`), sin depender de que este
 repositorio esté disponible en la máquina donde se usa el binario de
 `nexa`.
+
+### Escritorio (Tauri) con el Modo App
+
+- **La ventana abre la SPA**: si el proyecto tiene `src/app/`, la ventana
+  arranca en su `base` (`/app`); si no, en la portada.
+- **API de la app**: dentro del webview no hay el proxy de `nexa dev` ni
+  nginx (la página vive en `tauri://localhost`). `[desktop.proxy]` (o
+  `[proxy]` si no se declara) se escribe en el shell como
+  `window.__NEXA_PROXY__` y `createApi` reescribe las rutas con ese
+  prefijo al backend real, con `credentials: "include"`:
+
+  ```toml
+  [proxy]            # web: nexa dev / preview
+  "/api" = "http://127.0.0.1:9100"
+  [desktop.proxy]    # escritorio: el backend real
+  "/api" = "https://api.miapp.com"
+  ```
+
+  El mismo código (`createApi({ baseURL: "/api" })`) funciona en la web y
+  en escritorio. El backend necesita **CORS** para `tauri://localhost`
+  (`http://tauri.localhost` en Windows). Ojo: una cookie de sesión de otro
+  *sitio* requiere `SameSite=None; Secure` (HTTPS); para escritorio suele
+  ser más simple autenticar con una cabecera (`createApi({ headers })`).
+- **Puente a Rust**: `platform.native.invoke("comando", { args })`
+  (`@nexa/platform`) llama a una `#[tauri::command]` de
+  `src-tauri/src/lib.rs`; la plantilla trae `app_info` (nombre, versión,
+  SO, arquitectura) — `platform.native.appInfo()`. Fuera de Tauri lanza un
+  error claro. Para agregar tu propia función: escríbela, regístrala en
+  `generate_handler![...]` y llámala desde la página.
+- **`nexa build --target desktop`** corre `nexa build` (shell de escritorio)
+  y `cargo build --release --features custom-protocol` sobre `src-tauri/`.
+  Con un `cargo build` a mano hay que pasar esa feature: sin ella Tauri
+  carga `devUrl` en vez de los assets embebidos.
+- Instaladores (`.deb`/`.msi`/`.dmg`), firma de código y actualizador
+  automático: `cargo tauri build` (CLI de Tauri) sobre el mismo `src-tauri/`.
+- `--target android|ios` todavía no existe: para móvil, `nexa add capacitor`.
+
+## Un solo ejecutable (`nexa bundle`)
+
+```bash
+nexa bundle                       # nexa build + empaqueta -> ./<proyecto>-server
+./mi-sitio-server --port 8080 --host 0.0.0.0 --proxy /api=https://api.miapp.com
+```
+
+Genera **un único archivo**: una copia del binario de `nexa` con `dist/`
+(comprimido) y la configuración pegados al final. Al arrancar, `nexa`
+detecta esa carga y actúa como el servidor de producción de ese sitio.
+No hace falta Node, nginx, Rust ni ningún archivo suelto en la máquina
+de destino: se copia el ejecutable y se corre.
+
+| Qué hace el servidor | Detalle |
+|---|---|
+| Sirve desde memoria | Todo el sitio viaja dentro del ejecutable; varios hilos |
+| gzip | Los archivos de texto se precomprimen al empaquetar (si ganan >5%); se sirve gzip si el cliente lo acepta (`Accept-Encoding`) |
+| Caché | `immutable` de un año para `nombre.<hash>.js/css`; `no-cache` + `ETag` para HTML, `sw.js` y el manifest (responde `304` sin cuerpo); 1 h para el resto |
+| SPA (Modo App) | Una ruta profunda bajo `/app/...` que no es un archivo devuelve el shell; un asset que falta sigue siendo `404` |
+| `[proxy]` | Reenvía `/api/*` al backend (método, cuerpo, cabeceras, cookies); se reemplaza al arrancar con `--proxy PREFIJO=URL` |
+| Seguridad | Las mismas 3 cabeceras que `nexa preview`/nginx; `405` salvo `GET`/`HEAD`; rechaza `..` y codificaciones inválidas |
+| `404.html` | Si existe, se usa para los 404 reales |
+
+Opciones del ejecutable: `--port` (por defecto `$PORT` o 8080), `--host`
+(por defecto `127.0.0.1`: usa `0.0.0.0` para aceptar otras máquinas),
+`--proxy`, `--quiet`, `--help`.
+
+Opciones de `nexa bundle`: `--out <nombre>`, `--no-build` (usa el `dist/`
+existente) y `--runtime <ruta-a-nexa>` (el binario base: para empaquetar
+para otro sistema operativo, pasa el `nexa` compilado para ese SO).
+
+**Tamaño:** el ejecutable pesa lo que el binario de `nexa` (~15 MB en
+release en Linux) más el sitio ya comprimido: `examples/app-demo` = 15,3 MB;
+`examples/phaser-demo` (Phaser 1,4 MB) = 16,9 MB, y Phaser viaja a 369 KB
+por la red con gzip.
+
+**No incluye:** las rutas dinámicas de Core **sin** `paths` (las que
+`nexa preview` renderiza al vuelo) — el paquete solo sirve lo que `nexa
+build` dejó en `dist/`; declara `paths` para pre-renderizarlas. Tampoco
+termina TLS (HTTPS): ponlo detrás de un proxy inverso/balanceador, o usa
+nginx si necesitas certificados propios.
 
 ## Despliegue (`nginx`)
 
@@ -1509,13 +1656,101 @@ icon = "/icon-512.png"
 Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
 `package.json` ni npm.
 
+## Modo App (SPA)
+
+Una carpeta `src/app/` activa el Modo App: TSX completo que se ejecuta
+en el navegador sobre `@nexa/app` (DOM real con señales, sin Virtual
+DOM). Convive con `src/pages/` (Nexa Core, HTML real con SEO).
+
+```
+src/app/pages/index.tsx        -> /app
+src/app/pages/users/[id].tsx   -> /app/users/:id
+src/app/components/*.tsx       -> imports relativos normales
+src/app/config.ts              -> opcional: export guard / notFound / loading
+```
+
+```tsx
+import { state, For, Show, navigate } from "@nexa/app";
+import type { PageProps } from "@nexa/app";
+
+export default function Users(props: PageProps) {
+    const users = state<{ id: number; name: string }[]>([]);
+    fetch("https://mi-backend/api/users").then((r) => r.json()).then((l) => (users.value = l));
+    return (
+        <ul>
+            <For each={users} fallback={<li>Cargando…</li>}>
+                {(u) => <li><a href={`/app/users/${u.id}`}>{u.name}</a></li>}
+            </For>
+        </ul>
+    );
+}
+```
+
+| API | Qué hace |
+|---|---|
+| `state(v)`, `computed(fn)`, `watch(src, cb)` | Señales (`@nexa/reactivity`) |
+| `effect(fn)`, `onCleanup(fn)` | Ligados a la página: se limpian al navegar |
+| `{() => expr}` / `{signal}` | Hijo o atributo reactivo — solo ese nodo se actualiza |
+| `value={signal}` / `checked={signal}` | Enlace bidireccional en inputs |
+| `<Show when fallback>` | Condicional (`when`: valor, señal o función) |
+| `<For each fallback>{(item, i) => ...}</For>` | Lista; conserva los nodos de items que siguen |
+| `<Switch>`/`<Match when>` | Primer caso verdadero |
+| `navigate(path, {replace})` | Navegación programática |
+| `route.path` / `route.params` / `route.query` | Señales de la ruta actual |
+| `guard(to)` en `config.ts` | Devuelve `false` (cancelar) o una ruta (redirigir) |
+
+### Backend, proxy y sesión (`[proxy]`, `createApi`, `persisted`)
+
+```toml
+[proxy]
+"/api" = "http://127.0.0.1:9100"   # cualquier backend
+```
+
+`nexa dev`/`nexa preview` reenvían lo que empiece con `/api` al backend
+(método, cuerpo, cabeceras, cookies; las `Set-Cookie` vuelven todas), así
+la app y la API comparten origen: sin CORS y con cookies `HttpOnly`.
+`nexa add nginx` genera el `location` + `proxy_pass` equivalente (y el
+fallback `/app/200.html` de la SPA) para producción.
+
+```ts
+import { createApi, persisted, navigate } from "@nexa/app";
+
+export const user = persisted<string | null>("user", null);   // sobrevive a recargar
+
+export const api = createApi({
+    baseURL: "/api",
+    // headers: () => ({ "X-Tenant": tenant }),   // objeto o función
+    // credentials: "include",                    // solo si el backend es de otro origen (+ CORS)
+    onUnauthorized: () => { user.value = null; navigate("/login", { replace: true }); },  // 401
+});
+
+const users = await api.get<User[]>("/users");       // get/post/put/patch/delete
+```
+
+La credencial real debería ser una cookie `HttpOnly` que pone el
+backend; `persisted` guarda solo el estado de la UI. `guard` protege la
+interfaz — la seguridad real es que el backend responda 401.
+
+`nexa.toml` (opcional):
+
+```toml
+[app]
+base = "/app"      # prefijo de URL de la SPA (por defecto /app)
+title = "Mi App"   # <title> del shell
+```
+
+`nexa build` deja `dist/app/index.html` (el shell, idéntico para toda
+ruta) y `dist/app/200.html` (convención de hosts de SPA); un servidor
+estático debe responder con él a cualquier `/app/**` que no sea un
+archivo. Ver `examples/app-demo` y la Fase 60 en
+`docs/FASES-DE-CONSTRUCCION.md` para los límites conocidos.
+
 ## Límites conocidos
 
-- Un componente por página: sin `<Otro/>`, sin props, sin composición —
-  es deliberado, no un pendiente. Iterar una lista sí tiene un
-  primitivo real (`<For>`, Fase 30 — ver "El cuerpo de la página" más
-  abajo); lo que sigue sin existir es un modelo de componentes para
-  compartir UI entre páginas.
+- Componentes (Fase 62): se expanden en tiempo de compilación — sin
+  recursión, sin spread de props, y un prop solo puede ser un valor
+  simbólico (ver "Componentes y `<Show>`"). Sin layouts anidados por
+  directorio todavía.
 - `load`/`paths`/`seo`/`schema` son literales estáticos, nunca
   funciones — sin headers, sin autenticación, sin mutaciones en el
   servidor.

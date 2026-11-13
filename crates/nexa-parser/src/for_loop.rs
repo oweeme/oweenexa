@@ -12,13 +12,14 @@ use oxc_ast::ast::{
 
 use nexa_ast::{Expr, ForLoop, Node};
 
+use crate::compose::{Ctx, PropValue};
 use crate::error::ParseError;
 use crate::expr::from_jsx_expression;
 use crate::jsx::convert_element;
 use crate::text::normalize_jsx_text;
 
-pub(crate) fn convert_for(jsx: &JSXElement) -> Result<Node, ParseError> {
-    let each = find_each_attribute(jsx)?;
+pub(crate) fn convert_for(jsx: &JSXElement, ctx: &Ctx) -> Result<Node, ParseError> {
+    let each = find_each_attribute(jsx, ctx)?;
 
     let mut real_children = jsx.children.iter().filter(|child| !is_insignificant_whitespace(child));
 
@@ -53,7 +54,10 @@ pub(crate) fn convert_for(jsx: &JSXElement) -> Result<Node, ParseError> {
     })?;
 
     let jsx_body = unwrap_parens_to_jsx(body_expr)?;
-    let body = convert_element(jsx_body)?;
+    // El parámetro del callback tapa a un prop homónimo y es una raíz
+    // válida para un `<For>` anidado (Fase 62).
+    let inner = ctx.enter_loop(&item_name);
+    let body = convert_element(jsx_body, &inner)?;
 
     Ok(Node::For(ForLoop { each, item_name, body: Box::new(body) }))
 }
@@ -61,7 +65,7 @@ pub(crate) fn convert_for(jsx: &JSXElement) -> Result<Node, ParseError> {
 /// `each={data.items}`: el único atributo que `<For>` admite — mismo `Expr`
 /// limitado que el resto de Nexa (`data.x`/`params.x`), nunca una
 /// expresión arbitraria ni un identificador suelto sin raíz reconocida.
-fn find_each_attribute(jsx: &JSXElement) -> Result<Expr, ParseError> {
+fn find_each_attribute(jsx: &JSXElement, ctx: &Ctx) -> Result<Expr, ParseError> {
     let attrs = &jsx.opening_element.attributes;
     if attrs.len() != 1 {
         return Err(ParseError::Unsupported(
@@ -90,9 +94,23 @@ fn find_each_attribute(jsx: &JSXElement) -> Result<Expr, ParseError> {
     let expr = from_jsx_expression(&container.expression).ok_or_else(|| {
         ParseError::Unsupported("each debe ser `data.x` o `params.x` — nada de expresiones arbitrarias".to_string())
     })?;
-    if !matches!(expr.root_identifier(), "data" | "params") {
+    // Dentro de un componente, `each={props.items}` toma lo que pasó la llamada.
+    let expr = match ctx.substitute(&expr)? {
+        None => expr,
+        Some(Some(PropValue::Expr(e))) => e,
+        Some(_) => {
+            return Err(ParseError::Unsupported(
+                "el prop usado en `each` debe recibir `data.x`/`params.x` (o el item de un <For> que envuelve al componente)"
+                    .to_string(),
+            ))
+        }
+    };
+    let root = expr.root_identifier();
+    let is_outer_loop_var = ctx.loop_vars.iter().any(|v| v == root);
+    if !matches!(root, "data" | "params") && !is_outer_loop_var {
         return Err(ParseError::Unsupported(
-            "each debe tener `data` o `params` como raíz, ej. `data.items`".to_string(),
+            "each debe tener `data` o `params` como raíz (o el item de un <For> que lo envuelve), ej. `data.items` / `item.tags`"
+                .to_string(),
         ));
     }
     Ok(expr)

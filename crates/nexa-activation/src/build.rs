@@ -57,6 +57,12 @@ fn collect(
         // activación (`packages/runtime`) es quien activa cada copia.
         return collect(body, component_name, handlers, consts, import_names, manifest, chunks);
     }
+    if let IrNodeKind::Show { then, otherwise, .. } = &node.kind {
+        for child in then.iter().chain(otherwise) {
+            collect(child, component_name, handlers, consts, import_names, manifest, chunks)?;
+        }
+        return Ok(());
+    }
 
     let IrNodeKind::Element { events, children, .. } = &node.kind else {
         return Ok(());

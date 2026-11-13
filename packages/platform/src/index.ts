@@ -1,4 +1,5 @@
 import { isCapacitor, isTauri, isWeb } from "./environment";
+import { native } from "./native";
 import { capturePhoto } from "./camera";
 import { openCache } from "./cache";
 import { openCollection } from "./db";
@@ -15,6 +16,8 @@ import { biometrics } from "./biometrics";
 import { haptics } from "./haptics";
 
 export { isTauri, isCapacitor, isWeb, currentGlobal, capacitorPlugin } from "./environment";
+export { invoke, appInfo, native } from "./native";
+export type { AppInfo } from "./native";
 export type { NexaPlatformGlobal } from "./environment";
 export { createStorage, createSessionStorage } from "./storage";
 export type { KeyValueStorage } from "./storage";
@@ -73,6 +76,7 @@ export const platform = {
     isTauri,
     isCapacitor,
     isWeb,
+    native,
     notify,
     share,
     capturePhoto,

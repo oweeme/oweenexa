@@ -1,0 +1,23 @@
+{
+  "name": "@nexa/app",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Fase 60: Modo App (SPA real). JSX -> DOM real con señales (@nexa/reactivity), sin Virtual DOM: h(), Show/For/Switch, router de cliente con rutas lazy, ámbitos con limpieza automática.",
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nexa/http": "*",
+    "@nexa/reactivity": "*"
+  },
+  "devDependencies": {
+    "happy-dom": "^20",
+    "typescript": "^5",
+    "vitest": "^4"
+  }
+}

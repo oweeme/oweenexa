@@ -51,6 +51,18 @@ pub(crate) fn classify_node(
             }
         }
 
+        Node::Show(show) => {
+            let id = alloc_id(next_id);
+            dependencies.add(show.when.root_identifier(), id);
+            let then = show.then.iter().map(|n| classify_node(n, next_id, dependencies)).collect();
+            let otherwise = show.otherwise.iter().map(|n| classify_node(n, next_id, dependencies)).collect();
+            IrNode {
+                id,
+                classification: Classification::Dynamic,
+                kind: IrNodeKind::Show { when: show.when.clone(), then, otherwise },
+            }
+        }
+
         Node::Element(el) => {
             let id = alloc_id(next_id);
 

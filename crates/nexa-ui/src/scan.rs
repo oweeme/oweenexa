@@ -29,6 +29,12 @@ fn walk(node: &IrNode, classes: &mut BTreeSet<String>) {
         walk(body, classes);
         return;
     }
+    if let IrNodeKind::Show { then, otherwise, .. } = &node.kind {
+        for child in then.iter().chain(otherwise) {
+            walk(child, classes);
+        }
+        return;
+    }
 
     let IrNodeKind::Element { attrs, children, .. } = &node.kind else {
         return;

@@ -57,7 +57,16 @@ pub fn scaffold(project_root: &Path, project_name: &str) -> Result<()> {
     fs::create_dir_all(src_tauri.join("icons"))?;
 
     write(&src_tauri.join("Cargo.toml"), &substitute(CARGO_TOML_TMPL, &name, &identifier))?;
-    write(&src_tauri.join("tauri.conf.json"), &substitute(TAURI_CONF_TMPL, &name, &identifier))?;
+    // Fase 63: si el proyecto tiene Modo App, la ventana abre la SPA
+    // (`/app`); si no, la portada de siempre.
+    let start_url = if project_root.join("src/app/pages").is_dir() {
+        let manifest = crate::manifest::load_lenient(&project_root.join("nexa.toml"));
+        crate::app_mode::base_path(&manifest).trim_start_matches('/').to_string()
+    } else {
+        "index.html".to_string()
+    };
+    let conf = substitute(TAURI_CONF_TMPL, &name, &identifier).replace("{{START_URL}}", &start_url);
+    write(&src_tauri.join("tauri.conf.json"), &conf)?;
     write(&src_tauri.join(".gitignore"), GITIGNORE_TMPL)?;
     write(&src_tauri.join("build.rs"), BUILD_RS)?;
     write(&src_tauri.join("src/main.rs"), &substitute(MAIN_RS_TMPL, &name, &identifier))?;
@@ -175,5 +184,42 @@ mod tests {
             let contents = fs::read_to_string(dir.join(file)).unwrap();
             assert!(!contents.contains("{{"), "quedó un placeholder sin sustituir en {file}");
         }
+    }
+
+    #[test]
+    fn a_core_only_project_opens_the_landing_page() {
+        let dir = scratch_dir();
+        scaffold(&dir, "hello").unwrap();
+        let conf = fs::read_to_string(dir.join("src-tauri/tauri.conf.json")).unwrap();
+        assert!(conf.contains("\"url\": \"index.html\""), "{conf}");
+        assert!(conf.contains("\"withGlobalTauri\": true"), "{conf}");
+        assert!(!conf.contains("{{"), "queda un placeholder sin sustituir: {conf}");
+    }
+
+    #[test]
+    fn a_project_with_app_mode_opens_the_spa_at_its_base() {
+        let dir = scratch_dir();
+        fs::create_dir_all(dir.join("src/app/pages")).unwrap();
+        fs::write(dir.join("nexa.toml"), "[project]\nname = \"x\"\n[app]\nbase = \"/panel\"\n").unwrap();
+        scaffold(&dir, "x").unwrap();
+        let conf = fs::read_to_string(dir.join("src-tauri/tauri.conf.json")).unwrap();
+        assert!(conf.contains("\"url\": \"panel\""), "{conf}");
+        assert!(conf.contains("nexa build --target desktop"), "{conf}");
+    }
+
+    #[test]
+    fn the_cargo_template_declares_the_custom_protocol_feature_that_embeds_dist() {
+        let dir = scratch_dir();
+        scaffold(&dir, "hello").unwrap();
+        let cargo = fs::read_to_string(dir.join("src-tauri/Cargo.toml")).unwrap();
+        assert!(cargo.contains("custom-protocol = [\"tauri/custom-protocol\"]"), "{cargo}");
+    }
+
+    #[test]
+    fn the_rust_template_exposes_the_app_info_bridge_command() {
+        let dir = scratch_dir();
+        scaffold(&dir, "hello").unwrap();
+        let lib = fs::read_to_string(dir.join("src-tauri/src/lib.rs")).unwrap();
+        assert!(lib.contains("#[tauri::command]") && lib.contains("generate_handler![app_info]"), "{lib}");
     }
 }

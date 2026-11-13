@@ -16,6 +16,7 @@
 //! algo copiado a mano desde `public/assets/`) NO lleva ese hash, así que
 //! cae al `location /assets/` genérico con un `max-age` corto.
 
+use std::collections::BTreeMap;
 use std::fs;
 use std::path::Path;
 
@@ -144,8 +145,45 @@ fn route_prefix(pattern: &str) -> String {
     prefix
 }
 
+#[cfg(test)]
 pub fn render(project_name: &str, dynamic_patterns: &[String]) -> String {
+    render_full(project_name, dynamic_patterns, None, &BTreeMap::new())
+}
+
+/// Fases 60/61: además de lo estático de siempre —
+/// - `app_base`: la SPA del Modo App vive bajo ese prefijo; cualquier
+///   ruta profunda que no sea un archivo cae al shell (`200.html`).
+/// - `proxy`: un `location` por cada entrada de `[proxy]`, para que en
+///   producción la API siga siendo del mismo origen que la app (igual
+///   que en `nexa dev`).
+pub fn render_full(
+    project_name: &str,
+    dynamic_patterns: &[String],
+    app_base: Option<&str>,
+    proxy: &BTreeMap<String, String>,
+) -> String {
     let mut out = TEMPLATE.replace("{{NAME}}", &sanitize_name(project_name));
+    if let Some(base) = app_base {
+        out.push_str(&format!(
+            "\n    # Modo App (Fase 60): la SPA vive bajo {base}/. Una ruta profunda\n    \
+             # (/{b}/users/3) no es un archivo — se responde con el shell.\n    \
+             location {base}/ {{\n        try_files $uri $uri/ {base}/200.html;\n    }}\n",
+            b = base.trim_start_matches('/')
+        ));
+    }
+    for (prefix, target) in proxy {
+        let prefix = prefix.trim_end_matches('/');
+        out.push_str(&format!(
+            "\n    # [proxy] (Fase 61): {prefix}/ va al backend, mismo origen que la app\n    \
+             # (sin CORS; las cookies de sesión funcionan).\n    \
+             location {prefix}/ {{\n        proxy_pass {target};\n        \
+             proxy_set_header Host $host;\n        \
+             proxy_set_header X-Real-IP $remote_addr;\n        \
+             proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n        \
+             proxy_set_header X-Forwarded-Proto $scheme;\n    }}\n",
+            target = target.trim_end_matches('/')
+        ));
+    }
     out.push_str(&dynamic_routes_section(dynamic_patterns));
     out.push_str("}\n");
     out
@@ -184,7 +222,9 @@ pub fn scaffold(project_root: &Path, project_name: &str) -> Result<()> {
     let dynamic_patterns = discover_dynamic_routes_without_paths(&project_root.join("src/pages"))?;
 
     fs::create_dir_all(&deploy_dir)?;
-    fs::write(&out_path, render(project_name, &dynamic_patterns))
+    let manifest = crate::manifest::load_lenient(&project_root.join("nexa.toml"));
+    let app_base = project_root.join("src/app/pages").is_dir().then(|| crate::app_mode::base_path(&manifest));
+    fs::write(&out_path, render_full(project_name, &dynamic_patterns, app_base.as_deref(), &manifest.proxy))
         .with_context(|| format!("escribiendo {}", out_path.display()))
 }
 
@@ -378,5 +418,18 @@ mod tests {
         let conf = fs::read_to_string(dir.join("deploy/nginx.conf")).unwrap();
 
         assert!(conf.contains("No se encontraron rutas dinámicas sin `paths`"));
+    }
+
+    #[test]
+    fn renders_the_app_fallback_and_one_location_per_proxy_entry() {
+        let mut proxy = BTreeMap::new();
+        proxy.insert("/api".to_string(), "http://127.0.0.1:9100/".to_string());
+        let conf = render_full("demo", &[], Some("/app"), &proxy);
+        assert!(conf.contains("location /app/ {"), "{conf}");
+        assert!(conf.contains("try_files $uri $uri/ /app/200.html;"), "{conf}");
+        assert!(conf.contains("location /api/ {"), "{conf}");
+        assert!(conf.contains("proxy_pass http://127.0.0.1:9100;"), "{conf}");
+        // sin app ni proxy, es exactamente el de antes
+        assert_eq!(render_full("demo", &[], None, &BTreeMap::new()), render("demo", &[]));
     }
 }

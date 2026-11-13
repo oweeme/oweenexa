@@ -7,6 +7,7 @@ use oxc_ast::ast::{
 
 use nexa_ast::{Attr, AttrValue, Element, Event, Island, Node};
 
+use crate::compose::{self, Ctx, PropValue};
 use crate::error::ParseError;
 use crate::expr::from_jsx_expression;
 use crate::object_literal::from_object_expression;
@@ -14,7 +15,7 @@ use crate::template;
 use crate::text::{expression_container_to_string, normalize_jsx_text};
 use crate::translate;
 
-pub(crate) fn convert_element(jsx: &JSXElement) -> Result<Node, ParseError> {
+pub(crate) fn convert_element(jsx: &JSXElement, ctx: &Ctx) -> Result<Node, ParseError> {
     // `<For>` (Fase 30): un nombre capitalizado en JSX siempre llega como
     // `IdentifierReference` (`<Apple/>` referencia un binding de JS), no
     // como `Identifier` (reservado a tags en minúscula, `<div/>`) — por
@@ -25,15 +26,21 @@ pub(crate) fn convert_element(jsx: &JSXElement) -> Result<Node, ParseError> {
     // `t(...)` se reconoce por ser una llamada a un identificador exacto.
     if let JSXElementName::IdentifierReference(id) = &jsx.opening_element.name {
         if id.name.as_str() == "For" {
-            return crate::for_loop::convert_for(jsx);
+            return crate::for_loop::convert_for(jsx, ctx);
         }
+        if id.name.as_str() == "Show" {
+            return crate::show::convert_show(jsx, ctx);
+        }
+        // Fase 62: cualquier otro nombre capitalizado es una llamada a un
+        // componente, que se expande en tiempo de compilación.
+        return compose::expand_call(jsx, id.name.as_str(), ctx);
     }
 
     let tag = match &jsx.opening_element.name {
         JSXElementName::Identifier(id) => id.name.as_str().to_string(),
         other => {
             return Err(ParseError::Unsupported(format!(
-                "componentes anidados (`<{other:?}>`) — todavía no hay composición de componentes"
+                "`<{other:?}>`: un componente con punto (`<UI.Card>`) no está soportado — importalo por nombre (`import {{ Card }} from ...`)"
             )))
         }
     };
@@ -55,19 +62,19 @@ pub(crate) fn convert_element(jsx: &JSXElement) -> Result<Node, ParseError> {
                 continue;
             }
             if let Some(props) = read_island_props_attribute(attr) {
-                island_props = Some(props);
+                island_props = Some(ctx.substitute_json(&props)?);
                 continue;
             }
-            match convert_event(attr) {
-                Some(event) => events.push(event),
-                // `convert_attribute` puede devolver `None`: un `={...}`
-                // que no se pudo convertir a ningún `AttrValue` (una
-                // expresión que ni `template::from_jsx_text_expression`
-                // reconoce) se omite entero, no se guarda como si fuera
-                // un atributo booleano (`<a href>` sin valor sería peor
-                // que no tener `href` en absoluto).
-                None => attrs.extend(convert_attribute(attr)),
+            match convert_event(attr, ctx)? {
+                EventOutcome::Event(event) => events.push(event),
+                EventOutcome::Omitted => {}
+                EventOutcome::NotAnEvent => attrs.extend(convert_attribute(attr, ctx)?),
             }
+            // `convert_attribute` devuelve `None` si un `={...}` no se pudo
+            // convertir a ningún `AttrValue` (o si es un prop de un
+            // componente que la llamada no pasó): el atributo entero se
+            // omite, no se guarda como si fuera un atributo booleano
+            // (`<a href>` sin valor sería peor que no tener `href`).
         }
         // `{...spread}`: ignorado por ahora (no hay props todavía).
     }
@@ -89,9 +96,7 @@ pub(crate) fn convert_element(jsx: &JSXElement) -> Result<Node, ParseError> {
 
     let mut children = Vec::new();
     for child in jsx.children.iter() {
-        if let Some(node) = convert_child(child)? {
-            children.push(node);
-        }
+        children.extend(convert_child(child, ctx)?);
     }
 
     Ok(Node::Element(Element {
@@ -103,25 +108,45 @@ pub(crate) fn convert_element(jsx: &JSXElement) -> Result<Node, ParseError> {
     }))
 }
 
+enum EventOutcome {
+    Event(Event),
+    /// Un evento cuyo prop la llamada no pasó: el elemento queda sin él.
+    Omitted,
+    NotAnEvent,
+}
+
 /// Reconoce atributos tipo `onClick={handler}` (convención JSX: `on` +
 /// mayúscula) cuyo valor sea una expresión identificadora, y los convierte
-/// en un [`Event`] en vez de en un atributo HTML normal.
-fn convert_event(attr: &JSXAttribute) -> Option<Event> {
+/// en un [`Event`] en vez de en un atributo HTML normal. Dentro de un
+/// componente, `onClick={props.onBuy}` toma el handler de la llamada.
+fn convert_event(attr: &JSXAttribute, ctx: &Ctx) -> Result<EventOutcome, ParseError> {
     let JSXAttributeName::Identifier(id) = &attr.name else {
-        return None;
+        return Ok(EventOutcome::NotAnEvent);
     };
-    let event_name = event_name_from_attr(id.name.as_str())?;
+    let Some(event_name) = event_name_from_attr(id.name.as_str()) else {
+        return Ok(EventOutcome::NotAnEvent);
+    };
 
     let Some(JSXAttributeValue::ExpressionContainer(container)) = &attr.value else {
-        return None;
+        return Ok(EventOutcome::NotAnEvent);
     };
-    let handler = from_jsx_expression(&container.expression)?;
+    let Some(handler) = from_jsx_expression(&container.expression) else {
+        return Ok(EventOutcome::NotAnEvent);
+    };
 
-    Some(Event {
-        name: event_name,
-        handler,
-        strategy: None,
-    })
+    let handler = match ctx.substitute(&handler)? {
+        None => handler,
+        Some(None) => return Ok(EventOutcome::Omitted),
+        Some(Some(PropValue::Expr(e))) => e,
+        Some(Some(_)) => {
+            return Err(ParseError::Unsupported(format!(
+                "`{}`: un evento de un componente debe recibir el nombre de una función de la página (`onBuy={{buy}}`)",
+                handler.path()
+            )))
+        }
+    };
+
+    Ok(EventOutcome::Event(Event { name: event_name, handler, strategy: None }))
 }
 
 fn event_name_from_attr(name: &str) -> Option<String> {
@@ -192,7 +217,7 @@ fn read_island_props_attribute(attr: &JSXAttribute) -> Option<nexa_ast::JsonTemp
 /// llamador), a diferencia de no tener ningún `=` (`<button disabled>`,
 /// un atributo booleano real, que sí conserva `value: None` dentro de
 /// `Some(Attr)`).
-fn convert_attribute(attr: &JSXAttribute) -> Option<Attr> {
+fn convert_attribute(attr: &JSXAttribute, ctx: &Ctx) -> Result<Option<Attr>, ParseError> {
     let name = match &attr.name {
         JSXAttributeName::Identifier(id) => id.name.as_str().to_string(),
         JSXAttributeName::NamespacedName(ns) => {
@@ -206,12 +231,15 @@ fn convert_attribute(attr: &JSXAttribute) -> Option<Attr> {
             Some(AttrValue::Static(s.value.as_str().to_string()))
         }
         Some(JSXAttributeValue::ExpressionContainer(container)) => {
-            Some(convert_attribute_expression(container)?)
+            match convert_attribute_expression(container, ctx)? {
+                Some(v) => Some(v),
+                None => return Ok(None),
+            }
         }
-        Some(_) => return None,
+        Some(_) => return Ok(None),
     };
 
-    Some(Attr { name, value })
+    Ok(Some(Attr { name, value }))
 }
 
 /// `src={literal}` se pliega a estático; `src={data.image}` o
@@ -219,18 +247,35 @@ fn convert_attribute(attr: &JSXAttribute) -> Option<Attr> {
 /// referencia, no una plantilla) quedan como una referencia dinámica que
 /// el renderer resuelve más tarde (Fase 8) — el mismo tratamiento que
 /// reciben los campos de `seo`.
-fn convert_attribute_expression(container: &JSXExpressionContainer) -> Option<AttrValue> {
+fn convert_attribute_expression(container: &JSXExpressionContainer, ctx: &Ctx) -> Result<Option<AttrValue>, ParseError> {
     if let Some(text) = expression_container_to_string(container) {
-        return Some(AttrValue::Static(text));
+        return Ok(Some(AttrValue::Static(text)));
     }
-    template::from_jsx_text_expression(&container.expression).map(AttrValue::Dynamic)
+    let Some(tpl) = template::from_jsx_text_expression(&container.expression) else {
+        return Ok(None);
+    };
+    // Fase 62: dentro de un componente, `href={props.url}` toma lo que
+    // pasó la llamada. Si nada dinámico queda, el atributo es estático.
+    let tpl = ctx.substitute_template(&tpl)?;
+    if tpl.0.is_empty() {
+        return Ok(None); // un prop que la llamada no pasó: el atributo se omite
+    }
+    if tpl.0.iter().all(|p| matches!(p, nexa_ast::TemplatePart::Text(_))) {
+        let text: String = tpl
+            .0
+            .iter()
+            .filter_map(|p| if let nexa_ast::TemplatePart::Text(t) = p { Some(t.as_str()) } else { None })
+            .collect();
+        return Ok(Some(AttrValue::Static(text)));
+    }
+    Ok(Some(AttrValue::Dynamic(tpl)))
 }
 
-fn convert_child(child: &JSXChild) -> Result<Option<Node>, ParseError> {
+pub(crate) fn convert_child(child: &JSXChild, ctx: &Ctx) -> Result<Vec<Node>, ParseError> {
     match child {
-        JSXChild::Text(text) => Ok(normalize_jsx_text(text.value.as_str()).map(Node::Text)),
-        JSXChild::Element(el) => Ok(Some(convert_element(el)?)),
-        JSXChild::ExpressionContainer(container) => Ok(convert_expression_child(container)),
+        JSXChild::Text(text) => Ok(normalize_jsx_text(text.value.as_str()).map(Node::Text).into_iter().collect()),
+        JSXChild::Element(el) => Ok(vec![convert_element(el, ctx)?]),
+        JSXChild::ExpressionContainer(container) => convert_expression_child(container, ctx),
         JSXChild::Fragment(_) => Err(ParseError::Unsupported(
             "fragmentos (`<>...</>`) como hijos".to_string(),
         )),
@@ -242,13 +287,28 @@ fn convert_child(child: &JSXChild) -> Result<Option<Node>, ParseError> {
 
 /// Un `{expr}` como hijo puede ser un literal (se pliega a texto
 /// estático), `t("key")` (Fase 10: `Node::Translate`), o una referencia a
-/// una variable (`Node::Expression`, dinámica).
-fn convert_expression_child(container: &JSXExpressionContainer) -> Option<Node> {
+/// una variable (`Node::Expression`, dinámica). Dentro de un componente
+/// (Fase 62), `{props.title}` es lo que pasó la llamada y
+/// `{props.children}` son sus hijos.
+fn convert_expression_child(container: &JSXExpressionContainer, ctx: &Ctx) -> Result<Vec<Node>, ParseError> {
     if let Some(text) = expression_container_to_string(container) {
-        return Some(Node::Text(text));
+        return Ok(vec![Node::Text(text)]);
     }
     if let Some(translate) = translate::from_jsx_expression(&container.expression) {
-        return Some(Node::Translate(translate));
+        return Ok(vec![Node::Translate(ctx.substitute_translate(&translate)?)]);
     }
-    from_jsx_expression(&container.expression).map(Node::Expression)
+    let Some(expr) = from_jsx_expression(&container.expression) else {
+        return Ok(Vec::new());
+    };
+    if ctx.in_component() {
+        if ctx.is_children_ref(&expr) {
+            return Ok(ctx.children());
+        }
+        return Ok(match ctx.substitute(&expr)? {
+            None => vec![Node::Expression(expr)],
+            Some(None) => Vec::new(),
+            Some(Some(value)) => compose::value_to_nodes(value),
+        });
+    }
+    Ok(vec![Node::Expression(expr)])
 }

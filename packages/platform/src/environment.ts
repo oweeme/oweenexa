@@ -7,6 +7,13 @@
  */
 export interface NexaPlatformGlobal {
     isTauri?: boolean;
+    /**
+     * Con `app.withGlobalTauri: true` en `tauri.conf.json` (lo deja
+     * puesto `nexa add tauri`), Tauri 2 expone `window.__TAURI__.core.invoke`
+     * — el mismo `invoke` de `@tauri-apps/api/core`, sin necesidad de
+     * bundlear ese paquete.
+     */
+    __TAURI__?: { core?: { invoke?: (command: string, args?: Record<string, unknown>) => Promise<unknown> } };
     Capacitor?: {
         isNativePlatform?: () => boolean;
         Plugins?: Record<string, Record<string, (...args: never[]) => unknown>>;

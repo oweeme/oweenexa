@@ -485,7 +485,7 @@ se pasa. Ausente por defecto.
 
 ## Empaquetado más allá de la web
 
-- **Escritorio**: `nexa add tauri` + `cd src-tauri && cargo build` (o
+- **Escritorio**: `nexa add tauri` + `nexa build --target desktop` (o
   `cargo tauri dev`/`build` con `@tauri-apps/cli` instalado, para
   recarga en caliente e instaladores empaquetados).
 - **Móvil**: `nexa add capacitor` + `npx @capacitor/cli add

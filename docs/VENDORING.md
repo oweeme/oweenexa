@@ -151,3 +151,43 @@ Esto es una guía y un proceso repetible, no un registro/paquete
 automático de terceros (`nexa add <paquete-de-npm-cualquiera>`) — eso
 es un problema más grande (resolución de versiones, actualizaciones,
 un catálogo curado) y queda fuera de alcance por ahora.
+
+
+## Caso real: un motor de juegos (Phaser)
+
+Un paquete grande y sin envoltorio propio se vendoriza igual que `marked`,
+y se usa desde el **Modo App** (Fase 60), cuyos imports "pelados" los
+resuelve el import map de `[imports]`:
+
+```bash
+npm install phaser esbuild
+echo 'import Phaser from "phaser"; export default Phaser; export { Phaser };' > vendor-entry.js
+npx esbuild vendor-entry.js --bundle --format=esm --target=es2022 --minify --outfile=public/vendor/phaser.js
+```
+
+```toml
+[imports]
+phaser = "/vendor/phaser.js"
+```
+
+```tsx
+import Phaser from "phaser";
+import { state, onCleanup } from "@nexa/app";
+
+export default function Game() {
+    const score = state(0);
+    let game: Phaser.Game | undefined;
+    class Main extends Phaser.Scene { /* ...; en update(): score.value++ */ }
+    const mount = (el: HTMLElement) =>
+        queueMicrotask(() => (game = new Phaser.Game({ type: Phaser.CANVAS, width: 800, height: 400, parent: el, scene: Main })));
+    onCleanup(() => game?.destroy(true));
+    return <main><p>{score}</p><div ref={mount}></div></main>;
+}
+```
+
+Verificado en Chrome real con Phaser 4.2.1 (bundle de ~1,3 MB): el
+canvas se crea dentro del `<div>`, el bucle del juego actualiza una señal
+de Nexa en cada fotograma, un clic sobre un sprite actualiza otra señal,
+y al navegar a otra ruta el juego se destruye sin dejar canvas. Ejemplo
+completo: `examples/phaser-demo`. El `ref` se ejecuta antes de que el nodo
+esté en el DOM — por eso el montaje va en `queueMicrotask`.

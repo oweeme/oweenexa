@@ -3827,6 +3827,366 @@ tiene nada que ver con la causa real — así lo encontró el usuario.
 
 ---
 
+## Fase 60 — Modo App: una SPA real en el mismo proyecto
+
+**Motivación.** Nexa Core nunca ejecuta el código de una página: solo
+reconoce patrones fijos (`data.x`, `t()`, `<For>`...). Eso es lo que lo
+hace ideal para sitios con SEO, y lo que le impedía ser una aplicación:
+sin composición de componentes, sin `.map`/condicionales libres, sin
+estado compartido. En vez de abandonar esa regla, la Fase 60 añade un
+**segundo tipo de ruta** que convive con el primero.
+
+| | Nexa Core | Modo App |
+|---|---|---|
+| Directorio | `src/pages/` | `src/app/pages/` |
+| Quién produce el HTML | El compilador (analiza, no ejecuta) | El navegador (`@nexa/app`) |
+| Código admitido | Patrones fijos | TSX completo: `.map`, condicionales, componentes con props, estado |
+| SEO | Sí, HTML real | No (un shell vacío) — usa Core para lo indexable |
+
+**Qué se construyó.**
+
+1. `packages/app` (`@nexa/app`, 8 KB minificado): `h()` (JSX -> DOM real,
+   sin Virtual DOM), hijos/atributos reactivos (una `Signal` o una
+   función `() => valor`), `value={signal}` bidireccional, `Show`,
+   `For` (reconcilia por identidad: conserva los nodos de los items que
+   siguen), `Switch`/`Match`, ámbitos con limpieza automática (los
+   efectos de una página mueren al navegar), y un router de cliente con
+   rutas lazy (`import()` por ruta), parámetros, `guard`, `loading` y
+   `notFound`.
+2. `nexa-cli::app_mode`: transpila `src/app/**` (TypeScript + JSX -> JS)
+   con `oxc`, reescribe imports (`./Card` -> `./Card.js`, `@nexa/app` ->
+   runtime con hash), genera el shell `dist/app/index.html` (+ `200.html`
+   para hosts de SPA) y los módulos en `dist/assets/app/`. **No analiza
+   el contenido**: el principio de Core no cambia.
+3. `nexa build`/`preview`/`dev` lo sirven; en `dev` se recompila en cada
+   petición, un error de sintaxis responde 500 legible, y un cambio en
+   `src/` recarga la página. Un proyecto sin `src/pages/` (solo-app) es
+   válido: `/` redirige a la SPA.
+
+**Verificado.** 16 tests de `@nexa/app` (happy-dom), 8 de `app_mode`, y
+un test end-to-end en Chrome real (`examples/app-demo`, 15 comprobaciones):
+guard que redirige a `/login`, texto reactivo enlazado a un input,
+login -> lista cargada de un backend HTTP externo, `For` + filtro
+reactivo, navegación SPA sin recarga (el estado en memoria sobrevive),
+parámetros de ruta, botón atrás, y deep link directo.
+
+**Límites conocidos (honestos).**
+
+- `Show`/`For` evalúan sus hijos *una vez, de forma eager* cuando se pasan
+  como nodos; para contenido pesado o condicional, pasar una función
+  (`{() => <Pesado/>}`) lo hace lazy.
+- Un componente que lee `.value` directamente en su cuerpo (fuera de una
+  función) suscribe al hueco reactivo que lo contiene; lo reactivo va
+  siempre dentro de `() => ...` o como `Signal`.
+- ~~Sin proxy de `/api` en `nexa dev`~~ y ~~el scaffold de `nginx` sin
+  el fallback de `/app`~~: resueltos en la Fase 61.
+- El `layout.tsx` de Core no envuelve la SPA.
+- Navegar de Core a la SPA es una carga completa (`data-nexa-reload` en
+  el enlace) — deliberado: son dos routers distintos.
+- Tipos de JSX: `packages/app/src/jsx.d.ts`, aún sin plantilla de
+  tsconfig en `nexa create`.
+
+---
+
+## Fase 61 — Datos y autenticación para el Modo App (backend agnóstico de verdad)
+
+**Motivación.** Una SPA con login necesita tres cosas que Nexa no tenía:
+hablar con el backend desde el *mismo origen* (sin CORS, con cookies
+`HttpOnly`), un cliente HTTP que sepa de sesiones, y estado que
+sobreviva a una recarga. La Fase 60 dejó explícito el hueco ("sin proxy
+de `/api` en `nexa dev`").
+
+**Qué se construyó.**
+
+1. **`[proxy]` en `nexa.toml`** (`crates/nexa-cli/src/proxy.rs`):
+   `"/api" = "http://127.0.0.1:9100"`. `nexa dev`/`nexa preview` reenvían
+   ahí lo que empiece con ese prefijo — cualquier método, cuerpo,
+   cabeceras y cookies de ida, y estado/cabeceras/*todas* las
+   `Set-Cookie` de vuelta. Un 404/401/500 del backend llega tal cual; si
+   el backend está caído, un 502 JSON legible. El prefijo más largo
+   gana, y solo cuenta por segmento completo (`/api` no captura `/apix`).
+2. **`nexa add nginx` lo entiende**: genera un `location` con
+   `proxy_pass` por cada entrada de `[proxy]` y el fallback
+   `try_files ... /app/200.html` de la SPA — cierra los dos límites que
+   la Fase 60 dejó abiertos.
+3. **`createApi` (`@nexa/http`) con sesión**: `headers` (objeto o
+   función, p. ej. un token que cambia), `credentials`, `onUnauthorized`
+   (se llama ante un 401 — no ante un 403 — antes de lanzar el
+   `HttpError`) y `patch`. Retrocompatible.
+4. **`@nexa/app` re-exporta la capa de datos** (`createApi`, `query`,
+   `mutation`, `connectSSE`, `connectSocket`, `HttpError`) y añade
+   `persisted(key, inicial)`: una señal respaldada por
+   `localStorage`/`sessionStorage` que nunca lanza si el almacenamiento
+   no está disponible.
+
+**Patrón recomendado.** La credencial real es una cookie `HttpOnly` que
+pone el backend (JavaScript nunca la ve); la UI guarda solo el *estado*
+de la sesión (`persisted("user", null)`); `onUnauthorized` limpia ese
+estado y manda a `/login`; el `guard` de `config.ts` protege las rutas.
+Ver `examples/app-demo` (`session.ts`, `config.ts`, `backend.py`).
+
+**Verificado en Chrome real** (13 comprobaciones sobre `examples/app-demo`
+con un backend Python con sesión por cookie): el proxy reenvía el 401
+tal cual; login por POST con cuerpo JSON a través del proxy; la cookie
+`sid` queda `HttpOnly` (`document.cookie` no la ve) y el navegador sí la
+guarda; la lista se carga con esa cookie; un deep link tras recargar
+sigue autenticado; un 404 del backend se conserva; con la sesión
+vencida en el backend, el 401 limpia la UI y vuelve a `/app/login`;
+logout explícito. Aparte: 3 tests de `proxy`, 1 de `nginx_scaffold`,
+5 de `createApi` y 4 de `persisted`/re-exports.
+
+**Límites conocidos (honestos).**
+
+- El proxy es de desarrollo/previsualización: no soporta WebSocket/SSE
+  (`connectSocket` contra `/api` en `dev` requiere apuntar directo al
+  backend) y bufferiza la respuesta completa. En producción lo hace
+  nginx, que sí los soporta.
+- `load()` de Nexa Core sigue siendo un `GET` literal sin cookies ni
+  cabeceras: lo autenticado va en el Modo App (lo público con SEO no lo
+  necesita). `docs/DISENO-COOKIES-EN-LOAD.md` sigue pendiente.
+- No hay refresco automático de tokens (refresh token) ni helpers de
+  OAuth: `onUnauthorized` es el punto de enganche.
+- El `guard` corre en el navegador: protege la *interfaz*, no los datos.
+  La seguridad real es que el backend responda 401 (como en el ejemplo).
+
+---
+
+## Fase 62 — Composición de componentes en Nexa Core (sin runtime)
+
+**Motivación.** "Un componente por página, sin props, sin `<Otro/>`" era
+la mayor traba para escribir sitios reales con Core: una tarjeta, un
+botón o una etiqueta repetidos en 20 páginas había que copiarlos a mano.
+La regla que no se podía romper: el compilador **nunca ejecuta** el
+código del desarrollador.
+
+**Solución: expansión en tiempo de compilación.** `<Card title={data.x}>`
+no crea nada en ejecución — `nexa-parser` lee el archivo de `Card`, y
+al convertir su JSX sustituye cada `props.title` por lo que pasó la
+llamada (un literal, `data.x`, `params.x`, `t("...")`, una plantilla) y
+`{props.children}` por los hijos de la llamada. El resultado es el mismo
+`nexa_ast::Node` que si se hubiera escrito a mano, así que **ni el
+analyzer, ni el renderer, ni la activación, ni el SEO se enteraron**:
+no hay un nodo "llamada a componente" en ninguna parte.
+
+**Qué se construyó.**
+
+1. `nexa-parser::compose`: resolución de componentes (función del mismo
+   archivo o `import` relativo vía un `ImportResolver` — el parser no
+   hace IO), sustitución de props en hijos, atributos, plantillas,
+   `t()` y `data-nexa-props`, `{props.children}`, paso de props entre
+   componentes anidados, y detección de recursión.
+2. **Eventos**: la página pasa el nombre de su función
+   (`onPress={saludar}`) y el componente la conecta
+   (`onClick={props.onPress}`); las funciones y constantes de nivel
+   superior del archivo del componente se fusionan a las de la página,
+   así su chunk de activación las encuentra (conflicto de nombres con
+   código distinto = error explícito).
+3. `<For>` **anidado**: `each={group.members}` (raíz = item de un
+   `<For>` externo); `nexa-renderer` pasó de un único `loop_binding` a
+   una pila (`outer_loops`) — un item interno tapa a uno externo del
+   mismo nombre. Un `<For>` dentro de un componente toma su lista de un
+   prop (`each={props.items}`), y el parámetro del `<For>` tapa a un
+   prop homónimo.
+4. `<Show when={...} fallback={...}>`: nuevo nodo `Node::Show` /
+   `IrNodeKind::Show` resuelto al renderizar contra los datos reales
+   (verdad JSON: falso si falta, `null`, `false`, `0`, `""` o `[]`).
+   Recorridos de UI, activación, imágenes, SEO y formularios lo
+   atraviesan.
+5. `nexa-cli::components::FsResolver` (rutas relativas, con o sin
+   extensión, `index.tsx`); también lo usa el `layout.tsx`.
+6. Arreglo colateral: un espacio suelto entre dos hijos de la misma
+   línea (`<Tag /> {m.name}`) se perdía; ahora se conserva, como en JSX
+   real (mismo algoritmo que Babel; el whitespace con saltos de línea
+   sigue colapsando).
+
+**Verificado.**
+
+- 13 tests del parser cuya aserción central es que **la página con
+  componentes produce exactamente el mismo árbol que la misma página
+  escrita a mano**; 8 de renderer de punta a punta (parser -> analyzer
+  -> HTML) incluyendo `<For>` anidado, sombreado de variables, `<Show>`
+  con toda la tabla de verdad, `<Show>` dentro de `<For>` y de un
+  componente; 1 de `FsResolver`; 1 de espacios.
+- En Chrome real (`examples/app-demo`, `src/pages/catalog.tsx`, 10
+  comprobaciones): el HTML **crudo, sin JavaScript** ya trae las 2
+  tarjetas y los 3 miembros del `<For>` anidado, con el `<title>` de
+  SEO; y el `onClick` pasado por prop a un componente `Button` se
+  activa en las dos copias del botón (una por tarjeta). Las suites de
+  la SPA (Fases 60/61) siguen pasando 13/13.
+- 388 tests de Rust en el workspace, 0 fallos.
+
+**Límites conocidos (honestos).**
+
+- Un prop solo puede ser un valor simbólico: nada de funciones
+  inline, objetos ni expresiones calculadas (error explícito). Eso es
+  lo que mantiene la regla de "no ejecutar".
+- Sin recursión, sin `{...spread}` de props, sin valores por defecto en
+  los props, sin `<Pkg.Componente>`. Para algo así: el Modo App (Fase
+  60), cuyos componentes sí son funciones reales.
+- `<Show when>` no admite comparaciones (`data.n > 1`): se calcula el
+  booleano en el backend y se pasa como dato.
+- **Layouts anidados por directorio siguen pendientes** (el `layout.tsx`
+  único funciona igual y ya puede usar componentes).
+- Un componente que usa `onClick` con una función propia comparte el
+  espacio de nombres con la página: dos archivos con una función del
+  mismo nombre pero distinta no se pueden mezclar.
+
+---
+
+## Fase 63 — Escritorio: de la SPA a un binario nativo
+
+**Motivación.** `nexa add tauri` (Fase 13) generaba un `src-tauri/`, pero
+nunca se había comprobado de punta a punta con una app real — y tenía
+huecos: la ventana no abría la SPA, la API (`/api`) no existía dentro
+del webview, no había forma de llamar a Rust desde la página, y no había
+un comando que fuera del proyecto al ejecutable.
+
+**Qué se construyó.**
+
+1. **`nexa build --target desktop`** (`commands/desktop.rs`): `nexa build`
+   con el shell de escritorio + `cargo build --release --features
+   custom-protocol` sobre `src-tauri/`; imprime la ruta y el tamaño del
+   binario. `--target android|ios` da un error que apunta a Capacitor.
+2. **Origen de la API en escritorio**: `[desktop.proxy]` (o `[proxy]`) se
+   escribe en el shell como `window.__NEXA_PROXY__`, y `createApi`
+   (`@nexa/http`, `resolveProxiedBase`) reescribe las rutas con ese
+   prefijo al backend real (prefijo más largo, por segmento completo,
+   `credentials: "include"`). El código de la app no cambia entre la web y
+   el escritorio.
+3. **Puente a Rust** (`@nexa/platform`): `platform.native.invoke(cmd,
+   args)` y `platform.native.appInfo()` sobre `window.__TAURI__.core`
+   (`withGlobalTauri: true`); fuera de Tauri, o sin esa opción, lanza un
+   error que explica qué falta. La plantilla `lib.rs` trae el comando
+   `app_info` y los 3 pasos para añadir uno propio.
+4. **Plantilla de Tauri**: la ventana abre la SPA (`url` = la `base` del
+   Modo App) con 1100x720; `beforeBuildCommand` usa `--target desktop`;
+   el router de `@nexa/app` acepta `/app/index.html`.
+5. **Defecto real encontrado al ejecutarlo y corregido**: un `cargo build
+   --release` a secas produce un binario que carga `devUrl`
+   (`localhost:4321`) y muestra *"Could not connect to localhost"* en vez
+   de los assets embebidos — faltaba la feature `custom-protocol`. Ahora
+   la plantilla la declara, `nexa build --target desktop` la activa y
+   los mensajes lo advierten. Esto afectaba también al paso
+   "`cd src-tauri && cargo build`" que la guía recomendaba desde la Fase 13.
+6. Higiene: `packages/platform` pasa 138/138 (antes 9 fallaban por el
+   `localStorage` global de Node >= 25 tapando al de happy-dom;
+   `execArgv: ["--no-experimental-webstorage"]` en su vitest.config).
+
+**Verificado.**
+
+- **Compilado de verdad** en Linux (WebKitGTK 4.1): binario de **10,8 MB**
+  con `dist/` embebido. Se lanzó y se capturó la ventana nativa
+  (1100x720): muestra la SPA del `examples/app-demo` — el `guard` mandó a
+  `/login`, el campo reactivo ("Hola, …" sigue lo escrito) y la línea
+  *"Escritorio: demo v0.1.0 — linux/x86_64"*, que sale del comando Rust
+  `app_info` pasando por el puente (si el puente fallara, mostraría
+  *"Error del puente: ..."*). La primera captura, sin la feature
+  `custom-protocol`, mostraba el error de `localhost` descrito arriba.
+- Tests: 5 de `native`, 5 de `resolveProxiedBase`/`createApi`, 5 de
+  `app_mode`/scaffold (`START_URL`, `withGlobalTauri`, feature,
+  `app_info`, tabla `__NEXA_PROXY__` y su preferencia por
+  `[desktop.proxy]`), 1 de `desktop`; **394 de Rust y todas las suites de
+  JS pasan**.
+
+**Límites conocidos (honestos).**
+
+- Solo se verificó en **Linux**. Windows (WebView2) y macOS (WKWebView) usan
+  el mismo `src-tauri/` pero no se compilaron aquí; se compila en cada SO
+  (la compilación cruzada de Tauri es limitada). No hay plantilla de CI.
+- Producir **instaladores, firma de código/notarización y actualizador**
+  queda en manos del CLI de Tauri (`cargo tauri build`); este comando
+  entrega el binario.
+- El login por **cookie** entre `tauri://localhost` y un backend en otro
+  sitio choca con `SameSite` (hace falta `SameSite=None; Secure` y HTTPS).
+  No se probó un login completo desde la ventana nativa; lo recomendado en
+  escritorio es autenticar con cabecera/token (`createApi({ headers })`).
+- WebKitGTK varía entre distribuciones de Linux: probar en las que se
+  quiera soportar.
+- Móvil (`--target android|ios`) sigue siendo Capacitor, sin verificar aquí.
+
+---
+
+## Fase 64 — `nexa bundle`: el sitio como un único ejecutable
+
+**Motivación.** Desplegar un sitio Nexa exigía nginx (o `nexa preview`,
+que es de un solo hilo y no está pensado para producción), más copiar
+`dist/` y mantener la configuración a mano. La idea: lo mismo que un
+`go build` o un binario de Rust — **un archivo, se copia y se corre**.
+
+**Cómo funciona.** `nexa bundle` corre `nexa build`, comprime cada archivo
+de texto de `dist/`, y escribe una copia del propio binario de `nexa` con
+la carga pegada al final (`[ejecutable][blobs][cabecera JSON][cola de 24
+bytes con la marca NEXABNDL]`). Al arrancar, `nexa` lee solo los últimos 24
+bytes de su propio archivo: si hay marca, no es la CLI sino el servidor de
+ese sitio. Es el mismo enfoque que `bun build --compile`, pero sin
+intérprete de JavaScript: el "runtime" es el binario Rust de `nexa`
+(~15 MB), y el sitio ya está compilado a HTML.
+
+**Qué se construyó.**
+
+1. `nexa-cli::bundle`: el formato (`pack`/`unpack`/`read_embedded`) y
+   `collect_dist`. gzip (`flate2`, backend Rust puro) a nivel máximo y
+   solo si gana >5%. Longitudes corruptas = error, no pánico.
+2. `nexa-cli::prod_server`: `route` es una función **pura** (petición ->
+   respuesta) y por eso toda la política es testeable sin sockets: archivo
+   exacto / `dir/index.html` / fallback del shell de la SPA / `404.html`;
+   `Cache-Control` por tipo de archivo; `ETag` (distinto para la versión
+   gzip) con `304`; gzip por `Accept-Encoding`; `405`; rechazo de `..`,
+   `%00` y `%zz`; cabeceras de seguridad en toda respuesta. El servidor
+   usa de 2 a 16 hilos sobre un mismo `tiny_http::Server` y reenvía
+   `[proxy]` con el módulo de la Fase 61.
+3. `nexa bundle [--out] [--runtime] [--no-build]` y los argumentos del
+   ejecutable (`--port`, `--host`, `--proxy`, `--quiet`, `--help`; `$PORT`).
+   El host por defecto es `127.0.0.1` a propósito: exponerse a la red es
+   una decisión explícita (`--host 0.0.0.0`).
+4. `serve::mime_for_path` (antes oculto dentro de `guess_static_content_type`)
+   ahora reconoce `avif`, `webmanifest`, `wasm`, `xml`, `otf`, audio y
+   video: antes `nexa preview`/`dev` servían las imágenes AVIF que genera
+   el propio `nexa build` como `application/octet-stream`.
+5. `e2e/`: las pruebas de Chrome real de las fases 60-64 pasan a ser una
+   suite del repositorio (`spa-auth`, `core-components`, `phaser`).
+6. `examples/phaser-demo`: un juego Phaser dentro del Modo App
+   (`npm run vendor` genera el bundle; no se versiona el archivo de 1,3 MB).
+
+**Verificado.**
+
+- 16 tests nuevos de Rust (4 del formato, 11 del servidor, 1 del comando);
+  **410 de Rust pasan, 0 fallos**.
+- Con `nexa` en release (15 MB) se generó el ejecutable de
+  `examples/app-demo` (15,3 MB; el sitio comprimido pesa 0,2 MB) y se
+  ejecutó **desde una carpeta vacía** (sin proyecto, sin Node, sin
+  nginx). Con `curl`: `/` 200, `/catalog` 200, `/app/users/2` 200 (shell
+  de la SPA), `/app/x.js` 404, `/nope` 404, `POST /` 405, `/../etc/passwd`
+  400, gzip con `Content-Encoding`, `If-None-Match` -> 304 de 0 bytes,
+  asset con hash -> `immutable`.
+- En **Chrome real contra ese ejecutable**: la SPA con login por cookie a
+  través del proxy embebido (13/13), la página Core con componentes y
+  `<For>` anidado (10/10) y el juego Phaser (7/7). Phaser (1,39 MB) viaja
+  como 369 KB con gzip.
+- El servidor ocupa unos **10 MB de RAM**; 300 peticiones concurrentes
+  (40 en paralelo, 110 MB transferidos) respondieron 300/300 en 0,4 s.
+
+**Límites conocidos (honestos).**
+
+- Las rutas dinámicas de Core **sin** `paths` no se sirven (el paquete no
+  lleva el código fuente ni compila al vuelo): declara `paths` para
+  pre-renderizarlas.
+- **Sin TLS/HTTPS**: va detrás de un proxy inverso o balanceador, o usa
+  nginx si necesitas certificados propios. Tampoco hay HTTP/2, brotli,
+  rangos (`Range`) ni recarga en caliente del sitio.
+- Solo se probó en **Linux**. `--runtime` permite usar el `nexa` de otro
+  sistema operativo como base, pero no se probó (ni se compiló `nexa` para
+  Windows/macOS aquí). En macOS un binario modificado necesita firmarse de
+  nuevo (`codesign`) o Gatekeeper lo bloqueará.
+- El ejecutable pesa lo que el binario de `nexa` (15 MB): un servidor
+  hecho a mano con un archivo estático sería menor; aquí se prefiere no
+  mantener un segundo servidor.
+- Un redeploy es reemplazar el ejecutable (no hay reinicio sin cortes).
+- La suite `e2e/` necesita Chrome instalado y se corre a mano (no está en
+  ninguna integración continua).
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

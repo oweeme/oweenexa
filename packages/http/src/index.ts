@@ -1,4 +1,4 @@
-export { createApi, HttpError } from "./client";
+export { createApi, HttpError, resolveProxiedBase } from "./client";
 export type { HttpClient, HttpClientOptions } from "./client";
 export { query } from "./query";
 export type { CachePolicy, QueryOptions, QueryResult } from "./query";

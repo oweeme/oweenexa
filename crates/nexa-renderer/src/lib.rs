@@ -57,6 +57,10 @@ pub fn render_node(node: &IrNode, ctx: &RenderContext) -> String {
         },
         IrNodeKind::Element { .. } => html::render_element(node, ctx),
         IrNodeKind::For { each, item_name, body } => render_for(each, item_name, body, ctx),
+        IrNodeKind::Show { when, then, otherwise } => {
+            let branch = if context::resolve_truthy(when, ctx) { then } else { otherwise };
+            branch.iter().map(|n| render_node(n, ctx)).collect()
+        }
     }
 }
 
@@ -72,11 +76,14 @@ fn render_for(each: &nexa_ast::Expr, item_name: &str, body: &IrNode, ctx: &Rende
     context::resolve_each(each, ctx)
         .iter()
         .map(|item| {
+            let mut outer_loops = ctx.outer_loops.clone();
+            outer_loops.extend(ctx.loop_binding);
             let item_ctx = RenderContext {
                 data: ctx.data,
                 params: ctx.params,
                 translations: ctx.translations,
                 loop_binding: Some((item_name, item)),
+                outer_loops,
                 current_path: ctx.current_path,
             };
             render_node(body, &item_ctx)

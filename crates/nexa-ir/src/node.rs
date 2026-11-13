@@ -44,6 +44,13 @@ pub enum IrNodeKind {
         item_name: String,
         body: Box<IrNode>,
     },
+    /// `<Show when={...}>` (Fase 62): se decide en tiempo de render/build
+    /// con los datos reales; solo la rama elegida llega al HTML.
+    Show {
+        when: Expr,
+        then: Vec<IrNode>,
+        otherwise: Vec<IrNode>,
+    },
 }
 
 impl IrNode {
@@ -57,6 +64,11 @@ impl IrNode {
                 }
             }
             IrNodeKind::For { body, .. } => body.walk(f),
+            IrNodeKind::Show { then, otherwise, .. } => {
+                for child in then.iter().chain(otherwise) {
+                    child.walk(f);
+                }
+            }
             _ => {}
         }
     }

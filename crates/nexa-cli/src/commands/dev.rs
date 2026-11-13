@@ -37,7 +37,7 @@ const DIAGNOSTICS_ENDPOINT: &str = "/__nexa_dev__/diagnostics";
 
 pub fn run(port: u16) -> Result<()> {
     let pages_dir = Path::new("src/pages");
-    if !pages_dir.is_dir() {
+    if !pages_dir.is_dir() && !crate::app_mode::is_enabled() {
         anyhow::bail!(
             "no se encontró {} — ¿estás dentro de un proyecto Nexa? (usa `nexa create <nombre>`)",
             pages_dir.display()
@@ -65,6 +65,16 @@ pub fn run(port: u16) -> Result<()> {
     println!("Ctrl+C para detener.");
 
     for request in server.incoming_requests() {
+        // `[proxy]` (Fase 61): lo que cae bajo un prefijo declarado va al backend real.
+        {
+            let manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
+            let only_path = request_path(request.url());
+            if let Some((_, target)) = crate::proxy::match_target(&manifest.proxy, &only_path) {
+                let target = target.to_string();
+                crate::proxy::forward(request, &target);
+                continue;
+            }
+        }
         let url = request.url().to_string();
         let response = handle(pages_dir, &url, &api_base);
 
@@ -92,6 +102,26 @@ fn handle(pages_dir: &Path, url: &str, api_base: &str) -> Response<std::io::Curs
 
     if let Some(js) = serve_framework_asset(path) {
         return respond(200, javascript_content_type(), js.to_string());
+    }
+
+    let manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
+    if let Some(app) = crate::app_mode::serve(path, &manifest, true) {
+        return match app {
+            crate::app_mode::AppResponse::Js(js) => respond(200, javascript_content_type(), js),
+            crate::app_mode::AppResponse::Html(html) => respond(200, html_content_type(), html),
+            crate::app_mode::AppResponse::Failure(message) => {
+                respond(500, html_content_type(), with_dev_client(&compile_error_page(&message)))
+            }
+        };
+    }
+    if !pages_dir.is_dir() {
+        if path == "/" {
+            return respond(200, html_content_type(), crate::app_mode::redirect_html(&crate::app_mode::base_path(&manifest)));
+        }
+        if let Some(bytes) = read_static_file(Path::new("public"), path) {
+            return respond_bytes(200, guess_static_content_type(path), bytes);
+        }
+        return respond(404, html_content_type(), with_dev_client(&not_found_page(path)));
     }
 
     if let Some(content) = read_prebuilt_asset(path) {

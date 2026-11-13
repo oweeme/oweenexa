@@ -21,6 +21,26 @@ function capacitorPlugin(target, name) {
   return target.Capacitor?.Plugins?.[name];
 }
 
+// packages/platform/src/native.ts
+async function invoke(command, args, target = currentGlobal()) {
+  if (!isTauri(target)) {
+    throw new Error(
+      `platform.native.invoke("${command}") solo funciona dentro de la app de escritorio (Tauri) \u2014 est\xE1s en un navegador o en otro runtime.`
+    );
+  }
+  const core = target.__TAURI__?.core;
+  if (!core?.invoke) {
+    throw new Error(
+      "Tauri no expuso `window.__TAURI__` \u2014 falta `app.withGlobalTauri: true` en src-tauri/tauri.conf.json (lo deja puesto `nexa add tauri`)."
+    );
+  }
+  return await core.invoke(command, args);
+}
+function appInfo(target = currentGlobal()) {
+  return invoke("app_info", void 0, target);
+}
+var native = { invoke, appInfo };
+
 // packages/platform/src/camera.ts
 async function capturePhoto(deps = {}) {
   const environment = deps.environment ?? currentGlobal();
@@ -725,6 +745,7 @@ var platform = {
   isTauri,
   isCapacitor,
   isWeb,
+  native,
   notify,
   share,
   capturePhoto,
@@ -742,6 +763,7 @@ var platform = {
   haptics
 };
 export {
+  appInfo,
   authenticate,
   biometrics,
   capacitorPlugin,
@@ -758,11 +780,13 @@ export {
   haptics,
   notification as hapticsNotification,
   impact,
+  invoke,
   isAvailable,
   isCapacitor,
   isTauri,
   isWeb,
   lifecycle,
+  native,
   network,
   notify,
   onActionPerformed,

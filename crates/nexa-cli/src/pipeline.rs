@@ -109,7 +109,7 @@ impl std::fmt::Display for PageError {
 /// forma de pedir "solo el `paths`" sin parsear el archivo primero).
 pub fn find_paths_declaration(file: &Path) -> Result<Option<nexa_ast::Loader>> {
     let source = fs::read_to_string(file).with_context(|| format!("leyendo {}", file.display()))?;
-    let component = nexa_parser::parse_component(file.to_str().unwrap_or("page.tsx"), &source)
+    let component = nexa_parser::parse_component_with(file.to_str().unwrap_or("page.tsx"), &source, &crate::components::FsResolver)
         .map_err(|e| anyhow::anyhow!("{e}"))
         .with_context(|| format!("compilando {}", file.display()))?;
     Ok(component.paths)
@@ -123,7 +123,7 @@ pub fn compile_page(
 ) -> Result<CompiledPage, PageError> {
     let source = fs::read_to_string(file).with_context(|| format!("leyendo {}", file.display()))?;
 
-    let component = nexa_parser::parse_component(file.to_str().unwrap_or("page.tsx"), &source)
+    let component = nexa_parser::parse_component_with(file.to_str().unwrap_or("page.tsx"), &source, &crate::components::FsResolver)
         .map_err(|e| anyhow::anyhow!("{e}"))
         .with_context(|| format!("compilando {}", file.display()))?;
 
@@ -196,7 +196,7 @@ pub fn compile_page(
         data: data.as_ref(),
         params,
         translations: translations.as_ref(),
-        loop_binding: None,
+        loop_binding: None, outer_loops: Vec::new(),
         current_path: current_path.as_deref(),
     };
     let body = nexa_renderer::render_node(&ir.root, &render_ctx);
@@ -368,6 +368,9 @@ fn has_forms(root: &nexa_ir::IrNode) -> bool {
 
     if let IrNodeKind::For { body, .. } = &root.kind {
         return has_forms(body);
+    }
+    if let IrNodeKind::Show { then, otherwise, .. } = &root.kind {
+        return then.iter().chain(otherwise).any(has_forms);
     }
 
     let IrNodeKind::Element { attrs, children, .. } = &root.kind else {

@@ -18,6 +18,12 @@ fn visit(node: &IrNode, out: &mut Vec<String>) {
         visit(body, out);
         return;
     }
+    if let IrNodeKind::Show { then, otherwise, .. } = &node.kind {
+        for child in then.iter().chain(otherwise) {
+            visit(child, out);
+        }
+        return;
+    }
 
     let IrNodeKind::Element { tag, attrs, children, .. } = &node.kind else {
         return;

@@ -28,9 +28,11 @@ pub struct RenderContext<'a> {
     /// `<For>` (Fase 30) — el nombre es el identificador del callback
     /// (`item` en `(item) => ...`) y el valor es el elemento del array
     /// que le toca a *esta* copia concreta. `None` fuera de un `<For>`.
-    /// Un solo nivel a propósito: `<For>` anidado queda fuera de alcance
-    /// (ver `nexa-parser`), así que no hace falta una pila.
     pub loop_binding: Option<(&'a str, &'a serde_json::Value)>,
+    /// Los `<For>` que envuelven al actual, del más externo al más
+    /// interno (Fase 62: `<For>` anidado). Vacío fuera de un `<For>`
+    /// anidado — `loop_binding` sigue siendo el más interno.
+    pub outer_loops: Vec<(&'a str, &'a serde_json::Value)>,
     /// La ruta real que se está renderizando (`/es/products/iphone-17`,
     /// ya con los segmentos dinámicos resueltos) — Fase 33, usada para
     /// marcar `aria-current="page"` en el `<a>` cuyo `href` coincide.
@@ -48,6 +50,7 @@ impl RenderContext<'_> {
             params: &NO_PARAMS,
             translations: None,
             loop_binding: None,
+            outer_loops: Vec::new(),
             current_path: None,
         }
     }
@@ -66,10 +69,13 @@ pub(crate) fn resolve(expr: &Expr, ctx: &RenderContext) -> Option<String> {
 /// cualquier otro identificador suelto, que sigue siendo un marcador
 /// inerte como siempre).
 fn resolve_loop_binding<'a>(root: &str, expr: &Expr, ctx: &RenderContext<'a>) -> Option<&'a serde_json::Value> {
-    let (item_name, item_value) = ctx.loop_binding?;
-    if root != item_name {
-        return None;
-    }
+    // El más interno primero: un `item` interno tapa a uno externo del
+    // mismo nombre, igual que en JS.
+    let (_, item_value) = ctx
+        .loop_binding
+        .into_iter()
+        .chain(ctx.outer_loops.iter().rev().copied())
+        .find(|(name, _)| *name == root)?;
     let mut value = item_value;
     for segment in expr.property_path() {
         value = value.get(segment)?;
@@ -154,6 +160,20 @@ pub(crate) fn resolve_each(expr: &Expr, ctx: &RenderContext) -> Vec<serde_json::
     match resolve_expr_json(expr, ctx) {
         Some(serde_json::Value::Array(items)) => items,
         _ => Vec::new(),
+    }
+}
+
+/// "Verdad" de un `<Show when={...}>` (Fase 62): falso si el dato falta,
+/// es `null`, `false`, `0`, `""` o un array vacío; verdadero en cualquier
+/// otro caso (incluido un objeto, aunque esté vacío — igual que JS).
+pub(crate) fn resolve_truthy(expr: &Expr, ctx: &RenderContext) -> bool {
+    use serde_json::Value;
+    match resolve_expr_json(expr, ctx) {
+        None | Some(Value::Null) | Some(Value::Bool(false)) => false,
+        Some(Value::Number(n)) => n.as_f64().is_some_and(|f| f != 0.0),
+        Some(Value::String(s)) => !s.is_empty(),
+        Some(Value::Array(items)) => !items.is_empty(),
+        Some(_) => true,
     }
 }
 

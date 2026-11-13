@@ -32,6 +32,9 @@ pub const NEXA_ISLANDS_JS: &str = include_str!("../assets/nexa-islands.js");
 /// builtin igual que `platform`, corregido tras descubrir que nunca
 /// había estado conectado a un import real utilizable desde una página.
 pub const NEXA_UI_JS: &str = include_str!("../assets/nexa-ui.js");
+/// `@nexa/app` (Fase 60): el runtime del Modo App (JSX -> DOM con señales,
+/// router de cliente). Solo se escribe/enlaza si el proyecto tiene `src/app/`.
+pub const NEXA_APP_JS: &str = include_str!("../assets/nexa-app.js");
 /// `@nexa/dev-client` (Fase 11): solo lo sirve `nexa dev`, nunca `nexa
 /// build`/`nexa preview` — ver `commands::dev`.
 pub const NEXA_DEV_CLIENT_JS: &str = include_str!("../assets/nexa-dev-client.js");
@@ -80,6 +83,10 @@ pub fn nexa_ui_js_filename() -> String {
     format!("nexa-ui.{}.js", content_short_hash(NEXA_UI_JS.as_bytes()))
 }
 
+pub fn nexa_app_filename() -> String {
+    format!("nexa-app.{}.js", content_short_hash(NEXA_APP_JS.as_bytes()))
+}
+
 /// Solo `nexa dev` sirve estos dos (nunca `build`/`preview`) directo desde
 /// memoria en cada request — no hace falta un nombre estable entre
 /// requests para que el navegador cachee entre visitas de desarrollo.
@@ -113,6 +120,9 @@ pub fn framework_asset(path: &str) -> Option<&'static str> {
     }
     if p == format!("assets/{}", nexa_ui_js_filename()) {
         return Some(NEXA_UI_JS);
+    }
+    if p == format!("assets/{}", nexa_app_filename()) {
+        return Some(NEXA_APP_JS);
     }
     None
 }

@@ -18,16 +18,23 @@ use crate::pipeline::{
 };
 
 pub fn run() -> Result<()> {
+    run_for(false)
+}
+
+/// `desktop`: `nexa build --target desktop` (Fase 63) — el shell del Modo
+/// App declara la tabla de backends (`window.__NEXA_PROXY__`).
+pub fn run_for(desktop: bool) -> Result<()> {
     let pages_dir = Path::new("src/pages");
-    if !pages_dir.is_dir() {
+    let app_enabled = crate::app_mode::is_enabled();
+    if !pages_dir.is_dir() && !app_enabled {
         bail!(
             "no se encontró {} — ¿estás dentro de un proyecto Nexa? (usa `nexa create <nombre>`)",
             pages_dir.display()
         );
     }
 
-    let routes = scan_pages(pages_dir).context("escaneando src/pages")?;
-    if routes.is_empty() {
+    let routes = if pages_dir.is_dir() { scan_pages(pages_dir).context("escaneando src/pages")? } else { Vec::new() };
+    if routes.is_empty() && !app_enabled {
         bail!("{} no contiene ninguna página .tsx", pages_dir.display());
     }
 
@@ -43,6 +50,22 @@ pub fn run() -> Result<()> {
     let project_manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
     if let Some(pwa) = &project_manifest.pwa {
         write_pwa_assets(pwa)?;
+    }
+
+    // Modo App (Fase 60): `src/app/` se transpila aparte — nunca pasa por
+    // el analizador estático de Nexa Core.
+    if app_enabled {
+        let build = crate::app_mode::write_to_dist(&project_manifest, Path::new("dist"), desktop)?;
+        let base = crate::app_mode::base_path(&project_manifest);
+        println!(
+            "Modo App: {} ruta(s) en {base} ({} módulo(s) compilado(s) a dist/assets/app/) — \
+             HTML shell en dist{base}/index.html.",
+            build.routes.len(),
+            build.modules.len()
+        );
+        if routes.is_empty() {
+            fs::write("dist/index.html", crate::app_mode::redirect_html(&base))?;
+        }
     }
 
     let mut built = 0;
