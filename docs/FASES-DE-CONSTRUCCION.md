@@ -4578,8 +4578,14 @@ habían validado en local:
 **Consecuencia.** Windows y macOS dejaron de ser `experimental` en `ci.yml` y bloquean como Linux. Se corrigieron
 los textos que decían "sin verificar" (`docs/CI-Y-PRUEBAS.md`, la portada del sitio).
 
-**Sigue sin verificarse:** las suites de Chrome en Windows/macOS, la app de escritorio allí (`desktop.yml` aún no
-se ha ejecutado) y `nexa bundle --runtime` entre sistemas operativos.
+**Primera ejecución de `desktop.yml` (Tauri).** **Ubuntu compiló la app de escritorio.** **Windows falló** con un
+defecto real de la plantilla de `nexa add tauri`: `icons/icon.ico not found; required for generating a Windows
+Resource file during tauri-build` — Windows exige un `.ico` y la plantilla solo traía un PNG (en Linux no hace
+falta, por eso no se había visto). Corregido: la plantilla ahora genera también `icons/icon.ico` (256/48/32/16 px)
+y lo declara en `bundle.icon`; un test comprueba que es un `.ico` válido y que está declarado.
+
+**Sigue sin verificarse:** las suites de Chrome en Windows/macOS, la app de escritorio en macOS, la de Windows con
+el arreglo (hay que volver a ejecutar `desktop.yml`) y `nexa bundle --runtime` entre sistemas operativos.
 
 ---
 

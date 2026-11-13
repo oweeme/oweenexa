@@ -29,9 +29,11 @@ y `nexa` sirve JavaScript viejo — un error silencioso que ya ocurrió durante 
   --all-targets --target …`) y se corrigió lo que habría fallado en Windows: `nexa test` ejecutaba `npm` (en
   Windows es `npm.cmd`); el script `build:ui-assets` usaba `cp`; los scripts `vendor` de los ejemplos usaban
   `mkdir -p` y comillas de bash; sin `.gitattributes`, Git en Windows convierte a CRLF y rompe los assets embebidos.
-- **Sigue sin verificarse:** las suites de Chrome (`run-all.mjs`) en Windows y macOS (solo corren en Linux),
-  compilar la app de escritorio allí (`desktop.yml` existe pero no se ha ejecutado), y `nexa bundle --runtime`
-  entre sistemas (en macOS, además, un binario modificado necesita `codesign`).
+- **App de escritorio (`desktop.yml`, a mano):** compila en **Ubuntu**. En **Windows** la primera ejecución destapó
+  que la plantilla de Tauri no traía `icons/icon.ico` (corregido; falta volver a ejecutarlo para confirmarlo).
+- **Sigue sin verificarse:** las suites de Chrome (`run-all.mjs`) en Windows y macOS (solo corren en Linux), la app
+  de escritorio en macOS, y `nexa bundle --runtime` entre sistemas (en macOS, además, un binario modificado
+  necesita `codesign`).
 
 ## Empaquetar para otro sistema operativo
 

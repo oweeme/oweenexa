@@ -26,6 +26,9 @@ const LIB_RS: &str = include_str!("../assets/tauri/src/lib.rs");
 const BUILD_RS: &str = include_str!("../assets/tauri/build.rs");
 const CAPABILITIES_DEFAULT_JSON: &str = include_str!("../assets/tauri/capabilities/default.json");
 const ICON_PNG: &[u8] = include_bytes!("../assets/tauri/icons/icon.png");
+/// Windows exige un `.ico` para generar el recurso del ejecutable (`tauri-build`: "icons/icon.ico not found;
+/// required for generating a Windows Resource file"). Se descubrió en la primera ejecución real de `desktop.yml`.
+const ICON_ICO: &[u8] = include_bytes!("../assets/tauri/icons/icon.ico");
 
 /// Usado por `modules::content_hash` (Fase 12): un hash de todo el
 /// contenido de la plantilla, para que `nexa.lock` pueda notar si
@@ -37,6 +40,7 @@ pub fn template_bytes() -> Vec<u8> {
         bytes.extend_from_slice(text.as_bytes());
     }
     bytes.extend_from_slice(ICON_PNG);
+    bytes.extend_from_slice(ICON_ICO);
     bytes
 }
 
@@ -74,6 +78,8 @@ pub fn scaffold(project_root: &Path, project_name: &str) -> Result<()> {
     write(&src_tauri.join("capabilities/default.json"), CAPABILITIES_DEFAULT_JSON)?;
     fs::write(src_tauri.join("icons/icon.png"), ICON_PNG)
         .with_context(|| format!("escribiendo {}", src_tauri.join("icons/icon.png").display()))?;
+    fs::write(src_tauri.join("icons/icon.ico"), ICON_ICO)
+        .with_context(|| format!("escribiendo {}", src_tauri.join("icons/icon.ico").display()))?;
 
     Ok(())
 }
@@ -145,6 +151,7 @@ mod tests {
             "src-tauri/src/lib.rs",
             "src-tauri/capabilities/default.json",
             "src-tauri/icons/icon.png",
+            "src-tauri/icons/icon.ico",
         ] {
             assert!(dir.join(file).exists(), "falta {file}");
         }
@@ -221,5 +228,17 @@ mod tests {
         scaffold(&dir, "hello").unwrap();
         let lib = fs::read_to_string(dir.join("src-tauri/src/lib.rs")).unwrap();
         assert!(lib.contains("#[tauri::command]") && lib.contains("generate_handler![app_info]"), "{lib}");
+    }
+
+    #[test]
+    fn the_windows_icon_is_a_real_ico_and_is_declared_in_the_config() {
+        let dir = scratch_dir();
+        scaffold(&dir, "hello").unwrap();
+        let ico = fs::read(dir.join("src-tauri/icons/icon.ico")).unwrap();
+        // cabecera ICO: reservado = 0, tipo = 1 (icono), y al menos una imagen
+        assert_eq!(&ico[0..4], &[0, 0, 1, 0], "no parece un .ico");
+        assert!(u16::from_le_bytes([ico[4], ico[5]]) >= 1);
+        let conf = fs::read_to_string(dir.join("src-tauri/tauri.conf.json")).unwrap();
+        assert!(conf.contains("icons/icon.ico"), "{conf}");
     }
 }
