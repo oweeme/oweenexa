@@ -565,6 +565,36 @@ await platform.lifecycle.getState()              // { active }: false en segundo
 platform.lifecycle.onChange((state) => { ... })  // suscripción real a resume/pause
 ```
 
+### Islas y CSS empaquetados solos, y un sitio sin backend (Fases 72–81)
+
+```
+islands/filtro.island.tsx     →  data-nexa-island="filtro"   (esbuild integrado; puede importar npm y CSS)
+src/styles/main.css           →  enlazado solo en el <head> de todas las páginas
+src/content/posts/hola.md     →  export const load = { url: "content:/posts/:slug" };
+src/pages/docs/[...path].tsx  →  /docs/a, /docs/a/b/c
+src/pages/404.tsx             →  tu página de error (estado 404)
+src/pages/docs/_layout.tsx    →  layout anidado, solo para /docs
+```
+
+```toml
+# nexa.toml — todo opcional
+[redirects]
+"/articulos" = "/blog"
+[security]
+csp = "default-src 'self'"        # sin 'unsafe-inline': hash SHA-256 de cada script en línea
+[api]
+headers = { Authorization = "Bearer ${API_TOKEN}" }
+[feed]
+title = "Mi blog"
+source = "content:/posts"
+link = "/blog/:slug"
+```
+
+Más: `.env`, `nexa add docker`, `nexa check`, plurales en `t()`, `createI18n` para el
+Modo App, `--stale` y `POST /__nexa/purge` en el ejecutable, y `data-nexa-match` /
+`data-nexa-remote` en formularios. Todo está en la [referencia](docs/REFERENCIA.md);
+el ejemplo completo y probado en Chrome es `examples/content-demo`.
+
 ### Un paquete de un tercero, con el mismo mecanismo (`[imports]`)
 
 ```toml
@@ -588,8 +618,9 @@ envoltorio real sobre `@stripe/stripe-js`) para la integración completa,
 verificada con un navegador real cargando el SDK real de Stripe desde su
 CDN.
 
-Conseguir que ese archivo exista (bundlear un paquete de npm cualquiera
-a un único ESM) es responsabilidad del proyecto —
+Desde la Fase 72 no hace falta empaquetarlo a mano: un
+`islands/<nombre>.island.js` que haga `import`/`export` del paquete lo empaqueta Nexa
+solo. Si prefieres hacerlo tú (otro bundler) —
 **[docs/VENDORING.md](docs/VENDORING.md)** documenta el proceso paso a
 paso, con un segundo ejemplo real además de Stripe: `marked`,
 vendorizado sin ningún envoltorio propio, usado en
@@ -887,11 +918,10 @@ imports circulares sin ganar claridad.
   `t()`, plantilla), sin recursión ni spread; `<Show when>` solo acepta
   `data.x`/`params.x` (nada de comparaciones). Para lógica de UI
   arbitraria está el Modo App o una isla.
-- `src/layout.tsx` es único (no hay layouts anidados por directorio, a
-  diferencia de frameworks con rutas basadas en archivos que sí los
-  tienen) y no puede tener eventos interactivos propios — puede tener
-  islas (sobreviven a la navegación SPA), pero un nav con un `onClick`
-  real se maqueta en cada página, no en el layout.
+- Los layouts (`src/layout.tsx` y los `_layout.tsx` anidados por carpeta)
+  no pueden tener eventos interactivos propios — pueden tener islas
+  (sobreviven a la navegación SPA), pero un nav con un `onClick` real se
+  maqueta en cada página, no en el layout.
 - `connectSSE`/`connectSocket` reconectan solos con backoff si se pide
   explícitamente (`reconnect: true` u opciones), pero no hay ningún
   canal del lado del servidor: el backend real es quien implementa el
@@ -899,9 +929,14 @@ imports circulares sin ganar claridad.
 - `load`/`seo`/`schema` son objetos literales estáticos, no funciones —
   sin headers, sin autenticación, sin mutaciones en el servidor.
   Deliberado: Nexa Core no ejecuta JavaScript del desarrollador, solo lo
-  analiza. Leer cookies de sesión en `load()` está evaluado en un
-  documento de diseño (`docs/DISENO-COOKIES-EN-LOAD.md`) pero todavía no
-  implementado.
+  analiza. Sí puedes enviar un token de servidor a servidor a tu API
+  (`[api] headers`). Leer la cookie del visitante en `load()` no se hace
+  a propósito (el HTML de Core se comparte y se cachea; ver
+  `docs/DISENO-COOKIES-EN-LOAD.md`): lo personal va en una isla o en el Modo App.
+- Un `?parametro=` de la URL no llega a `load` (la página se renderiza y se
+  cachea por ruta): se pagina por ruta, `/blog/page/2`. Tampoco hay imágenes
+  sociales generadas, ni optimización de imágenes en las páginas renderizadas
+  bajo demanda, ni servidor de lenguaje propio (usa `nexa check` para los tipos).
 - Una ruta dinámica (`[slug].tsx`) que declara `paths` se pre-renderiza
   a HTML estático real con `nexa build` (y `[locale]` sale de
   `src/locales/` sin `paths`). Lo que no se pueda listar de antemano —
