@@ -11,6 +11,10 @@ es la primera vez que ves Nexa: instalación, tu primer proyecto, sintaxis
 de una página, módulos oficiales, islas interactivas, empaquetado para
 escritorio/móvil.
 
+**🧭 [Elige tu camino](docs/ELIGE-TU-CAMINO.md)** — ¿Core, isla o
+Modo App? ¿Cómo se sirve lo que cambia? ¿Dónde lo despliego? ·
+**🛠 [Tutorial: blog y tienda con API e idiomas](docs/TUTORIAL-BLOG-TIENDA.md)**
+
 **📚 [Referencia completa](docs/REFERENCIA.md)** — cada función, cada
 atributo, cada opción de `nexa.toml`, organizado por tema. Consultala
 cuando ya conozcas lo básico y necesites la forma exacta de algo puntual.
@@ -83,6 +87,20 @@ se produce ese HTML:
   con props, hijos y eventos, `<Show when>` y `<For>` anidado — el
   parser los *expande al compilar* y produce el mismo HTML que escribir
   todo a mano: SEO intacto y cero JavaScript extra (Fase 62).
+- **Seguridad contra inyecciones, probada.** Todo lo que viene de tu API
+  se escapa; un `href="javascript:…"` o un `onclick` que salga de datos se
+  omite; el JSON-LD no puede romperse; los parámetros de la URL se codifican
+  antes de llamar a tu API. Qué cubre y qué sigue siendo tuyo:
+  [docs/SEGURIDAD.md](docs/SEGURIDAD.md).
+- **Multi-idioma que crece contigo.** Empieza con `es.json` y añade `de.json`
+  y `en.json` cuando quieras: salen `/de` y `/en` solos, con `hreflang`,
+  fallback a tu idioma por defecto y una puerta de idioma en `/` (Fase 67).
+- **Un blog o una tienda que se publican sin recompilar.** El
+  ejecutable de `nexa bundle` renderiza bajo demanda las rutas dinámicas
+  (`/blog/[autor]/[slug]`) que no estaban en el build, con caché y
+  revalidación, una sola llamada a tu API por página y ventana, y sigue
+  sirviendo la última copia si la API cae (Fase 66). Idiomas sin endpoint:
+  `/es` y `/en` salen de `src/locales/`, con fallback al idioma por defecto.
 - **Un solo ejecutable para producción.** `nexa bundle` empaqueta el
   sitio compilado dentro de una copia del propio binario de `nexa`: un
   archivo (~15 MB + el sitio) que se copia a un servidor y se corre — con
@@ -243,7 +261,7 @@ Instalación completa (clonar, compilar, agregar al `PATH`) en
 instalado:
 
 ```bash
-nexa create hello
+nexa create hello                   # o: nexa create hello --template app  (landing + SPA)
 cd hello
 nexa build
 
@@ -865,13 +883,13 @@ imports circulares sin ganar claridad.
   analiza. Leer cookies de sesión en `load()` está evaluado en un
   documento de diseño (`docs/DISENO-COOKIES-EN-LOAD.md`) pero todavía no
   implementado.
-- Una ruta dinámica (`[slug].tsx`) que declara `paths` sí se
-  pre-renderiza a HTML estático real con `nexa build` — pero si NO
-  declara `paths`, sigue sirviéndose solo al vuelo (`nexa preview`/`nexa
-  dev`, o `nexa add nginx` con `proxy_pass` en producción), nunca como
-  HTML estático. `paths` enumera valores conocidos de antemano (vía el
-  backend); no hay forma de pre-renderizar rutas cuyos parámetros no se
-  puedan listar así.
+- Una ruta dinámica (`[slug].tsx`) que declara `paths` se pre-renderiza
+  a HTML estático real con `nexa build` (y `[locale]` sale de
+  `src/locales/` sin `paths`). Lo que no se pueda listar de antemano —
+  un post publicado después del build — se renderiza **bajo demanda con
+  caché** en el ejecutable de `nexa bundle` (Fase 66), o al vuelo con
+  `nexa preview`/`nexa dev` (no recomendado en producción). Con solo
+  estáticos + nginx esas rutas dan 404 (o `proxy_pass` a un `nexa preview`).
 - `<For>` solo itera `data.x`/`params.x` con un único elemento JSX por
   callback (sin destructuring del parámetro, sin más de un parámetro,
   sin anidar un `<For>` dentro de otro) — nunca un `.map()` arbitrario.

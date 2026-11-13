@@ -14,6 +14,7 @@ mod seo;
 mod template;
 mod top_level_const;
 mod translate;
+pub mod url_safety;
 
 pub use component::Component;
 pub use expr::Expr;

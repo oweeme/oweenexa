@@ -202,7 +202,10 @@ fn discover_dynamic_routes_without_paths(pages_dir: &Path) -> Result<Vec<String>
     let routes = nexa_router::scan_pages(pages_dir).context("escaneando src/pages")?;
     let mut patterns = Vec::new();
     for route in &routes {
-        if route.is_dynamic() && crate::pipeline::find_paths_declaration(&route.file)?.is_none() {
+        if route.is_dynamic()
+            && crate::pipeline::find_paths_declaration(&route.file)?.is_none()
+            && crate::commands::build::auto_locale_sets(route).is_none()
+        {
             patterns.push(route.pattern.clone());
         }
     }

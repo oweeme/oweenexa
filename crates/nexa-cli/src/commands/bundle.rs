@@ -12,7 +12,7 @@ use anyhow::{bail, Context, Result};
 
 use crate::bundle::{collect_dist, pack, read_embedded, Config};
 
-pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool) -> Result<()> {
+pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool, static_only: bool) -> Result<()> {
     if !no_build {
         println!("[1/3] nexa build");
         super::build::run()?;
@@ -26,17 +26,30 @@ pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool) -> Resu
 
     let manifest = crate::manifest::load_lenient(Path::new("nexa.toml"));
     let name = project_name(&manifest.project.name);
+    // Fase 66: si el sitio tiene rutas dinámicas de Core (`blog/[autor]/[slug]`,
+    // `[locale]`, ...), el ejecutable lleva también las fuentes para
+    // renderizarlas bajo demanda — un post publicado después del build no
+    // exige recompilar. `--static` lo desactiva (solo lo pre-renderizado).
+    let has_dynamic_routes = {
+        let pages = Path::new("src/pages");
+        pages.is_dir() && nexa_router::scan_pages(pages).map(|r| r.iter().any(|route| route.is_dynamic())).unwrap_or(false)
+    };
+    let dynamic = has_dynamic_routes && !static_only;
+    let sources = if dynamic { crate::bundle::collect_sources(Path::new("."))? } else { Vec::new() };
+
     let config = Config {
         name: name.clone(),
         app_base: crate::app_mode::is_enabled().then(|| crate::app_mode::base_path(&manifest)),
         proxy: manifest.proxy.clone(),
         default_port: 8080,
+        dynamic,
+        revalidate: manifest.bundle.as_ref().and_then(|b| b.revalidate).unwrap_or(60),
     };
 
     println!("[2/3] empaquetando dist/");
     let files = collect_dist(dist)?;
     let raw_bytes: usize = files.iter().map(|(_, b)| b.len()).sum();
-    let payload = pack(&files, config)?;
+    let payload = pack(&files, &sources, config)?;
 
     let runtime_path = match runtime {
         Some(p) => PathBuf::from(p),
@@ -71,6 +84,15 @@ pub fn run(out: Option<String>, runtime: Option<String>, no_build: bool) -> Resu
         raw_bytes as f64 / 1_048_576.0
     );
     println!("  Es autocontenido: cópialo a cualquier máquina del mismo sistema operativo y ejecútalo.");
+    if dynamic {
+        println!(
+            "  Renderizado bajo demanda: ACTIVO ({} fuente(s) embebida(s)) — las rutas dinámicas no pre-renderizadas se generan",
+            sources.len()
+        );
+        println!("  al recibirlas, pidiendo los datos a la API: ejecútalo con --api-url https://tu-api (o NEXA_API_URL).");
+    } else if has_dynamic_routes {
+        println!("  Renderizado bajo demanda: desactivado (--static): las rutas dinámicas no pre-renderizadas darán 404.");
+    }
     let run_path = if out_path.is_absolute() || out_path.starts_with(".") { out_path.display().to_string() } else { format!("./{}", out_path.display()) };
     println!("  {run_path} --port 8080 --host 0.0.0.0 [--proxy /api=https://api.miapp.com]");
     Ok(())

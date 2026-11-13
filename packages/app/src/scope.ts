@@ -51,7 +51,3 @@ export function effect(fn: () => void): () => void {
     onCleanup(dispose);
     return dispose;
 }
-
-export function currentScope(): Scope | null {
-    return current;
-}

@@ -109,13 +109,15 @@ pub fn transpile(source: &str, path: &Path) -> Result<String> {
     let semantic = SemanticBuilder::new().build(&program);
     let scoping = semantic.semantic.into_scoping();
 
-    let mut options = TransformOptions::default();
-    options.jsx = JsxOptions {
-        runtime: JsxRuntime::Classic,
-        pragma: Some("__nexa_h".to_string()),
-        pragma_frag: Some("__nexa_Fragment".to_string()),
-        pure: false,
-        ..JsxOptions::default()
+    let options = TransformOptions {
+        jsx: JsxOptions {
+            runtime: JsxRuntime::Classic,
+            pragma: Some("__nexa_h".to_string()),
+            pragma_frag: Some("__nexa_Fragment".to_string()),
+            pure: false,
+            ..JsxOptions::default()
+        },
+        ..TransformOptions::default()
     };
 
     let transformed = Transformer::new(&allocator, path, &options).build_with_scoping(scoping, &mut program);
@@ -404,10 +406,7 @@ pub fn serve(path: &str, manifest: &Manifest, dev: bool) -> Option<AppResponse> 
             }
         }
         return Some(match compile(&app_dir(), &runtime_url()) {
-            Ok(build) => match build.modules.get(&rel) {
-                Some(js) => AppResponse::Js(js.clone()),
-                None => return None,
-            },
+            Ok(build) => AppResponse::Js(build.modules.get(&rel)?.clone()),
             Err(e) => AppResponse::Failure(format!("{e:#}")),
         });
     }

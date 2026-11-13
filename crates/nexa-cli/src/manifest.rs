@@ -62,6 +62,30 @@ pub struct Manifest {
     /// `[desktop]` (Fase 63) — solo afecta a `nexa build --target desktop`.
     #[serde(default)]
     pub desktop: Option<DesktopSection>,
+    /// `[bundle]` (Fase 66) — opciones de `nexa bundle`.
+    #[serde(default)]
+    pub bundle: Option<BundleSection>,
+    /// `[i18n]` (Fase 66) — el idioma por defecto del sitio.
+    #[serde(default)]
+    pub i18n: Option<I18nSection>,
+}
+
+/// `[i18n] default = "es"`: el idioma de las páginas que no viven bajo
+/// `[locale]` y el **de respaldo** cuando a un diccionario le falta una clave
+/// (por defecto `"es"`, como antes de existir esta opción).
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct I18nSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default: Option<String>,
+}
+
+/// `[bundle]`: `revalidate` = segundos que el ejecutable reutiliza una página
+/// renderizada bajo demanda antes de volver a pedir los datos a la API
+/// (por defecto 60; se puede cambiar al arrancar con `--revalidate`).
+#[derive(Debug, Default, Deserialize, Serialize, Clone)]
+pub struct BundleSection {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub revalidate: Option<u64>,
 }
 
 /// `[desktop.proxy]`: prefijo -> backend real para la app de escritorio.

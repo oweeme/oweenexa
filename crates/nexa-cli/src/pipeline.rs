@@ -135,15 +135,32 @@ pub fn compile_page(
     // `<html lang>` ya usaba — así todo lo que sigue (`t()`, `params.locale`
     // en JSX/atributos, hreflang, SEO) ve un locale real en vez de tener
     // que lidiar cada uno por separado con la ausencia.
+    let default_locale = crate::manifest::load_lenient(Path::new(MANIFEST_PATH))
+        .i18n
+        .and_then(|i| i.default)
+        .unwrap_or_else(|| DEFAULT_LOCALE.to_string());
     let owned_params;
     let params: &BTreeMap<String, String> = if params.contains_key("locale") {
         params
     } else {
         let mut with_default = params.clone();
-        with_default.insert("locale".to_string(), DEFAULT_LOCALE.to_string());
+        with_default.insert("locale".to_string(), default_locale.clone());
         owned_params = with_default;
         &owned_params
     };
+
+    // Fase 66: en una ruta bajo `[locale]`, un idioma que no existe
+    // (`/xx/blog/...`) es un 404 real — no una página con placeholders
+    // inertes. Con renderizado bajo demanda el valor sale de la URL de
+    // quien visita: validarlo también evita que cualquiera llene la caché
+    // con idiomas inventados y que un valor raro llegue al sistema de archivos.
+    if route_pattern.contains(":locale") {
+        let locale = params.get("locale").map(String::as_str).unwrap_or_default();
+        let available = nexa_i18n::available_locales(Path::new(LOCALES_DIR));
+        if !is_safe_locale(locale) || (!available.is_empty() && !available.iter().any(|l| l == locale)) {
+            return Err(PageError::NotFound);
+        }
+    }
 
     let data = match &component.loader {
         Some(loader) => {
@@ -160,9 +177,23 @@ pub fn compile_page(
     };
 
     let locales_dir = Path::new(LOCALES_DIR);
-    let translations = params
-        .get("locale")
-        .and_then(|locale| nexa_i18n::load_locale(locales_dir, locale).ok().flatten());
+    let current_locale = params.get("locale").filter(|l| is_safe_locale(l));
+    let translations = current_locale.and_then(|locale| {
+        let current = nexa_i18n::load_locale(locales_dir, locale).ok().flatten();
+        // Fase 66: una clave que falta en este idioma cae al idioma por defecto.
+        if locale.as_str() == default_locale {
+            return current;
+        }
+        let fallback = nexa_i18n::load_locale(locales_dir, &default_locale).ok().flatten();
+        match (fallback, current) {
+            (Some(mut base), Some(over)) => {
+                merge_dictionaries(&mut base, over);
+                Some(base)
+            }
+            (Some(base), None) => Some(base),
+            (None, current) => current,
+        }
+    });
 
     let ir = nexa_analyzer::analyze(&component);
 
@@ -238,7 +269,7 @@ pub fn compile_page(
     let project_manifest = manifest::load_lenient(Path::new(MANIFEST_PATH));
     let telemetry_endpoint = project_manifest.telemetry.as_ref().and_then(|t| t.endpoint.as_deref());
 
-    let hreflang_head = hreflang_head(route_pattern, params, locales_dir);
+    let hreflang_head = hreflang_head(route_pattern, params, locales_dir, &default_locale);
     // `[pwa]` (Fase 18): `<link rel="manifest">` + `theme-color`, mismo
     // costo cero que el resto — ausente si el proyecto no declaró `[pwa]`.
     let pwa_head = project_manifest.pwa.as_ref().map(crate::pwa::head_fragment).unwrap_or_default();
@@ -288,7 +319,7 @@ pub fn compile_page(
     // `params` ya tiene "locale" en este punto (siempre, gracias al
     // fallback de más arriba) — `unwrap_or` queda solo como red de
     // seguridad, nunca debería activarse.
-    let lang = params.get("locale").map(String::as_str).unwrap_or(DEFAULT_LOCALE);
+    let lang = params.get("locale").map(String::as_str).unwrap_or(default_locale.as_str());
     let html = document::assemble(
         &body,
         lang,
@@ -467,10 +498,34 @@ fn extract_placeholders(text: &str) -> BTreeSet<&str> {
     names
 }
 
+/// Un código de idioma razonable (`es`, `en`, `pt-BR`): letras, dígitos, `-`
+/// y `_`, hasta 16 caracteres. Todo lo demás nunca toca el sistema de archivos.
+pub(crate) fn is_safe_locale(locale: &str) -> bool {
+    !locale.is_empty() && locale.len() <= 16 && locale.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-' || b == b'_')
+}
+
+/// Superpone `over` sobre `base` recursivamente: cada clave de `over` gana, y
+/// las que `over` no tiene quedan con el valor de `base` (idioma por defecto).
+pub(crate) fn merge_dictionaries(base: &mut serde_json::Value, over: serde_json::Value) {
+    match (base, over) {
+        (serde_json::Value::Object(b), serde_json::Value::Object(o)) => {
+            for (key, value) in o {
+                match b.get_mut(&key) {
+                    Some(existing) => merge_dictionaries(existing, value),
+                    None => {
+                        b.insert(key, value);
+                    }
+                }
+            }
+        }
+        (slot, value) => *slot = value,
+    }
+}
+
 /// `<link rel="alternate" hreflang="...">` por cada locale disponible —
 /// vacío si esta ruta no vive bajo `[locale]`, o si no hay ningún
 /// `src/locales/*.json`.
-fn hreflang_head(route_pattern: &str, params: &BTreeMap<String, String>, locales_dir: &Path) -> String {
+fn hreflang_head(route_pattern: &str, params: &BTreeMap<String, String>, locales_dir: &Path, default_locale: &str) -> String {
     if !route_pattern.contains(":locale") {
         return String::new();
     }
@@ -480,7 +535,16 @@ fn hreflang_head(route_pattern: &str, params: &BTreeMap<String, String>, locales
         return String::new();
     }
 
-    let links = nexa_i18n::alternate_links(route_pattern, params, &available);
+    let mut links = nexa_i18n::alternate_links(route_pattern, params, &available);
+    // `x-default` (Fase 67): la versión que Google debe ofrecer a quien habla
+    // un idioma que el sitio no tiene — la del idioma por defecto.
+    if available.iter().any(|l| l == default_locale) {
+        let mut fallback = nexa_i18n::alternate_links(route_pattern, params, &[default_locale.to_string()]);
+        if let Some(mut link) = fallback.pop() {
+            link.hreflang = "x-default".to_string();
+            links.push(link);
+        }
+    }
     nexa_seo::render_hreflang_links(&links)
 }
 
@@ -588,5 +652,26 @@ mod translate_validation_tests {
         };
         let dictionary = json!({ "profile": { "donateTo": "Apoyar a {name}" } });
         assert!(validate_translate_calls(&root, &dictionary).is_err());
+    }
+
+    #[test]
+    fn only_plain_language_codes_are_safe_locales() {
+        for ok in ["es", "en", "pt-BR", "zh_Hans", "es419"] {
+            assert!(is_safe_locale(ok), "{ok}");
+        }
+        for bad in ["", "..", "a/b", "a\\b", "es.json", "x y", "ñ", "demasiado-largo-para-ser-un-idioma", "es\0"] {
+            assert!(!is_safe_locale(bad), "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn a_dictionary_falls_back_key_by_key_to_the_default_language() {
+        let mut base = serde_json::json!({ "home": { "title": "Bienvenido", "cta": "Comprar" }, "footer": "Pie" });
+        let over = serde_json::json!({ "home": { "title": "Welcome" }, "extra": "Only in en" });
+        merge_dictionaries(&mut base, over);
+        assert_eq!(base["home"]["title"], "Welcome", "lo traducido gana");
+        assert_eq!(base["home"]["cta"], "Comprar", "lo que falta cae al idioma por defecto");
+        assert_eq!(base["footer"], "Pie");
+        assert_eq!(base["extra"], "Only in en");
     }
 }

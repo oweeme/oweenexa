@@ -1,4 +1,4 @@
-export const seo = { title: "Demo Nexa", description: "Sitio con SEO y una SPA en /app" };
+export const seo = { title: "Demo Nexa", description: "Sitio con SEO y una SPA en /app", canonical: "https://example.com/" };
 export default function Home() {
     return (
         <main>

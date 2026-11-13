@@ -13,7 +13,7 @@ use crate::image_pipeline;
 use crate::image_scan;
 use crate::performance_budget::{self, PageUsage};
 use crate::pipeline::{
-    compile_page, find_paths_declaration, ui_stylesheet_href_with_hash, CompiledPage, PageError,
+    compile_page, ui_stylesheet_href_with_hash, CompiledPage, PageError,
     UI_CSS_HASH_PLACEHOLDER,
 };
 
@@ -87,15 +87,10 @@ pub fn run_for(desktop: bool) -> Result<()> {
 
     for route in &routes {
         if route.is_dynamic() {
-            let declared_paths = find_paths_declaration(&route.file)
-                .with_context(|| format!("leyendo `paths` de {}", route.pattern))?;
-
-            let Some(paths) = declared_paths else {
+            let Some(param_sets) = param_sets_for(route, &api_base)? else {
                 skipped_dynamic += 1;
                 continue;
             };
-
-            let param_sets = enumerate_paths(&paths, route, &api_base)?;
             prerendered_routes += 1;
 
             for params in &param_sets {
@@ -183,6 +178,13 @@ pub fn run_for(desktop: bool) -> Result<()> {
         built_patterns.push(route.pattern.clone());
         ui_classes.extend(page.ui_used_classes);
         built += 1;
+    }
+
+    // Fase 67: sitio multi-idioma sin portada propia -> puerta de idioma en `/`.
+    if let Some(gate) = crate::locale_gate::for_project(&routes) {
+        fs::write("dist/index.html", gate)?;
+        built_patterns.push("/".to_string());
+        println!("Generado dist/index.html: puerta de idioma (`/` lleva al idioma del navegador, o al idioma por defecto).");
     }
 
     write_site_files(&built_patterns, site_url.as_deref())?;
@@ -352,6 +354,41 @@ pub(crate) fn resolved_pattern(route: &Route, params: &BTreeMap<String, String>)
 /// entrada). Un `paths` mal formado o inalcanzable rompe el build
 /// entero — es una declaración, no algo que se pueda ignorar en
 /// silencio sin dejar la ruta a medio pre-renderizar.
+/// Los sets de parámetros de una ruta dinámica a pre-renderizar:
+/// - con `paths`: lo que responda la API (los que no traen `locale` se
+///   combinan con cada idioma de `src/locales/*.json`);
+/// - sin `paths`, si el **único** segmento dinámico es `[locale]`: un set por
+///   idioma de `src/locales/` — sin que haga falta ningún endpoint (Fase 66);
+/// - en otro caso, `None` (se sirve al vuelo).
+pub(crate) fn param_sets_for(route: &Route, api_base: &str) -> Result<Option<Vec<BTreeMap<String, String>>>> {
+    match crate::pipeline::find_paths_declaration(&route.file).with_context(|| format!("leyendo `paths` de {}", route.pattern))? {
+        Some(paths) => Ok(Some(enumerate_paths(&paths, route, api_base)?)),
+        None => Ok(auto_locale_sets(route)),
+    }
+}
+
+fn dynamic_names(route: &Route) -> Vec<&str> {
+    route
+        .segments
+        .iter()
+        .filter_map(|s| match s {
+            Segment::Dynamic(name) => Some(name.as_str()),
+            Segment::Static(_) => None,
+        })
+        .collect()
+}
+
+pub(crate) fn auto_locale_sets(route: &Route) -> Option<Vec<BTreeMap<String, String>>> {
+    if dynamic_names(route) != ["locale"] {
+        return None;
+    }
+    let locales = nexa_i18n::available_locales(Path::new("src/locales"));
+    if locales.is_empty() {
+        return None;
+    }
+    Some(locales.into_iter().map(|l| BTreeMap::from([("locale".to_string(), l)])).collect())
+}
+
 pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> Result<Vec<BTreeMap<String, String>>> {
     let no_params = BTreeMap::new();
     let value = nexa_loader::load(paths, &no_params, api_base)
@@ -370,26 +407,43 @@ pub(crate) fn enumerate_paths(paths: &Loader, route: &Route, api_base: &str) -> 
         })
         .collect();
 
-    entries
-        .iter()
-        .map(|entry| {
-            let obj = entry
-                .as_object()
-                .ok_or_else(|| anyhow::anyhow!("{}: cada entrada de `paths` debe ser un objeto, encontré: {entry}", route.pattern))?;
+    // Fase 66: `[locale]/blog/[slug]` con un `paths` que solo devuelve
+    // `{"slug": "..."}` se pre-renderiza una vez por idioma de `src/locales/`.
+    let locales = nexa_i18n::available_locales(Path::new("src/locales"));
 
-            let mut params = BTreeMap::new();
-            for name in &dynamic_names {
-                let value = obj.get(*name).and_then(|v| v.as_str()).ok_or_else(|| {
-                    anyhow::anyhow!(
+    let mut sets = Vec::new();
+    for entry in entries {
+        let obj = entry
+            .as_object()
+            .ok_or_else(|| anyhow::anyhow!("{}: cada entrada de `paths` debe ser un objeto, encontré: {entry}", route.pattern))?;
+
+        let mut params = BTreeMap::new();
+        let mut needs_every_locale = false;
+        for name in &dynamic_names {
+            match obj.get(*name).and_then(|v| v.as_str()) {
+                Some(value) => {
+                    params.insert((*name).to_string(), value.to_string());
+                }
+                None if *name == "locale" && !locales.is_empty() => needs_every_locale = true,
+                None => {
+                    return Err(anyhow::anyhow!(
                         "{}: una entrada de `paths` no tiene el campo string `{name}` que la ruta necesita: {entry}",
                         route.pattern
-                    )
-                })?;
-                params.insert((*name).to_string(), value.to_string());
+                    ))
+                }
             }
-            Ok(params)
-        })
-        .collect()
+        }
+        if needs_every_locale {
+            for locale in &locales {
+                let mut with_locale = params.clone();
+                with_locale.insert("locale".to_string(), locale.clone());
+                sets.push(with_locale);
+            }
+        } else {
+            sets.push(params);
+        }
+    }
+    Ok(sets)
 }
 
 fn write_page_assets(route: &Route, page: &CompiledPage) -> Result<()> {

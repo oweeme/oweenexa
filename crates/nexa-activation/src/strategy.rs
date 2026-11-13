@@ -2,12 +2,13 @@ use serde::Serialize;
 
 /// Cuándo se activa un nodo interactivo (ver "Estrategias de activación",
 /// docs/Arquitectura SEO Completo Framework.md, Paso 4 — Runtime).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Strategy {
     /// Se activa en la primera interacción real del usuario (click,
     /// input...). Es el valor por defecto: no carga JS hasta que hace
     /// falta.
+    #[default]
     Interaction,
     /// Se activa cuando el elemento entra en el viewport.
     Visible,
@@ -17,12 +18,6 @@ pub enum Strategy {
     Load,
     /// No se activa sola: algo más debe pedirlo explícitamente.
     Manual,
-}
-
-impl Default for Strategy {
-    fn default() -> Self {
-        Strategy::Interaction
-    }
 }
 
 impl Strategy {

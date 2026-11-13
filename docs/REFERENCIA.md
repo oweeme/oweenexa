@@ -35,18 +35,24 @@ bitácora de cómo se construyó (esa es
 25. [`nexa.toml` — referencia completa](#nexatoml--referencia-completa)
 26. [Límites conocidos](#límites-conocidos)
 
+Además: [Componentes y `<Show>`](#componentes-y-show-fase-62) ·
+[Modo App (SPA)](#modo-app-spa) · [Backend, proxy y sesión](#backend-proxy-y-sesión-proxy-createapi-persisted) ·
+[Un solo ejecutable (`nexa bundle`)](#un-solo-ejecutable-nexa-bundle). Guías: [Elige tu camino](ELIGE-TU-CAMINO.md) ·
+[Tutorial: blog y tienda](TUTORIAL-BLOG-TIENDA.md) · [Vendoring de terceros](VENDORING.md).
+
 ---
 
 ## El CLI
 
 ```
 nexa info              Versión y fase actual del toolchain.
-nexa create <nombre>   Crea un proyecto nuevo en ./<nombre>.
-nexa build             Compila src/pages/**/*.tsx -> dist/.
+nexa create <nombre>   Crea un proyecto nuevo en ./<nombre> (--template app: landing + SPA).
+nexa build             Compila src/pages/**/*.tsx (y src/app/) -> dist/. --target desktop: + binario Tauri.
+nexa bundle            nexa build + UN ejecutable con servidor, caché y renderizado bajo demanda.
 nexa preview [--port]  Sirve dist/; lo que falte se renderiza al vuelo. Puerto: 4321.
 nexa dev [--port]      Recompila cada página en cada request + auto-reload. Puerto: 4321.
 nexa add <módulo>      Declara un módulo oficial en nexa.toml/nexa.lock.
-nexa lint              Compila sin escribir dist/; falla si hay avisos SEO/paquetes.
+nexa lint              Compila sin escribir dist/ (Core y Modo App); falla si hay avisos SEO/paquetes.
 nexa test              Compila (dist/ fresco) y corre el script "test" de package.json.
 ```
 
@@ -68,11 +74,14 @@ solo cuando algo bajo `src/` cambió.
 mi-sitio/
 ├── nexa.toml           Manifiesto del proyecto — ver la sección dedicada.
 ├── nexa.lock           Generado por `nexa add` — no se edita a mano.
-├── nexa.config.ts      Config mínima de la app (nombre) — no crece más que esto hoy.
+├── tsconfig.json       Solo para el editor (lo deja `nexa create`) — el compilador no lo lee.
+├── nexa-env.d.ts       Tipos para el editor: `data`, `params`, `t`, `<For>`, `<Show>`, @nexa/app, platform.
 ├── src/
 │   ├── layout.tsx      Opcional — envuelve toda página con header/footer (ver "Layouts").
-│   ├── pages/          Cada .tsx es una ruta — ver "Rutas".
+│   ├── pages/          Cada .tsx es una ruta de Nexa Core (HTML con SEO) — ver "Rutas".
 │   │   └── [locale]/   Segmento dinámico especial para i18n (opcional).
+│   ├── app/pages/      Opcional — rutas de la SPA (Modo App); + app/components, app/config.ts.
+│   ├── components/     Opcional — componentes de Nexa Core (se expanden al compilar).
 │   ├── locales/        <locale>.json — diccionarios planos para t().
 │   └── islands/        Convención libre — donde pongas tus *.island.ts.
 ├── public/              Se copia tal cual a dist/ (imágenes, íconos, vendor/*.js de terceros).
@@ -95,7 +104,10 @@ File-based routing sobre `src/pages/`:
 Una ruta puede tener varios segmentos dinámicos. `nexa build` compila
 directo a HTML cualquier ruta **sin** segmentos dinámicos; una ruta
 dinámica solo se pre-renderiza si declara `paths` (ver esa sección) —
-si no, se sirve al vuelo con `nexa preview`/`nexa dev`.
+si no, se sirve al vuelo con `nexa preview`/`nexa dev` — o, en producción,
+**bajo demanda con `nexa bundle`** (ver "Un solo ejecutable"). Un ejemplo con
+dos segmentos dinámicos, `src/pages/blog/[author]/[slug].tsx`, atiende
+`/blog/hectorarchitect/desarrollando-oweelinux-conlinux`.
 
 ## Layouts compartidos
 
@@ -288,7 +300,10 @@ export const load = { url: "/products/:slug" };
 
 Un GET HTTP real contra `NEXA_API_URL + url` (con `:params` sustituidos
 por los valores reales de la ruta). El backend puede estar escrito en
-cualquier lenguaje — Nexa solo espera JSON de vuelta. Un 404 del
+cualquier lenguaje — Nexa solo espera JSON de vuelta. Los valores de los
+`:params` se **codifican** (`%XX`) antes de ir a tu API, y un valor `.`/`..`
+se rechaza: lo que escribe quien visita nunca puede inyectar `?query` ni
+segmentos en tu endpoint. Cada llamada tiene un plazo de 10 s. Un 404 del
 backend se convierte en un 404 real de la página (o, en `nexa build`,
 en un error claro: no se puede generar HTML estático para un dato que
 no existe).
@@ -314,7 +329,20 @@ traiga **todas** las claves (`{"locale":"es","slug":"iphone-17"}`). Sin
 `paths`, la ruta se sigue sirviendo al vuelo, exactamente igual que
 antes.
 
+**Idiomas (Fase 66).** Si una ruta vive bajo `[locale]`:
+
+- sin `paths`, y con `[locale]` como **único** segmento dinámico
+  (`src/pages/[locale]/index.tsx`), `nexa build` genera una página por cada
+  `src/locales/<idioma>.json` — no hace falta ningún endpoint;
+- con `paths` cuyas entradas **no** traen `locale`
+  (`[locale]/shop/[category]/[product].tsx` y `[{"category":…,"product":…}]`),
+  se pre-renderiza **una vez por idioma**; si las entradas sí traen `locale`,
+  se respeta tal cual.
+
 ## `seo` y `schema`
+
+> Todo valor que viene de datos se escapa, y una URL con esquema ejecutable
+> (`javascript:`, `data:`) se omite — ver [SEGURIDAD.md](SEGURIDAD.md).
 
 ```tsx
 export const seo = {
@@ -356,9 +384,12 @@ estáticas compiladas.
   (`{"home": {"title": "Bienvenido"}}`).
 - `t("home.title")` en el JSX, en `seo`, o en `schema` — se resuelve
   contra el diccionario del locale actual (`params.locale`, si la
-  página vive bajo `[locale]`). Sin fallback a otro idioma: una clave
-  ausente se omite (en `seo`) o queda un placeholder inerte en el
-  cuerpo — nunca se inventa un valor.
+  página vive bajo `[locale]`). **Fallback (Fase 66):** una clave que falta
+  en un idioma cae al idioma por defecto, clave por clave (`[i18n] default`
+  en `nexa.toml`, `es` si no se declara); si falta también ahí, se omite (en
+  `seo`) o queda un placeholder inerte en el cuerpo — nunca se inventa un
+  valor. Un idioma que no existe en `src/locales/` (`/xx/...`) es un 404
+  real.
 - `t(...)` reconoce dos formas: `t("clave")`, y desde la Fase 45,
   `t("clave", { variable: data.x })` — interpolación simple de
   `{variable}` dentro del texto del diccionario:
@@ -392,10 +423,18 @@ estáticas compiladas.
   Esta validación cubre `t(...)` en el cuerpo JSX; en `seo`/`schema`/
   `head` la interpolación se resuelve igual de bien en tiempo de render,
   pero todavía no se valida en build — ajuste de alcance explícito.
-- `<html lang="...">` usa el locale real de la página (`"es"` si no
-  vive bajo `[locale]`).
+- `<html lang="...">` usa el locale real de la página (el idioma por
+  defecto si no vive bajo `[locale]`).
 - `<link rel="alternate" hreflang="...">` se genera solo si la ruta
-  vive bajo `[locale]` y hay más de un `src/locales/*.json`.
+  vive bajo `[locale]` y hay más de un `src/locales/*.json`; desde la Fase 67
+  incluye `hreflang="x-default"` apuntando al idioma por defecto.
+- **Puerta de idioma (Fase 67).** Con rutas bajo `[locale]` y **sin**
+  `src/pages/index.tsx`, `nexa build` escribe `dist/index.html` (y `preview`/`dev`
+  la sirven en `/`): un script lleva al visitante a su idioma (el del navegador
+  si el sitio lo tiene, si no el idioma por defecto), conservando `?query` y
+  `#hash`; sin JavaScript hay enlaces a cada idioma, `canonical` y `x-default`.
+  Una portada propia (`src/pages/index.tsx`) siempre gana.
+- El Modo App **no tiene** `t()`: sus textos los gestiona la propia app.
 - Una página fuera de `[locale]` (Fase 29) — por ejemplo una gate de
   selección de idioma en la raíz — también resuelve `params.locale` y
   `t(...)` contra ese mismo `"es"` por defecto (antes, sin fase 29,
@@ -1570,11 +1609,38 @@ release en Linux) más el sitio ya comprimido: `examples/app-demo` = 15,3 MB;
 `examples/phaser-demo` (Phaser 1,4 MB) = 16,9 MB, y Phaser viaja a 369 KB
 por la red con gzip.
 
-**No incluye:** las rutas dinámicas de Core **sin** `paths` (las que
-`nexa preview` renderiza al vuelo) — el paquete solo sirve lo que `nexa
-build` dejó en `dist/`; declara `paths` para pre-renderizarlas. Tampoco
-termina TLS (HTTPS): ponlo detrás de un proxy inverso/balanceador, o usa
-nginx si necesitas certificados propios.
+### Renderizado bajo demanda (Fase 66)
+
+Si el proyecto tiene rutas dinámicas de Core (`blog/[author]/[slug]`, `[locale]`,
+…), `nexa bundle` **embebe las fuentes** (`src/pages`, `src/components`,
+`src/layout.tsx`, `src/locales`, `nexa.toml`; nunca se sirven por HTTP) y el
+ejecutable renderiza al vuelo lo que no está pre-renderizado — un post
+publicado después del build — con el mismo pipeline de `nexa preview`:
+
+```bash
+NEXA_API_URL=https://tu-api nexa build
+nexa bundle --no-build --out site
+./site --port 8080 --api-url https://tu-api --revalidate 60
+```
+
+| Comportamiento | Detalle |
+|---|---|
+| Caché (ISR) | Lo renderizado se reutiliza `--revalidate` segundos (60 por defecto; `0` = nunca; `[bundle] revalidate`; `$NEXA_REVALIDATE`). Cabecera `X-Nexa-Cache: miss/hit/stale`. |
+| Una sola llamada | Con 24 visitas simultáneas a una página vencida, una renderiza y las demás esperan ese resultado. |
+| API caída | Se sirve la última copia aunque esté vencida (`stale`); una ruta nunca vista da `502` con `Retry-After`, sin filtrar la URL interna. |
+| Rutas inexistentes | Un 404 de tu API es un 404 real, recordado 10 s como máximo. Un idioma inexistente es 404. |
+| Lo que no cuesta una llamada | Lo pre-renderizado, los estáticos y lo que no parece una página (`/wp-login.php`, `/.env`: cualquier último segmento con `.`). |
+| Seguridad | Parámetros codificados hacia tu API; directorio de trabajo privado (modo `0700`, dueño verificado); el paquete no puede escribir fuera de él; plazo de 10 s por llamada. |
+
+`nexa bundle --static` desactiva esto (solo lo pre-renderizado; las
+rutas dinámicas no pre-renderizadas dan 404). Los chunks y el CSS que genera
+un render se escriben en el directorio de trabajo y se sirven desde ahí.
+
+**No incluye:** terminación TLS (HTTPS: ponlo detrás de un proxy inverso o
+balanceador), HTTP/2, brotli, `Range`, ni optimización de imágenes (`<picture>`/AVIF)
+en las páginas renderizadas bajo demanda (sí en las pre-renderizadas). `sitemap.xml`
+lista solo lo pre-renderizado. Tampoco hay reinicio sin cortes: un redeploy es
+reemplazar el ejecutable.
 
 ## Despliegue (`nginx`)
 
@@ -1651,6 +1717,22 @@ icon = "/icon-512.png"
 
 [pwa.cache]
 "/assets" = "cache-first"
+
+[app]                    # Modo App (SPA)
+base = "/app"
+title = "Mi App"
+
+[proxy]                  # nexa dev/preview/bundle y `nexa add nginx`: prefijo -> backend
+"/api" = "https://api.miapp.com"
+
+[desktop.proxy]          # nexa build --target desktop: el backend real de la app de escritorio
+"/api" = "https://api.miapp.com"
+
+[i18n]
+default = "es"           # idioma por defecto y de respaldo
+
+[bundle]
+revalidate = 60          # nexa bundle: segundos de caché de lo renderizado bajo demanda
 ```
 
 Todas las secciones son opcionales salvo `[project]`. Ninguna requiere
@@ -1782,5 +1864,6 @@ archivo. Ver `examples/app-demo` y la Fase 60 en
 - `src/layout.tsx` es único para todo el proyecto (sin anidar por
   directorio) y no admite eventos interactivos propios (`onClick`,
   etc.) — sí admite islas desde la Fase 31 — ver "Layouts compartidos".
-- Sin WebSocket/SSE de primera clase — la isla es el mecanismo hoy
-  (montar tu propio código o un framework real adentro).
+- WebSocket/SSE: `connectSSE`/`connectSocket` (`@nexa/http`, con
+  reconexión) se usan desde el Modo App o una isla — una página de Nexa
+  Core es HTML estático y no puede suscribirse a nada por sí misma.

@@ -14,6 +14,7 @@ mod app_mode;
 mod import_map;
 mod proxy;
 mod layout;
+mod locale_gate;
 mod lockfile;
 mod manifest;
 mod modules;
@@ -44,6 +45,10 @@ enum Command {
     /// Crea un nuevo proyecto Nexa.
     Create {
         name: String,
+        /// `core` (por defecto: páginas HTML con SEO) o `app` (landing con
+        /// SEO + una SPA en `src/app/`).
+        #[arg(long, default_value = "core")]
+        template: String,
     },
     /// Compila todas las páginas de `src/pages/` a `dist/`. Con
     /// `--target desktop` además compila el binario de escritorio
@@ -92,6 +97,10 @@ enum Command {
         /// No recompilar: usar el `dist/` que ya existe.
         #[arg(long)]
         no_build: bool,
+        /// No embeber las fuentes: solo lo pre-renderizado (sin renderizado
+        /// bajo demanda de las rutas dinámicas).
+        #[arg(long = "static")]
+        static_only: bool,
     },
 }
 
@@ -108,7 +117,7 @@ fn main() -> Result<()> {
 
     match cli.command.unwrap_or(Command::Info) {
         Command::Info => commands::info::run(),
-        Command::Create { name } => commands::create::run(&name),
+        Command::Create { name, template } => commands::create::run(&name, &template),
         Command::Build { target } => match target.as_deref() {
             None | Some("web") => commands::build::run(),
             Some("desktop") => commands::desktop::build(),
@@ -123,6 +132,6 @@ fn main() -> Result<()> {
         Command::Add { module } => commands::add::run(&module),
         Command::Lint => commands::lint::run(),
         Command::Test => commands::test::run(),
-        Command::Bundle { out, runtime, no_build } => commands::bundle::run(out, runtime, no_build),
+        Command::Bundle { out, runtime, no_build, static_only } => commands::bundle::run(out, runtime, no_build, static_only),
     }
 }

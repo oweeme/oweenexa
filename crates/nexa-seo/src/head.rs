@@ -22,7 +22,10 @@ pub fn render_head(seo: Option<&SeoConfig>, ctx: &SeoContext) -> String {
             escape_attr(&description)
         ));
     }
-    if let Some(canonical) = field(|s| s.canonical.as_ref()) {
+    // Un `canonical`/`og:image` que sale de datos y no es http(s)/relativa
+    // (`javascript:`, `data:`, `file:`) no se emite: nadie lo necesita y es
+    // un vector de inyección.
+    if let Some(canonical) = field(|s| s.canonical.as_ref()).filter(|c| nexa_ast::url_safety::is_http_or_relative(c)) {
         tags.push(format!("<link rel=\"canonical\" href=\"{}\">", escape_attr(&canonical)));
     }
     if let Some(og_title) = field(|s| s.og_title.as_ref()) {
@@ -34,7 +37,7 @@ pub fn render_head(seo: Option<&SeoConfig>, ctx: &SeoContext) -> String {
             escape_attr(&og_description)
         ));
     }
-    if let Some(og_image) = field(|s| s.og_image.as_ref()) {
+    if let Some(og_image) = field(|s| s.og_image.as_ref()).filter(|c| nexa_ast::url_safety::is_http_or_relative(c)) {
         tags.push(format!("<meta property=\"og:image\" content=\"{}\">", escape_attr(&og_image)));
     }
     if let Some(twitter_card) = field(|s| s.twitter_card.as_ref()) {
@@ -53,4 +56,33 @@ fn escape_html(s: &str) -> String {
 
 fn escape_attr(s: &str) -> String {
     escape_html(s).replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn a_canonical_or_og_image_that_is_not_http_or_relative_is_not_emitted() {
+        use nexa_ast::{SeoConfig, Template};
+        use crate::resolve::SeoContext;
+        use std::collections::BTreeMap;
+        let params = BTreeMap::new();
+        let ctx = SeoContext { data: None, params: &params, translations: None };
+        let evil = SeoConfig {
+            canonical: Some(Template::literal("javascript:alert(1)")),
+            og_image: Some(Template::literal("data:text/html,x")),
+            ..Default::default()
+        };
+        let head = render_head(Some(&evil), &ctx);
+        assert!(!head.contains("canonical") && !head.contains("og:image") && !head.contains("javascript"), "{head}");
+
+        let fine = SeoConfig {
+            canonical: Some(Template::literal("https://oweeme.com/blog/x")),
+            og_image: Some(Template::literal("/img/cover.png")),
+            ..Default::default()
+        };
+        let head = render_head(Some(&fine), &ctx);
+        assert!(head.contains("rel=\"canonical\" href=\"https://oweeme.com/blog/x\"") && head.contains("og:image"), "{head}");
+    }
 }

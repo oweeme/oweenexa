@@ -21,6 +21,24 @@ pub fn resolve_url(template: &str, params: &BTreeMap<String, String>) -> Result<
         .map(|segments| segments.join("/"))
 }
 
+/// Codifica un valor de parámetro para ponerlo en una URL (RFC 3986: se
+/// dejan tal cual las letras, dígitos y `-._~`; todo lo demás va como
+/// `%XX`). Con renderizado bajo demanda (`nexa bundle`) el valor sale de
+/// la URL que escribió quien visita: sin esto, `/news/a%3Fadmin%3D1`
+/// o `/news/x%2F..%2Fadmin` podrían inyectar query/segmentos en la
+/// llamada a *tu* API.
+fn encode_param(value: &str) -> String {
+    let mut out = String::with_capacity(value.len());
+    for byte in value.bytes() {
+        if byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'.' | b'_' | b'~') {
+            out.push(byte as char);
+        } else {
+            out.push_str(&format!("%{byte:02X}"));
+        }
+    }
+    out
+}
+
 /// Reemplaza cada `:nombre` dentro de `segment` (uno de los pedazos entre
 /// `/` de la plantilla completa) por su valor en `params`. Un `:` sin
 /// ningún caracter de identificador después (al final del segmento, o
@@ -43,7 +61,11 @@ fn substitute_in_segment(segment: &str, params: &BTreeMap<String, String>) -> Re
         }
 
         let value = params.get(name).ok_or_else(|| LoaderError::MissingParam(name.to_string()))?;
-        result.push_str(value);
+        // Un valor `.`/`..` colapsaría o saldría del segmento (`/api/posts/..`).
+        if value == "." || value == ".." {
+            return Err(LoaderError::InvalidParam(name.to_string()));
+        }
+        result.push_str(&encode_param(value));
         rest = &after_colon[name_len..];
     }
 
@@ -121,5 +143,33 @@ mod tests {
         let params = BTreeMap::new();
         let err = resolve_url("/api/projects?lang=:locale", &params).unwrap_err();
         assert!(matches!(err, LoaderError::MissingParam(name) if name == "locale"));
+    }
+
+    #[test]
+    fn param_values_are_percent_encoded_so_a_visitor_cannot_inject_into_the_api_url() {
+        let mut params = BTreeMap::new();
+        params.insert("slug".to_string(), "a?admin=1&x=#y/../z".to_string());
+        let url = resolve_url("/api/posts/:slug", &params).unwrap();
+        assert_eq!(url, "/api/posts/a%3Fadmin%3D1%26x%3D%23y%2F..%2Fz");
+        assert!(!url.contains('?') && !url.contains('#'));
+        assert_eq!(url.matches('/').count(), 3, "el valor no puede agregar segmentos");
+    }
+
+    #[test]
+    fn unicode_and_spaces_are_encoded_but_plain_slugs_are_untouched() {
+        let mut params = BTreeMap::new();
+        params.insert("a".to_string(), "iphone-17_pro.v2~x".to_string());
+        params.insert("b".to_string(), "año nuevo".to_string());
+        assert_eq!(resolve_url("/:a", &params).unwrap(), "/iphone-17_pro.v2~x");
+        assert_eq!(resolve_url("/:b", &params).unwrap(), "/a%C3%B1o%20nuevo");
+    }
+
+    #[test]
+    fn dot_segments_are_rejected() {
+        for bad in [".", ".."] {
+            let mut params = BTreeMap::new();
+            params.insert("slug".to_string(), bad.to_string());
+            assert!(matches!(resolve_url("/api/:slug", &params), Err(LoaderError::InvalidParam(n)) if n == "slug"), "{bad}");
+        }
     }
 }

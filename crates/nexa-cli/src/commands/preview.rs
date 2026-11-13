@@ -99,7 +99,10 @@ fn handle(pages_dir: &Path, path: &str, api_base: &str) -> Response<std::io::Cur
         Ok(html) => respond(200, html_content_type(), html),
         Err(ResolveError::NotFound) => match read_static_file(Path::new("dist"), path) {
             Some(bytes) => respond_bytes(200, guess_static_content_type(path), bytes),
-            None => respond(404, html_content_type(), not_found_page(path)),
+            None => match (path == "/").then(|| crate::page_resolver::locale_gate_for_root(pages_dir)).flatten() {
+                Some(gate) => respond(200, html_content_type(), gate),
+                None => respond(404, html_content_type(), not_found_page(path)),
+            },
         },
         Err(ResolveError::Failed(message)) => {
             respond(500, html_content_type(), server_error_page(&message))
@@ -108,6 +111,8 @@ fn handle(pages_dir: &Path, path: &str, api_base: &str) -> Response<std::io::Cur
 }
 
 fn not_found_page(path: &str) -> String {
+    // La ruta la escribe quien visita: se escapa (si no, es un XSS reflejado).
+    let path = path.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
     format!(
         "<!doctype html>\n<html lang=\"es\"><head><meta charset=\"UTF-8\"><title>404</title></head>\
          <body><h1>404</h1><p>No existe una página para <code>{path}</code>.</p></body></html>\n"
@@ -115,6 +120,7 @@ fn not_found_page(path: &str) -> String {
 }
 
 fn server_error_page(message: &str) -> String {
+    let message = message.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
     format!(
         "<!doctype html>\n<html lang=\"es\"><head><meta charset=\"UTF-8\"><title>500</title></head>\
          <body><h1>500</h1><p>{message}</p></body></html>\n"

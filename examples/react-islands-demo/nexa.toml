@@ -1,0 +1,11 @@
+[project]
+name = "react-islands-demo"
+version = "0.1.0"
+
+[dependencies]
+
+# Los módulos de las islas, ya empaquetados por `npm run vendor`.
+[imports]
+productFilter = "/vendor/filter.js"
+tsIsland = "/vendor/ts-island.js"
+reactMount = "/vendor/react-mount.js"

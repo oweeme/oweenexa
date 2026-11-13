@@ -3,6 +3,8 @@ pub enum LoaderError {
     /// Falta un parámetro que la plantilla de URL necesita (ej. `:slug`
     /// sin un valor capturado por el router).
     MissingParam(String),
+    /// El valor de un parámetro de ruta no es seguro para una URL (`.`/`..`).
+    InvalidParam(String),
     /// El backend respondió 404: no existe el recurso pedido. Esto es lo
     /// que `nexa-cli` convierte en un 404 real de verdad, en vez de un
     /// 200 con contenido vacío.
@@ -21,6 +23,7 @@ impl std::fmt::Display for LoaderError {
             LoaderError::MissingParam(name) => {
                 write!(f, "falta el parámetro `:{name}` en la URL del loader")
             }
+            LoaderError::InvalidParam(name) => write!(f, "el parámetro `:{name}` tiene un valor no válido"),
             LoaderError::NotFound => write!(f, "el backend respondió 404 (recurso no encontrado)"),
             LoaderError::Http(status) => write!(f, "el backend respondió HTTP {status}"),
             LoaderError::Network(msg) => write!(f, "error de red llamando al backend: {msg}"),

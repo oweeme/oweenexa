@@ -1,0 +1,10 @@
+{
+  "name": "react-islands-demo",
+  "private": true,
+  "description": "React y TypeScript puro dentro de Nexa: islas (Core) y `ref` (Modo App). `npm run vendor` empaqueta las islas a public/vendor/.",
+  "scripts": {
+    "vendor": "mkdir -p public/vendor && esbuild islands/filter.island.tsx --bundle --format=esm --target=es2022 --jsx=automatic --minify --define:process.env.NODE_ENV=\\\"production\\\" --outfile=public/vendor/filter.js && esbuild islands/ts.island.ts --bundle --format=esm --target=es2022 --outfile=public/vendor/ts-island.js && esbuild islands/react-app-mount.tsx --bundle --format=esm --target=es2022 --jsx=automatic --minify --define:process.env.NODE_ENV=\\\"production\\\" --outfile=public/vendor/react-mount.js"
+  },
+  "dependencies": { "react": "^19", "react-dom": "^19" },
+  "devDependencies": { "esbuild": "^0.28.2", "@types/react": "^19", "@types/react-dom": "^19" }
+}

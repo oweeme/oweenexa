@@ -30,12 +30,19 @@ pub fn load(
     let path = resolve_url(&loader.url_template, params)?;
     let full_url = format!("{api_base}{path}");
 
-    ureq::get(&full_url)
+    agent()
+        .get(&full_url)
         .call()
         .map_err(classify_error)?
         .body_mut()
         .read_json::<serde_json::Value>()
         .map_err(|e| LoaderError::InvalidJson(e.to_string()))
+}
+
+/// Un backend lento no debe colgar un build ni (con renderizado bajo
+/// demanda) un hilo del servidor: 10 s de plazo total por llamada.
+fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder().timeout_global(Some(std::time::Duration::from_secs(10))).build().into()
 }
 
 fn classify_error(err: ureq::Error) -> LoaderError {

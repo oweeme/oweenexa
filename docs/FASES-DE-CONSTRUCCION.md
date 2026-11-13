@@ -4187,6 +4187,218 @@ intérprete de JavaScript: el "runtime" es el binario Rust de `nexa`
 
 ---
 
+## Fase 65 — Limpieza y puesta a punto tras las fases 60-64
+
+**Qué se quitó (código que nadie usaba).** Se buscaron funciones públicas
+de Rust y exports de TypeScript sin ningún uso en el repositorio:
+
+- `nexa.config.ts`: lo escribía `nexa create` (y lo arrastraban tres
+  ejemplos) pero **nada en el compilador lo leía** — su único campo
+  (`app.name`) no tenía efecto. Eliminado de `nexa create`, de los
+  ejemplos y de la referencia.
+- `currentScope()` de `@nexa/app`: exportada, sin ningún llamador.
+- Una documentación que ya no era cierta: "Sin WebSocket/SSE de primera
+  clase" (existen `connectSSE`/`connectSocket` desde antes).
+- 3 avisos de `clippy` (un `Default` derivable, una asignación de campo
+  tras `Default::default()`, un `match` reemplazable por `?`): `clippy
+  --workspace --all-targets` queda en **0 avisos**. Y 6 errores de
+  `tsc` en `@nexa/ui` (faltaba `DOM.Iterable`): los 15 paquetes
+  tipan sin errores.
+
+**Qué se mejoró.**
+
+1. `nexa create --template core|app`: el template `app` deja una landing
+   con SEO + una SPA de ejemplo (`src/app/`) y el `[proxy]` comentado.
+2. `nexa create` ahora deja `tsconfig.json` y `nexa-env.d.ts`: tipos solo
+   para el editor (`data`, `params`, `t`, `<For>`, `<Show>`, la API de
+   `@nexa/app` y `platform`). Verificado con el `tsc` real: el template y
+   los ejemplos completos (Core + Modo App + componentes) tipan con
+   `strict` y 0 errores. El compilador de Nexa no los lee.
+3. `nexa lint` ahora revisa el **Modo App** (un error de sintaxis en
+   `src/app/` hace fallar el chequeo de CI, sin escribir `dist/`) y acepta
+   proyectos solo-app.
+4. Los ejemplos pasan `nexa lint` sin avisos (faltaba un `canonical` y
+   declarar `ui`) y sus componentes están tipados.
+
+**Verificado (todo de nuevo, desde cero).** 413 tests de Rust, 387 de
+JS en 15 paquetes, 0 avisos de clippy, 0 errores de `tsc`; Chrome real
+contra `nexa preview` (SPA con cookies 13/13, Core con componentes 10/10,
+Phaser 7/7) y contra el ejecutable de `nexa bundle` (13/13 y 10/10).
+
+---
+
+## Fase 66 — Renderizado bajo demanda, i18n sin endpoint y guías
+
+**Motivación.** Un blog real (`/blog/hectorarchitect/desarrollando-oweelinux-conlinux`)
+o una tienda necesitan que un post o producto **publicado después del build**
+aparezca sin recompilar. Hasta aquí eso solo lo hacía `nexa preview` (un
+solo hilo, sin caché, no pensado para producción) y `nexa bundle` daba 404.
+Además, `[locale]` sin un endpoint `paths` no generaba ninguna página en el
+build, y no había fallback entre idiomas.
+
+**Qué se construyó.**
+
+1. **Renderizado bajo demanda en `nexa bundle`.** Si el proyecto tiene rutas
+   dinámicas de Core, el ejecutable embebe las fuentes (formato v2: tabla
+   `sources`, que **nunca** se sirve por HTTP) y las extrae al arrancar a un
+   directorio de trabajo privado; el `nexa` que ya lleva dentro (el
+   compilador entero) renderiza con el mismo pipeline de `preview`. Se
+   desactiva con `--static`.
+2. **Caché con revalidación (ISR)** (`Dynamic`, con un `Renderer` inyectable
+   que permite probar todo sin red): `--revalidate` segundos (60;
+   `[bundle] revalidate`; `$NEXA_REVALIDATE`); un 404 se recuerda como máximo
+   10 s; tope de 2000 páginas; **cerrojos por franja**: N visitas
+   simultáneas a una página vencida producen **una** llamada a la API; si la
+   API falla se sirve la última copia (`X-Nexa-Cache: stale`) y sin copia un
+   `502` con `Retry-After` que no filtra la URL interna. gzip, `ETag` y `304`
+   también para lo renderizado.
+3. **Seguridad** (importante porque el parámetro ahora sale de la URL de quien
+   visita):
+   - `nexa-loader::resolve_url` **no codificaba** los parámetros: un
+     `/news/a%3Fadmin%3D1` podía inyectar `?admin=1` o segmentos en tu API.
+     Ahora se codifican (RFC 3986) y `.`/`..` se rechazan.
+   - plazo de 10 s por llamada a la API (antes: sin límite);
+   - un idioma que no existe, o con caracteres raros, es 404 y nunca toca el
+     sistema de archivos; solo se intenta renderizar lo que *parece una
+     página* (los `/wp-login.php`, `/.env` no cuestan una llamada);
+   - el directorio de trabajo es `0700` y se verifica que sea del mismo
+     usuario; un paquete manipulado no puede escribir fuera de él;
+   - escrituras atómicas de chunks/CSS (varios hilos renderizando a la vez).
+4. **i18n**: `[locale]` como único segmento dinámico se pre-renderiza desde
+   `src/locales/*.json` sin `paths`; un `paths` cuyas entradas no traen
+   `locale` se cruza con cada idioma; `[i18n] default` (idioma por defecto,
+   antes fijo en `es`); **fallback clave por clave** al idioma por defecto;
+   idioma inexistente = 404 real.
+5. **Documentación**: `docs/ELIGE-TU-CAMINO.md` (Core, isla o Modo App; cómo
+   se sirve lo que cambia; dónde desplegar), `docs/TUTORIAL-BLOG-TIENDA.md`
+   (la ruta `/blog/[author]/[slug]`, idiomas, publicar sin recompilar), la
+   guía de inicio puesta al día (Modo App, componentes, proxy, bundle) y la
+   referencia (`[i18n]`, `[bundle]`, `[app]`, `[proxy]`, renderizado bajo demanda).
+6. **Ejemplos y pruebas**: `examples/blog-store-demo`, `examples/react-islands-demo`
+   (React 19 + TypeScript puro en islas y en la SPA), `e2e/ssr-on-demand.sh`
+   y `e2e/react-islands.mjs`.
+
+**Verificado.**
+
+- 21 tests nuevos de Rust: 14 del servidor (caché y ventana, `revalidate=0`,
+  copia vieja, 404 breve, **24 hilos simultáneos = 1 render**, assets del
+  directorio de trabajo sin escape, rutas que no parecen páginas, 502 sin
+  fugas, extracción y paquete manipulado…), 3 del loader (codificación,
+  Unicode, `..`), 2 del pipeline, 2 del formato; **434 de Rust pasan, 0
+  fallos, 0 avisos de clippy**.
+- **De punta a punta, `e2e/ssr-on-demand.sh` (25 de 25)** contra el
+  ejecutable y una API que registra cada llamada, con la ruta
+  `/blog/hectorarchitect/desarrollando-oweelinux-conlinux`: lo pre-renderizado
+  no toca la API; un post publicado tras el build da 404 → 200 sin
+  recompilar; `hit` dentro de la ventana (0 llamadas nuevas); tras revalidar se
+  ve el post **editado**; `/es` y `/en` sin endpoint; `/xx` 404; producto nuevo
+  en inglés con el texto que falta cayendo al español y `hreflang`; un slug con
+  `?admin=1` llega **codificado** a la API; `/../` da 400; `.php`/`.env` no
+  cuestan llamadas; **120 visitas con 2 ventanas = 2 llamadas**; con la API
+  muerta se sirve lo ya visto (stale) y una ruta nueva da 502.
+- `react-islands-demo`: 12 de 12 en Chrome real.
+
+**Decisión: no se hizo "build incremental".** Recompilar solo lo cambiado
+ahorra poco: el tiempo de `nexa build` lo domina la llamada a la API de cada
+página, no el render (que son milisegundos), y un build incremental igual
+tendría que preguntarle a la API si algo cambió. Con renderizado bajo demanda
+la necesidad casi desaparece: se pre-renderizan los pocos que importan y el
+resto se genera cuando se pide. Si algún día un sitio con decenas de miles de
+páginas lo necesita, el camino es paralelizar las llamadas del build y
+permitir que `paths` traiga un campo de última modificación.
+
+**Límites conocidos (honestos).**
+
+- El renderizado bajo demanda es del ejecutable de `nexa bundle`: con solo
+  estáticos + nginx no existe (`nexa preview` detrás de nginx sigue siendo
+  posible pero no recomendado).
+- La caché es por proceso y en memoria: varias instancias no la comparten, y
+  un reinicio la vacía. No hay *purga* manual (`/revalidate`) ni
+  `stale-while-revalidate` en segundo plano: la visita que cruza la ventana
+  espera el render.
+- Las páginas renderizadas bajo demanda no pasan por la optimización de
+  imágenes (`<picture>`/AVIF) ni entran al `sitemap.xml`.
+- Sin pluralización en `t()`; el fallback es al idioma por defecto, no una
+  cadena de idiomas (`pt-BR` -> `pt` -> `es`).
+- Probado en Linux; sin HTTPS propio; el directorio de trabajo vive en
+  `$XDG_RUNTIME_DIR` o el temporal del sistema.
+
+---
+
+## Fase 67 — Seguridad contra inyecciones, y la portada de un sitio multi-idioma
+
+**Motivación.** Dos preguntas de uso real: "¿esto tiene seguridad contra
+inyecciones?" y "¿puedo empezar solo en español y añadir alemán e inglés
+después?". Se respondieron **probándolo**: una API maliciosa que devuelve
+ataques en cada campo, y un proyecto que crece de uno a tres idiomas.
+
+**Seguridad: lo que se encontró y se corrigió.** El escape de texto y de
+atributos ya funcionaba (la mayoría de las "alarmas" de una primera prueba
+ingenua eran falsos positivos: `&lt;script&gt;` contiene la palabra *script*
+y es inofensivo). Pero había huecos reales:
+
+1. `href`/`src`/`action`/... con **`javascript:`** (y `vbscript:`,
+   `data:text/html`) venido de datos se renderizaba tal cual — XSS al hacer
+   clic. Ahora se **omite** el atributo (`nexa-ast::url_safety`, que detecta
+   mayúsculas, espacios, caracteres de control y `java\tscript:`); `data:image/`
+   solo se admite como `src` de una `<img>`. Los literales que escribe el
+   desarrollador no se tocan.
+2. `onclick={data.x}` (en minúscula no se reconoce como evento y se volcaba
+   como atributo) y `srcdoc={data.x}`: un dato nunca llega a un atributo
+   `on*` ni a `srcdoc`.
+3. El JSON-LD solo escapaba `</script>`: un `<!--<script>` dejaba al analizador
+   en el estado de "doble escape" y el resto de la página se tragaba como
+   código. Ahora se escapan todo `<`, `>`, `&` y U+2028/9 como `\uXXXX`.
+4. `canonical` y `og:image` aceptaban cualquier esquema: ahora solo `http(s)`
+   o rutas relativas.
+5. `nexa preview`/`dev`: la página 404 reflejaba la ruta sin escapar (XSS
+   reflejado) y `read_static_file`/`read_prebuilt_asset` aceptaban `..`.
+
+**i18n: lo que se encontró.** Crecer de `es` a `es`+`de`+`en` ya funcionaba
+(`/de`, `/en` y `hreflang` aparecen solos al crear los JSON; las claves sin
+traducir caen al español). Pero **`oweeme.com/` daba 404** si todas las páginas
+vivían bajo `[locale]`. Ahora `nexa build` genera una **puerta de idioma** en
+`/` (si no hay `src/pages/index.tsx`): lleva al idioma del navegador si el
+sitio lo tiene y si no al idioma por defecto, conserva `?query`/`#hash`, y sin
+JavaScript ofrece enlaces + `canonical` + `hreflang="x-default"` (que además se
+añade ya a todas las páginas con `hreflang`). `preview` y `dev` la sirven.
+
+**Verificado.**
+
+- 15 tests nuevos de Rust (`url_safety` 5, renderizador 5 —enlaces peligrosos
+  y sus disfraces, literal propio vs. dato, `data:image`, `on*`/`srcdoc`,
+  escape—, `nexa-seo` 2, `page_resolver` 1, puerta de idioma 2); **447 de Rust,
+  0 fallos, 0 avisos de clippy**.
+- **De punta a punta con una API maliciosa** (`<script>`, `"><img onerror>`,
+  `javascript:`, `JaVaScRiPt:`, `data:text/html`, `</script><!--<script>` en
+  texto, atributos, `<For>`, `t()`, JSON-LD, props de isla, `canonical`):
+  analizando el HTML con un parser real, no aparece ninguna etiqueta ni
+  atributo inyectado, ningún `href` ejecutable, el JSON-LD conserva el valor
+  hostil **como dato**, y el documento llega íntegro hasta `</html>`.
+- **Puerta de idioma en Chrome real** (`e2e/locale-gate.mjs`, 7 de 7, contra
+  `preview` y contra el ejecutable): navegador alemán → `/de`, inglés → `/en`,
+  francés (que el sitio no tiene) → `/es`, `fr` luego `en` → `/en`, conserva
+  `?utm_source=x#top`, sin JavaScript hay enlaces/canonical/`x-default`, y
+  `/blog` sin prefijo sigue siendo 404 (no se adivina).
+- `docs/SEGURIDAD.md`: qué protege Nexa y qué sigue siendo del desarrollador.
+
+**Límites conocidos (honestos).**
+
+- **Nexa escapa todo**, así que el HTML que devuelve tu API se ve como texto:
+  un blog con cuerpos en HTML/Markdown necesita convertirlo antes en tu
+  backend o mostrarlo con una isla con sanitizador. **No existe un
+  `<RawHtml>` saneado** — es la mejora de uso más importante para blogs.
+- SQL injection, autenticación/autorización y CSRF son del backend; no hay
+  CSP por defecto (documentado por qué).
+- El Modo App no tiene `t()`/i18n propio: un dashboard multi-idioma gestiona
+  sus textos a mano.
+- No se puede servir un idioma **sin prefijo** (`/blog/x` en español y `/de/...`
+  en alemán): hay que usar `[locale]` desde el primer día.
+- La puerta es un redirect por JavaScript (con `noscript`), no un `302` del
+  servidor; no mira `Accept-Language`.
+
+---
+
 ## Regla de disciplina para todas las fases
 
 > No empezar a diseñar la fase N+2 mientras la fase N no tenga un criterio

@@ -154,7 +154,10 @@ fn handle(pages_dir: &Path, url: &str, api_base: &str) -> Response<std::io::Curs
     // que se ve siempre viene del `src/` actual.
     match resolve_page(pages_dir, path, api_base, false) {
         Ok(html) => respond(200, html_content_type(), with_dev_client(&html)),
-        Err(ResolveError::NotFound) => respond(404, html_content_type(), with_dev_client(&not_found_page(path))),
+        Err(ResolveError::NotFound) => match (path == "/").then(|| crate::page_resolver::locale_gate_for_root(pages_dir)).flatten() {
+            Some(gate) => respond(200, html_content_type(), with_dev_client(&gate)),
+            None => respond(404, html_content_type(), with_dev_client(&not_found_page(path))),
+        },
         Err(ResolveError::Failed(message)) => {
             respond(500, html_content_type(), with_dev_client(&compile_error_page(&message)))
         }
@@ -190,6 +193,8 @@ fn with_dev_client(html: &str) -> String {
 }
 
 fn not_found_page(path: &str) -> String {
+    // La ruta la escribe quien visita: se escapa (si no, es un XSS reflejado).
+    let path = path.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;");
     format!(
         "<!doctype html>\n<html lang=\"es\"><head><meta charset=\"UTF-8\"><title>404 — Nexa dev</title></head>\
          <body><h1>404</h1><p>No existe una página para <code>{path}</code>.</p></body></html>\n"

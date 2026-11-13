@@ -13,20 +13,21 @@ use std::path::Path;
 use anyhow::{bail, Context, Result};
 use nexa_router::scan_pages;
 
-use crate::commands::build::{enumerate_paths, resolved_pattern};
-use crate::pipeline::{compile_page, find_paths_declaration, PageError};
+use crate::commands::build::{param_sets_for, resolved_pattern};
+use crate::pipeline::{compile_page, PageError};
 
 pub fn run() -> Result<()> {
     let pages_dir = Path::new("src/pages");
-    if !pages_dir.is_dir() {
+    let app_enabled = crate::app_mode::is_enabled();
+    if !pages_dir.is_dir() && !app_enabled {
         bail!(
             "no se encontró {} — ¿estás dentro de un proyecto Nexa? (usa `nexa create <nombre>`)",
             pages_dir.display()
         );
     }
 
-    let routes = scan_pages(pages_dir).context("escaneando src/pages")?;
-    if routes.is_empty() {
+    let routes = if pages_dir.is_dir() { scan_pages(pages_dir).context("escaneando src/pages")? } else { Vec::new() };
+    if routes.is_empty() && !app_enabled {
         bail!("{} no contiene ninguna página .tsx", pages_dir.display());
     }
 
@@ -37,15 +38,12 @@ pub fn run() -> Result<()> {
 
     for route in &routes {
         if route.is_dynamic() {
-            let declared_paths = find_paths_declaration(&route.file)
-                .with_context(|| format!("leyendo `paths` de {}", route.pattern))?;
-
-            let Some(paths) = declared_paths else {
+            let Some(param_sets) = param_sets_for(route, &api_base)? else {
                 println!("{}: sin `paths` declarado — se salta (no hay un set de parámetros conocido).", route.pattern);
                 continue;
             };
 
-            for params in &enumerate_paths(&paths, route, &api_base)? {
+            for params in &param_sets {
                 let pattern = resolved_pattern(route, params);
                 let page = compile_page(&route.file, &route.pattern, params, &api_base)
                     .map_err(|err| lint_error(&pattern, err))?;
@@ -59,6 +57,16 @@ pub fn run() -> Result<()> {
             .map_err(|err| lint_error(&route.pattern, err))?;
         total_warnings += report(&route.pattern, &page.seo_warnings, &page.pkg_warnings);
         checked += 1;
+    }
+
+    // Modo App (Fase 60): `nexa build` ya falla ante un error de sintaxis en
+    // `src/app/`; `nexa lint` (el chequeo de CI) tiene que fallar igual,
+    // sin escribir nada a `dist/`.
+    if app_enabled {
+        let build = crate::app_mode::compile(&crate::app_mode::app_dir(), &crate::app_mode::runtime_url())
+            .context("compilando src/app (Modo App)")?;
+        println!("Modo App: {} ruta(s) y {} módulo(s) sin errores.", build.routes.len(), build.modules.len());
+        checked += build.routes.len();
     }
 
     println!();

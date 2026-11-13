@@ -25,12 +25,20 @@ Un framework de frontend HTML-first, SEO-first, backend-agnóstico:
   estrategia que declares (`interaction` por defecto, o
   `visible`/`idle`/`load`/`manual`).
 
-Lo que **no** es (deliberadamente — ver "Límites conocidos" más abajo):
-un framework de componentes con props/composición/estado en el cliente.
-Una página es un solo componente. Para partes genuinamente interactivas
-y con estado (un chat, notificaciones en vivo, una tabla con orden/
-filtro en el cliente, un dashboard completo) existen las **islas**
-(ver más abajo) — no reabren la composición, viven aparte.
+Nexa tiene **tres piezas** (ver [ELIGE-TU-CAMINO.md](ELIGE-TU-CAMINO.md)):
+
+- **Nexa Core** (`src/pages/`): el HTML con SEO — blog, tienda, catálogo,
+  landing. Un subconjunto fijo de TSX que el compilador analiza (sin
+  hooks ni lógica libre) y componentes que se **expanden al compilar**.
+- **Islas**: un pedazo interactivo dentro de una página (un filtro, un
+  carrito, un mapa), en TypeScript puro o con React/Vue, que se activa
+  cuando hace falta.
+- **Modo App** (`src/app/`): una SPA completa en TSX con señales, con
+  router, `guard` y llamadas a tu API — para paneles y apps con login.
+
+Y se despliega como estáticos, como **un solo ejecutable** (`nexa bundle`,
+que además renderiza bajo demanda lo que publicas después del build), o
+como app de escritorio.
 
 ## Instalación
 
@@ -76,10 +84,15 @@ estés parado) — confirmá con `ls` que ves `crates/`, `packages/`,
 ## Tu primer proyecto
 
 ```bash
-nexa create mi-sitio
+nexa create mi-sitio                  # sitio de contenido con SEO (Nexa Core)
+nexa create mi-app --template app     # landing con SEO + una SPA en /app (Modo App)
 cd mi-sitio
 nexa dev --port 4321
 ```
+
+`nexa create` deja también `tsconfig.json` y `nexa-env.d.ts`: tipos solo
+para el editor (autocompletado de `data`, `params`, `t`, `<For>`,
+`@nexa/app`…), que el compilador no lee.
 
 Abre `http://127.0.0.1:4321` — edita `src/pages/index.tsx` y guarda: el
 navegador se actualiza solo, sin recargar a mano (`nexa dev`, con un
@@ -93,8 +106,10 @@ nexa preview         # sirve dist/ tal cual (para probar el build de producción
 `dist/` es 100% archivos estáticos: cualquier servidor (Node, Nginx,
 Cloudflare Pages, lo que sea) lo sirve sin ningún adaptador especial —
 las únicas rutas que necesitan algo más que archivos estáticos son las
-dinámicas (`[slug]`) que **no** declaran `paths` (ver abajo); esas sí
-necesitan `nexa preview`/`nexa dev` renderizándolas al vuelo.
+dinámicas (`[slug]`) que **no** están pre-renderizadas con `paths` (ver
+abajo, p. ej. un post publicado después del build); esas las renderiza
+bajo demanda el ejecutable de `nexa bundle` (con caché), o `nexa
+preview`/`nexa dev` al vuelo.
 
 ### Pre-renderizar rutas dinámicas (`paths`)
 
@@ -492,19 +507,50 @@ se pasa. Ausente por defecto.
   android`/`ios` + `./gradlew assembleDebug` (Android) — necesita el SDK
   correspondiente, que Nexa no instala.
 
+## Más allá de las páginas de contenido
+
+```bash
+nexa create mi-app --template app     # landing con SEO + una SPA en /app
+```
+
+- **Componentes en Core** (`<Card title={data.name}>`, `<Show when>`,
+  `<For>` anidado): se expanden al compilar, sin JavaScript extra.
+  `docs/REFERENCIA.md` → "Componentes y `<Show>`".
+- **Modo App** (`src/app/`): TSX con señales, router de cliente, `guard`.
+  `docs/REFERENCIA.md` → "Modo App (SPA)".
+- **Tu API sin CORS**: `[proxy]` en `nexa.toml` reenvía `/api/*` a tu
+  backend (en `dev`, `preview`, el ejecutable y nginx).
+- **Un solo ejecutable**: `nexa bundle` (gzip, caché, SPA, proxy y
+  renderizado bajo demanda con caché).
+- **Escritorio**: `nexa add tauri` + `nexa build --target desktop`.
+- **React, Vue o un juego (Phaser)**: `docs/VENDORING.md` y
+  `examples/react-islands-demo`, `examples/phaser-demo`.
+- **Blog y tienda con API e idiomas, de punta a punta**:
+  [TUTORIAL-BLOG-TIENDA.md](TUTORIAL-BLOG-TIENDA.md).
+
 ## Límites conocidos (resumen — la lista completa, con el porqué de cada
 uno, vive en `README.md`)
 
-- Un componente por página: sin `<Otro/>`, sin props, sin composición.
+- Los componentes de Core son de compilación: props solo simbólicos
+  (literal, `data.x`, `params.x`, `t()`), sin recursión. Para lógica
+  libre: Modo App o una isla.
 - `load`/`seo`/`schema` son literales estáticos, nunca funciones.
 - Una ruta dinámica se pre-renderiza con `nexa build` solo si declara
-  `paths` (Fase 17) — sin eso, sigue sirviéndose al vuelo con `nexa
-  preview`/`nexa dev`.
+  `paths` — o, bajo `[locale]`, desde `src/locales/`. Lo demás se
+  renderiza al vuelo con `nexa preview`/`nexa dev`, o **bajo demanda con
+  caché en el ejecutable de `nexa bundle`**.
 - `nexa dev` recarga reemplazando `<body>` completo — no hay estado de
   componente en memoria que preservar (Nexa no tiene ese modelo), así
   que un valor de `<input>` sin guardar no sobrevive a un auto-reload.
 
 ## Dónde seguir
+
+- [ELIGE-TU-CAMINO.md](ELIGE-TU-CAMINO.md) — ¿Core, isla o Modo App? ¿Cómo
+  se sirve lo que cambia? ¿Dónde lo despliego?
+- [TUTORIAL-BLOG-TIENDA.md](TUTORIAL-BLOG-TIENDA.md) — un blog y una tienda
+  con API, idiomas y publicación sin recompilar.
+- [SEGURIDAD.md](SEGURIDAD.md) — qué protege Nexa contra inyecciones y qué
+  sigue siendo responsabilidad de tu backend.
 
 - `docs/REFERENCIA.md` — cada función, cada atributo, cada opción de
   `nexa.toml`, organizado por tema — para cuando ya conocés lo básico y

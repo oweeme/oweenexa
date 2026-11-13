@@ -19,7 +19,7 @@ pub(crate) fn render_element(node: &IrNode, ctx: &RenderContext) -> String {
     // `aria-current` calculado acá al build/request quedaría obsoleto
     // sin ese recálculo del lado del cliente).
     let is_link = tag == "a";
-    let attrs_html: String = attrs.iter().filter_map(|a| render_attr(a, ctx)).collect();
+    let attrs_html: String = attrs.iter().filter_map(|a| render_attr(tag, a, ctx)).collect();
 
     // El único rastro de interactividad que el HTML necesita es este id:
     // el manifiesto real (evento, módulo, estrategia) vive en
@@ -104,12 +104,33 @@ fn render_island_attrs(island: &nexa_ast::Island, ctx: &RenderContext) -> String
 
 /// `None` = el atributo no aparece en absoluto: un `src=""` roto (por
 /// ejemplo, `{data.image}` sin datos) es peor que ningún `src`.
-fn render_attr(attr: &nexa_ast::Attr, ctx: &RenderContext) -> Option<String> {
+fn render_attr(tag: &str, attr: &nexa_ast::Attr, ctx: &RenderContext) -> Option<String> {
     if attr.value.is_none() {
         return Some(format!(" {}", attr.name));
     }
     let value = resolve_attr_string(attr, ctx)?;
+
+    // Un valor que viene de DATOS (la API, `params`) nunca debe poder ejecutar
+    // código: se omite el atributo entero (igual que un dato que no se
+    // pudo resolver). Lo que el desarrollador escribió a mano (`Static`) es
+    // de confianza y no se toca.
+    if matches!(attr.value, Some(AttrValue::Dynamic(_))) && !is_safe_dynamic_attr(tag, &attr.name, &value) {
+        return None;
+    }
     Some(format!(" {}=\"{}\"", attr.name, escape_attr(&value)))
+}
+
+fn is_safe_dynamic_attr(tag: &str, name: &str, value: &str) -> bool {
+    use nexa_ast::url_safety::{has_dangerous_scheme, is_active_content_attribute, is_url_attribute};
+    if is_active_content_attribute(name) {
+        return false; // `onclick={data.x}`, `srcdoc={data.x}`
+    }
+    if is_url_attribute(name) {
+        // `data:image/...` solo en el `src` de una imagen.
+        let image_src = matches!(name.to_ascii_lowercase().as_str(), "src") && matches!(tag, "img" | "source");
+        return !has_dangerous_scheme(value, image_src);
+    }
+    true
 }
 
 /// El valor real de un atributo, sin el HTML alrededor — lo que

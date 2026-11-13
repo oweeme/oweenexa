@@ -65,7 +65,7 @@ pub fn resolve_page(
     let _ = fs::create_dir_all("dist/assets");
 
     for chunk in &page.chunks {
-        let _ = fs::write(format!("dist/assets/{}", chunk.filename), &chunk.content);
+        write_atomic(&format!("dist/assets/{}", chunk.filename), chunk.content.as_bytes());
     }
 
     // Nota: esto sobrescribe con el CSS de *esta* página, no con la unión
@@ -77,7 +77,7 @@ pub fn resolve_page(
     // llega a quedar el placeholder en el HTML que se sirve.
     if let Some(css) = nexa_ui::build_stylesheet_from_classes(&page.ui_used_classes) {
         let filename = format!("nexa-ui.{}.css", crate::assets::content_short_hash(css.as_bytes()));
-        let _ = fs::write(format!("dist/assets/{filename}"), css);
+        write_atomic(&format!("dist/assets/{filename}"), css.as_bytes());
         page.html = page
             .html
             .replace(&ui_stylesheet_href_with_hash(UI_CSS_HASH_PLACEHOLDER), &format!("/assets/{filename}"));
@@ -86,7 +86,32 @@ pub fn resolve_page(
     Ok(page.html)
 }
 
+/// Escribe a un temporal y renombra: con varios hilos renderizando a la vez
+/// (servidor de `nexa bundle`), nadie lee un chunk a medio escribir.
+fn write_atomic(path: &str, contents: &[u8]) {
+    let tmp = format!("{path}.tmp-{:?}", std::thread::current().id());
+    if fs::write(&tmp, contents).is_ok() && fs::rename(&tmp, path).is_err() {
+        let _ = fs::remove_file(&tmp);
+    }
+}
+
+/// La puerta de idioma de `/` (Fase 67) si el sitio es multi-idioma y no tiene
+/// una portada propia — lo que `nexa build` escribe a `dist/index.html`.
+pub fn locale_gate_for_root(pages_dir: &Path) -> Option<String> {
+    let routes = scan_pages(pages_dir).ok()?;
+    crate::locale_gate::for_project(&routes)
+}
+
+/// Una ruta relativa que no sube (`..`), no es absoluta y no trae `\0`:
+/// `nexa preview`/`nexa dev` jamás deben leer fuera de `dist/`/`public/`.
+fn is_inside(rel: &str) -> bool {
+    !rel.contains('\0') && Path::new(rel).components().all(|c| matches!(c, std::path::Component::Normal(_)))
+}
+
 fn read_prebuilt_page(path: &str) -> Option<String> {
+    if !is_inside(path.trim_start_matches('/')) {
+        return None;
+    }
     let dir = if path == "/" || path.is_empty() {
         PathBuf::from("dist")
     } else {
@@ -100,6 +125,9 @@ fn read_prebuilt_page(path: &str) -> Option<String> {
 /// `resolve_page` la primera vez que una ruta se renderiza al vuelo.
 pub fn read_prebuilt_asset(path: &str) -> Option<String> {
     let rest = path.strip_prefix("/assets/")?;
+    if !is_inside(rest) {
+        return None;
+    }
     fs::read_to_string(Path::new("dist/assets").join(rest)).ok()
 }
 
@@ -111,7 +139,7 @@ pub fn read_prebuilt_asset(path: &str) -> Option<String> {
 /// corrido un build antes.
 pub fn read_static_file(base: &Path, path: &str) -> Option<Vec<u8>> {
     let rest = path.trim_start_matches('/');
-    if rest.is_empty() {
+    if rest.is_empty() || !is_inside(rest) {
         return None;
     }
     let file = base.join(rest);
@@ -119,4 +147,22 @@ pub fn read_static_file(base: &Path, path: &str) -> Option<Vec<u8>> {
         return None;
     }
     fs::read(file).ok()
+}
+
+#[cfg(test)]
+mod security_tests {
+    use super::*;
+
+    #[test]
+    fn nothing_outside_the_served_directory_can_be_read() {
+        for evil in ["../Cargo.toml", "a/../../Cargo.toml", "/../etc/passwd", "a\0b"] {
+            assert!(!is_inside(evil.trim_start_matches('/')), "{evil:?}");
+            assert!(read_static_file(Path::new("."), evil).is_none(), "{evil:?}");
+        }
+        assert!(read_prebuilt_asset("/assets/../Cargo.toml").is_none());
+        assert!(read_prebuilt_page("/../..").is_none());
+        for fine in ["a.png", "img/a.png", "assets/x.1a2b3c4d.js"] {
+            assert!(is_inside(fine), "{fine}");
+        }
+    }
 }

@@ -3,16 +3,15 @@ name = "demo"
 version = "0.1.0"
 
 [dependencies]
+ui = "0.1.0"
+
+[imports]
 
 [app]
 title = "Demo App"
 
-# El backend real (cualquiera). `nexa dev`/`preview` reenvían /api/* ahí, y
-# `nexa add nginx` genera lo equivalente para producción.
 [proxy]
 "/api" = "http://127.0.0.1:9100"
 
-# App de escritorio (`nexa build --target desktop`): no hay proxy dentro del
-# webview, así que la API se reescribe a este backend (necesita CORS).
 [desktop.proxy]
 "/api" = "http://127.0.0.1:9100"

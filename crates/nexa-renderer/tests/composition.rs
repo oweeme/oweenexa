@@ -150,3 +150,73 @@ fn show_rejects_arbitrary_expressions_with_a_clear_message() {
     .to_string();
     assert!(err.contains("nada de comparaciones"), "{err}");
 }
+
+// ---- Seguridad: datos de la API NUNCA deben ejecutar código ----
+
+fn render(source: &str, data: &serde_json::Value) -> String {
+    html(source, data)
+}
+
+#[test]
+fn dynamic_urls_with_executable_schemes_are_dropped_but_ordinary_ones_survive() {
+    let data = json!({
+        "js": "javascript:alert(1)", "js2": "  JaVaScRiPt:alert(1)", "js3": "java\tscript:alert(1)",
+        "vb": "vbscript:x", "dh": "data:text/html,<script>alert(1)</script>",
+        "ok": "https://example.com/a?b=c:d", "rel": "/blog/post", "mail": "mailto:hola@x.com"
+    });
+    let out = render(
+        r#"export default function P() { return (<div>
+            <a id="1" href={data.js}>x</a><a id="2" href={data.js2}>x</a><a id="3" href={data.js3}>x</a>
+            <a id="4" href={data.vb}>x</a><a id="5" href={data.dh}>x</a>
+            <a id="6" href={data.ok}>x</a><a id="7" href={data.rel}>x</a><a id="8" href={data.mail}>x</a>
+            <form action={data.js}></form><iframe src={data.js}></iframe></div>); }"#,
+        &data,
+    );
+    for n in ["1", "2", "3", "4", "5"] {
+        assert!(out.contains(&format!("<a id=\"{n}\">x</a>")), "el href peligroso del enlace {n} debe omitirse: {out}");
+    }
+    assert!(out.contains("<a id=\"6\" href=\"https://example.com/a?b=c:d\">"), "{out}");
+    assert!(out.contains("<a id=\"7\" href=\"/blog/post\">") && out.contains("href=\"mailto:hola@x.com\""), "{out}");
+    assert!(!out.contains("javascript") && !out.contains("vbscript") && !out.contains("<form action="), "{out}");
+    assert!(!out.contains("<iframe src="), "{out}");
+}
+
+#[test]
+fn a_hand_written_javascript_url_is_trusted_but_the_same_text_from_data_is_not() {
+    let out = render(
+        r#"export default function P() { return (<div><a id="a" href="javascript:void(0)">x</a><a id="b" href={data.u}>x</a></div>); }"#,
+        &json!({ "u": "javascript:void(0)" }),
+    );
+    assert!(out.contains("<a id=\"a\" href=\"javascript:void(0)\">"), "{out}");
+    assert!(out.contains("<a id=\"b\">x</a>"), "{out}");
+}
+
+#[test]
+fn data_images_are_allowed_only_as_an_image_src() {
+    let data = json!({ "img": "data:image/png;base64,AAAA" });
+    let out = render(r#"export default function P() { return (<div><img src={data.img} alt="x" /><a href={data.img}>x</a><iframe src={data.img}></iframe></div>); }"#, &data);
+    assert!(out.contains("<img src=\"data:image/png;base64,AAAA\""), "{out}");
+    assert!(out.contains("<a>x</a>") && !out.contains("<iframe src"), "{out}");
+}
+
+#[test]
+fn data_can_never_become_an_inline_event_handler_or_srcdoc() {
+    let data = json!({ "x": "alert(document.cookie)" });
+    let out = render(
+        r#"export default function P() { return (<div><b onclick={data.x}>a</b><i onerror={data.x}>b</i><iframe srcdoc={data.x}></iframe><p title={data.x}>c</p></div>); }"#,
+        &data,
+    );
+    assert!(!out.contains("onclick") && !out.contains("onerror") && !out.contains("srcdoc"), "{out}");
+    assert!(out.contains("title=\"alert(document.cookie)\""), "un atributo normal sí se conserva (escapado)");
+}
+
+#[test]
+fn text_and_attribute_values_are_always_escaped() {
+    let data = json!({ "evil": "\"><img src=x onerror=alert(1)>", "t": "<script>alert(1)</script>" });
+    let out = render(
+        r#"export default function P() { return (<div class={data.evil} title={data.evil}><p>{data.t}</p><p>{data.evil}</p></div>); }"#,
+        &data,
+    );
+    assert!(!out.contains("<script>") && !out.contains("<img"), "{out}");
+    assert!(out.contains("class=\"&quot;&gt;&lt;img src=x onerror=alert(1)&gt;\""), "{out}");
+}
