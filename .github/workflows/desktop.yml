@@ -14,6 +14,7 @@ jobs:
   desktop:
     name: Escritorio (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
     continue-on-error: true
     strategy:
       fail-fast: false
@@ -22,11 +23,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      # Solo se cachea `nexa`. NO se cachea `desk/src-tauri/target`: restaurar esa carpeta antes de `nexa create desk`
+      # hace que `create` falle con "`desk` ya existe" (pasó en la 2.ª ejecución, cuando ya había caché).
       - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: |
-            .
-            ${{ runner.temp }}/desk/src-tauri
       - name: Dependencias de Tauri (Linux)
         if: runner.os == 'Linux'
         run: |
